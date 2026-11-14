@@ -8,6 +8,7 @@ var part_type := ""
 var tier := 1
 var broken := false
 var paste_ok := true  # CPU için: termal macun sağlam mı
+var cheap := false    # muadil (ucuz) parça: garantide bozulma riski taşır
 var display_name := ""
 var slot = null
 var rotors: Array = []
@@ -87,4 +88,13 @@ func install_into(s) -> void:
 
 
 func value() -> int:
-	return PM.price(part_type, tier)
+	return roundi(PM.price(part_type, tier) * (Game.CHEAP_FACTOR if cheap else 1.0))
+
+
+## Muadil parça yap: ismine etiket eklenir, üstüne turuncu bir sticker yapışır.
+func make_cheap() -> void:
+	cheap = true
+	display_name = PM.display_name(part_type, tier) + " (muadil)"
+	var info: Dictionary = PM.INFO[part_type]
+	var sz: Vector3 = info.size
+	MU.box(self, Vector3(sz.x * 0.25, 0.002, sz.z * 0.25), info.center + Vector3(0, sz.y * 0.5 + 0.001, 0), MU.mat(Color(1.0, 0.55, 0.1), 0, 0.6))

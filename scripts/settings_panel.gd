@@ -20,7 +20,7 @@ func _ready() -> void:
 	_root = m[0]
 	_panel = m[1]
 	var vb: VBoxContainer = m[2]
-	K.label(vb, "Ayarlar", 36, T.ACCENT, "TitleLabel")
+	K.title(vb, "Ayarlar")
 	# sekmeler
 	var tabs := HBoxContainer.new()
 	tabs.add_theme_constant_override("separation", 6)

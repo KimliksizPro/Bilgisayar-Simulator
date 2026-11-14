@@ -55,6 +55,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("interact"):
 		if target:
 			target.interact(self)
+	elif event.is_action_pressed("interact_alt"):
+		if target and target.has_method("interact_alt"):
+			target.interact_alt(self)
 	elif event.is_action_pressed("drop"):
 		drop()
 

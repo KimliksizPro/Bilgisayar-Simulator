@@ -3,6 +3,9 @@ extends Node
 ## ayarlar ve nasıl oynanır ekranlarının görüntülerini alır.
 
 func _ready() -> void:
+	if "--devshot" in OS.get_cmdline_user_args():  # laptop / telefon görüntüleri
+		await load("res://dev/device_shot.gd").run(self)
+		return
 	var p = Game.player
 	Game.save_path = "user://test_save.json"
 	Settings.tips_seen = []
@@ -26,15 +29,64 @@ func _ready() -> void:
 	Game.add_money(3000)
 	for id in ["sign", "coffee"]:
 		Game.buy_upgrade(id)
-	Game.hud.open_upgrades()
+	# ParçaNet: sepette ürünler
+	Game.market_prev = 1.0
+	Game.market = 1.06
+	Game.hud.open_upgrades(0)
+	var o = Game.hud.office
+	o._cart = {"gpu:2": 1, "ram:2": 5, "ssd:1": 2}
+	o._express = true
+	o.refresh()
+	await _shot(p, Vector3(-0.2, 0, 0.5), 180, -10, "ui_shop")
+	# muadil kalite seçimi + ikinci el sekmesi (eco_* görüntüleri)
+	o._cheap = true
+	o._cart["cpu:1:c"] = 2
+	o.refresh()
+	await _shot(p, Vector3(-0.2, 0, 0.5), 180, -10, "eco_shop")
+	o._cheap = false
+	o._show_page(4)
+	await _shot(p, Vector3(-0.2, 0, 0.5), 180, -10, "eco_used")
+	o._show_page(0)
+	o._order()
+	Game.place_order({"cpu:1": 2}, false)
+	await _shot(p, Vector3(-0.2, 0, 0.5), 180, -10, "ui_cargo")
+	o._show_page(2)
 	await _shot(p, Vector3(-0.2, 0, 0.5), 180, -10, "ui_upgrades")
+	o._show_page(3)
+	await _shot(p, Vector3(-0.2, 0, 0.5), 180, -10, "ui_stats")
+	# PERSONEL: bir tezgahtar + bir teknisyen işe al, sekmeyi ve dükkândaki hâllerini çek
+	Game.roll_staff_candidates()
+	Game.hire_staff(int(Game.staff_candidates[0].id))
+	Game.hire_staff(int(Game.staff_candidates[0].id))
+	o._show_page(4)
+	await _shot(p, Vector3(-0.2, 0, 0.5), 180, -10, "staff_tab")
 	Game.hud.close_upgrades()
+	var sm = Game.staff_mgr
+	for e in sm.npcs.values():
+		e.position = e.home
+		e.waypoints = []
+		sm._go_idle(e)
+		e.rotation.y = e.home_face
+	sm.npcs.values()[0].say_for("Hoş geldiniz! Bilgisayarı hemen ustamın masasına alıyorum.", 10.0)
+	sm.npcs.values()[1].say_for("Tamir ediliyor... %45", 10.0)
+	await _shot(p, Vector3(-1.9, 0, 2.6), -12, -12, "staff_shop", 1.0)
+	await _shot(p, Vector3(0.6, 0, 0.2), 50, -14, "staff_back", 0.6)
+	Game.fire_staff(int(Game.staff[0].id))
+	Game.fire_staff(int(Game.staff[0].id))
+	# kurye koliyi bırakır
+	Game.clock += 0.6
+	get_parent().delivery._send_courier()
+	await get_tree().create_timer(4.5).timeout
+	await _shot(p, Vector3(0.2, 0, 0.6), 160, -22, "ui_delivery", 0.3)
+	await _shot(p, Vector3(-2.7, 0, -0.3), 90, -12, "ui_stockshelf", 0.3)
 	Game.income_today = 640
 	Game.parts_today = 215
 	Game.jobs_today = 4
 	Game.rep = 3.4
+	Game.warranty_list.append({"due": Game.day + 1, "name": "Ahmet Abi", "type": "psu", "tier": 1})
 	Game.end_day()
 	await _shot(p, Vector3(-0.2, 0, 0.5), 180, -10, "ui_summary")
+	await _shot(p, Vector3(-0.2, 0, 0.5), 180, -10, "eco_zreport", 0.2)
 	Game.hud.summary_btn.pressed.emit()
 	await get_tree().create_timer(0.5).timeout
 	Game.hud.open_pause()

@@ -1,8 +1,8 @@
 extends Control
 ## 5 yıldızlı itibar göstergesi (font bağımsız, çizilir).
 
-const AMBER := Color("ffb52e")
-const DIM := Color(1, 1, 1, 0.16)
+var on := Color("ffb52e")
+var dim := Color(1, 1, 1, 0.16)
 
 var px := 22:
 	set(v):
@@ -35,6 +35,6 @@ func _draw() -> void:
 		var c := Vector2(r + i * px * 1.1, r)
 		var pts := _star_points(c, r)
 		var fill := clampf(value - i, 0.0, 1.0)
-		draw_colored_polygon(pts, DIM)
+		draw_colored_polygon(pts, dim)
 		if fill >= 0.5:
-			draw_colored_polygon(pts, AMBER)
+			draw_colored_polygon(pts, on)

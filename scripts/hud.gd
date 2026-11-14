@@ -6,6 +6,7 @@ const T := preload("res://scripts/ui_theme.gd")
 const K := preload("res://scripts/ui_kit.gd")
 const CROSS := preload("res://scripts/crosshair.gd")
 const PAUSE := preload("res://scripts/pause_menu.gd")
+const OFFICE := preload("res://scripts/office_panel.gd")
 
 var _ui_root: Control
 # sol üst kart
@@ -20,10 +21,16 @@ var fps_label: Label
 var job_name: Label
 var job_pay: Label
 var job_pay_pill: Control
+var job_no: Label
+var job_who: Label
+var _job_holder: Control
+var _ticket := 40
+var _last_job := ""
+var _summary_sub: Label
 var job_desc: Label
 var patience_row: Control
 var patience_bar: ProgressBar
-var _pfill: StyleBoxFlat
+var _pfill: StyleBoxTexture
 # merkez
 var crosshair: Control
 var prompt: Control
@@ -43,11 +50,9 @@ var summary_btn: Button
 var over_root: Control
 var over_panel: Control
 var over_text: Label
-var upgrade_root: Control
-var upgrade_panel: Control
-var upgrade_money: Label
-var upgrade_rows := {}
-var upgrade_close: Button
+var office: Control
+var cargo_row: Control
+var cargo_label: Label
 
 var _clock_cache := ""
 var _last_hint := "\u0001"
@@ -87,107 +92,157 @@ func _ready() -> void:
 	Game.day_ended.connect(_on_day_ended)
 	Game.game_over.connect(_on_game_over)
 	Game.day_started.connect(_on_day_started)
-	Game.upgrade_bought.connect(func(_id): _refresh_upgrades())
+	Game.orders_changed.connect(_refresh_cargo)
 	Settings.changed.connect(func(k): if k == "show_fps": fps_label.visible = Settings.show_fps)
 	fps_label.visible = Settings.show_fps
 	_on_money(Game.money)
+	_ticket = 40 + Game.day * 3
 	_on_rep(Game.rep)
 	set_job("Hoş geldin!", "")
 	set_patience(-1.0)
 
 
 # ---------------------------------------------------------------- yapı
-func _coin(parent: Control, d := 36) -> Control:
-	var p := PanelContainer.new()
-	p.add_theme_stylebox_override("panel", T.flat(T.ACCENT, d / 2, T.ACCENT_HI, 2, Vector2(0, 0), 6))
-	p.custom_minimum_size = Vector2(d, d)
-	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var l := K.label(p, "₺", int(d * 0.62), Color("1a1204"), "BoldLabel")
-	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	parent.add_child(p)
-	return p
-
-
+## Yazar kasa: vidalı plaka içinde yeşil LCD (para, gün, saat), LED gün çubuğu ve itibar yıldızları.
 func _build_money_card(root: Control) -> void:
-	var card := K.panel(root, "HudCard")
-	card.position = Vector2(20, 20)
+	var card := K.panel(root, "ScrewCard")
+	card.position = Vector2(18, 18)
 	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var vb := VBoxContainer.new()
-	vb.add_theme_constant_override("separation", 6)
+	vb.add_theme_constant_override("separation", 7)
 	card.add_child(vb)
+	var head := HBoxContainer.new()
+	vb.add_child(head)
+	K.label(head, "YAZAR KASA", 12, T.MUTED, "SmallCaps").size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var led := ColorRect.new()
+	led.color = T.LCD
+	led.custom_minimum_size = Vector2(7, 7)
+	led.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	head.add_child(led)
+	var lp := K.panel(vb, "LcdPanel")
+	lp.add_theme_stylebox_override("panel", T.lcd_box(Vector2(14, 2)))
+	lp.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var lv := VBoxContainer.new()
+	lv.add_theme_constant_override("separation", -8)
+	lp.add_child(lv)
 	var top := HBoxContainer.new()
-	top.add_theme_constant_override("separation", 12)
-	vb.add_child(top)
-	_coin(top)
-	money_label = K.label(top, "0", 34, T.TEXT, "BoldLabel")
-	money_label.custom_minimum_size = Vector2(150, 0)
+	top.add_theme_constant_override("separation", 8)
+	lv.add_child(top)
+	var cur := K.label(top, "₺", 40, T.LCD_DIM, "LcdLabel")
+	cur.size_flags_vertical = Control.SIZE_SHRINK_END
+	money_label = K.label(top, "0", 58, T.LCD, "LcdLabel")
+	K.lcd_glow(money_label)
+	money_label.custom_minimum_size = Vector2(190, 0)
+	money_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	money_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var dr := HBoxContainer.new()
-	dr.add_theme_constant_override("separation", 10)
-	vb.add_child(dr)
-	day_label = K.label(dr, "Gün 1", 19, T.ACCENT_HI, "BoldLabel")
-	clock_label = K.label(dr, "09:00", 19, T.TEXT)
-	clock_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	clock_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	lv.add_child(dr)
+	day_label = K.label(dr, "GÜN 01", 26, T.LCD_DIM, "LcdLabel")
+	day_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	clock_label = K.label(dr, "09:00", 26, T.LCD, "LcdLabel")
+	K.lcd_glow(clock_label)
 	day_bar = ProgressBar.new()
 	day_bar.max_value = 1.0
 	day_bar.show_percentage = false
-	day_bar.custom_minimum_size = Vector2(0, 6)
+	day_bar.custom_minimum_size = Vector2(0, 9)
 	day_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var fill := T.flat(T.INFO, 3)
-	day_bar.add_theme_stylebox_override("fill", fill)
-	day_bar.add_theme_stylebox_override("background", T.flat(Color(0, 0, 0, 0.45), 3))
+	day_bar.add_theme_stylebox_override("fill", T.seg_box(T.ACCENT))
 	vb.add_child(day_bar)
 	var rr := HBoxContainer.new()
 	rr.add_theme_constant_override("separation", 10)
 	vb.add_child(rr)
-	rep_stars = K.stars(rr, 20)
-	rep_label = K.label(rr, "3.0", 17, T.MUTED, "MutedLabel")
+	rep_stars = K.stars(rr, 19)
+	rep_stars.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	rep_label = K.label(rr, "3.0", 17, T.ACCENT_HI, "BoldLabel")
+	# yoldaki kargo göstergesi
+	var cr := HBoxContainer.new()
+	cr.add_theme_constant_override("separation", 8)
+	vb.add_child(cr)
+	cargo_row = cr
+	var box := PanelContainer.new()
+	box.add_theme_stylebox_override("panel", T.flat(Color(0.68, 0.52, 0.33), 2, Color(0.82, 0.7, 0.45), 2, Vector2(0, 0)))
+	box.custom_minimum_size = Vector2(16, 13)
+	box.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	cr.add_child(box)
+	cargo_label = K.label(cr, "", 15, T.TEXT, "BoldLabel")
+	cr.visible = false
 	fps_label = K.label(root, "", 15, T.GOOD, "BoldLabel")
-	fps_label.position = Vector2(24, 190)
+	fps_label.position = Vector2(24, 250)
 	fps_label.add_theme_constant_override("outline_size", 5)
 	fps_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
 
 
+## Servis fişi: mandalla tutturulmuş kâğıt; müşteri adı tükenmez kalemle, ücret lastik mühürle.
 func _build_job_card(root: Control) -> void:
-	var card := K.panel(root, "HudCard")
-	card.anchor_left = 1.0
-	card.anchor_right = 1.0
-	card.offset_left = -400
-	card.offset_right = -20
-	card.offset_top = 20
-	card.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	var holder := Control.new()
+	holder.anchor_left = 1.0
+	holder.anchor_right = 1.0
+	holder.offset_left = -404
+	holder.offset_right = -24
+	holder.offset_top = 30
+	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	holder.rotation_degrees = 0.8
+	holder.pivot_offset = Vector2(190, 0)
+	root.add_child(holder)
+	_job_holder = holder
+	var card := K.panel(holder, "PaperPanel")
+	card.custom_minimum_size = Vector2(380, 0)
 	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# mandal
+	var clip := PanelContainer.new()
+	var cs := T.flat(Color("5d636e"), 3, Color("9aa1ad"), 0, Vector2(0, 0), 3)
+	cs.border_width_top = 2
+	cs.border_width_bottom = 3
+	cs.border_color = Color("9aa1ad")
+	clip.add_theme_stylebox_override("panel", cs)
+	clip.position = Vector2(168, -10)
+	clip.size = Vector2(44, 16)
+	clip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	holder.add_child(clip)
 	var vb := VBoxContainer.new()
-	vb.add_theme_constant_override("separation", 6)
+	vb.add_theme_constant_override("separation", 4)
 	card.add_child(vb)
-	K.label(vb, "AKTİF İŞ", 13, T.MUTED, "SmallCaps")
+	var head := HBoxContainer.new()
+	vb.add_child(head)
+	K.label(head, "SERVİS FİŞİ", 17, T.INK, "SignLabel").size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	job_no = K.label(head, "No. 0000", 22, T.INK_MUTED, "ReceiptLabel")
+	job_no.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var sep := HSeparator.new()
+	sep.theme_type_variation = "InkSeparator"
+	sep.add_theme_constant_override("separation", 6)
+	vb.add_child(sep)
 	var top := HBoxContainer.new()
 	top.add_theme_constant_override("separation", 10)
 	vb.add_child(top)
-	job_name = K.label(top, "", 22, T.ACCENT_HI, "BoldLabel")
-	job_name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var who := VBoxContainer.new()
+	who.add_theme_constant_override("separation", -6)
+	who.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top.add_child(who)
+	job_who = K.label(who, "MÜŞTERİ", 12, T.INK_MUTED, "SmallCaps")
+	job_name = K.hand(who, "", 36)
 	job_name.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	job_name.custom_minimum_size = Vector2(200, 0)
-	job_pay_pill = K.panel(top, "Pill")
+	var st := K.stamp(top, "0 TL", T.STAMP_GREEN, 19, -7.0)
+	job_pay_pill = st[0]
 	job_pay_pill.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	job_pay = K.label(job_pay_pill, "", 17, T.GOOD, "BoldLabel")
-	job_desc = K.label(vb, "", 16, T.TEXT)
+	job_pay = st[2]
+	job_desc = K.label(vb, "", 16, T.INK)
 	job_desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	job_desc.custom_minimum_size = Vector2(340, 0)
+	job_desc.custom_minimum_size = Vector2(330, 0)
 	patience_row = HBoxContainer.new()
 	patience_row.add_theme_constant_override("separation", 10)
 	vb.add_child(patience_row)
-	K.label(patience_row, "Sabır", 14, T.MUTED, "MutedLabel")
+	K.label(patience_row, "SABIR", 12, T.INK_MUTED, "SmallCaps").size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	patience_bar = ProgressBar.new()
 	patience_bar.max_value = 1.0
 	patience_bar.show_percentage = false
-	patience_bar.custom_minimum_size = Vector2(0, 10)
+	patience_bar.custom_minimum_size = Vector2(0, 12)
 	patience_bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	patience_bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	patience_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_pfill = T.flat(T.GOOD, 5)
+	_pfill = T.seg_box(T.STAMP_GREEN)
 	patience_bar.add_theme_stylebox_override("fill", _pfill)
+	patience_bar.add_theme_stylebox_override("background", T.flat(Color(T.INK.r, T.INK.g, T.INK.b, 0.12), 2, Color(T.INK.r, T.INK.g, T.INK.b, 0.3), 1, Vector2(0, 0)))
 	patience_row.add_child(patience_bar)
 	patience_row.visible = false
 
@@ -204,14 +259,15 @@ func _build_center(root: Control) -> void:
 	crosshair.offset_bottom = 24
 	root.add_child(crosshair)
 	# etkileşim ipucu: [E] Eylem
-	prompt = K.panel(root, "HudCard")
+	prompt = K.panel(root, "Toast")
 	prompt.set_anchors_preset(Control.PRESET_CENTER)
 	prompt.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	prompt.offset_left = 0
 	prompt.offset_right = 0
-	prompt.offset_top = 38
-	prompt.offset_bottom = 38
+	prompt.offset_top = 40
+	prompt.offset_bottom = 40
 	prompt.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	prompt.add_theme_stylebox_override("panel", T.flat(Color(0.06, 0.065, 0.075, 0.88), 6, Color(1, 1, 1, 0.07), 1, Vector2(8, 6), 8))
 	prompt.visible = false
 	var h := HBoxContainer.new()
 	h.add_theme_constant_override("separation", 12)
@@ -219,6 +275,7 @@ func _build_center(root: Control) -> void:
 	prompt_key = K.keycap(h, "E", 20)
 	prompt_text = K.label(h, "", 21, T.TEXT, "BoldLabel")
 	prompt_text.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	K.spacer(h, 0).custom_minimum_size.x = 4
 
 
 func _build_toasts(root: Control) -> void:
@@ -235,32 +292,45 @@ func _build_toasts(root: Control) -> void:
 	root.add_child(toasts)
 
 
+## Öğretici ipucu: bantla yapıştırılmış sarı not kâğıdı.
 func _build_tip(root: Control) -> void:
-	tip_card = K.panel(root, "HudCard")
+	tip_card = Control.new()
 	tip_card.anchor_left = 0.5
 	tip_card.anchor_right = 0.5
-	tip_card.anchor_top = 0.0
-	tip_card.anchor_bottom = 0.0
-	tip_card.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	tip_card.offset_top = 22
-	tip_card.offset_bottom = 22
+	tip_card.offset_left = -330
+	tip_card.offset_right = 330
+	tip_card.offset_top = 26
 	tip_card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tip_card.rotation_degrees = -1.2
+	tip_card.pivot_offset = Vector2(330, 0)
 	tip_card.visible = false
+	root.add_child(tip_card)
+	var note := K.panel(tip_card, "StickyNote")
+	note.custom_minimum_size = Vector2(660, 0)
+	note.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var tape := ColorRect.new()
+	tape.color = Color(1, 1, 1, 0.38)
+	tape.size = Vector2(110, 26)
+	tape.position = Vector2(275, -12)
+	tape.rotation_degrees = 2.0
+	tape.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tip_card.add_child(tape)
 	var h := HBoxContainer.new()
-	h.add_theme_constant_override("separation", 14)
-	tip_card.add_child(h)
-	var tag := K.panel(h, "Pill")
-	tag.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	tag.add_theme_stylebox_override("panel", T.flat(Color(T.ACCENT.r, T.ACCENT.g, T.ACCENT.b, 0.18), 20, T.ACCENT, 1, Vector2(12, 3)))
-	K.label(tag, "İPUCU", 15, T.ACCENT_HI, "BoldLabel")
-	tip_label = K.label(h, "", 20, T.TEXT)
+	h.add_theme_constant_override("separation", 16)
+	note.add_child(h)
+	var tag := K.hand(h, "Not:", 34, T.STAMP_RED)
+	tag.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	tip_label = K.label(h, "", 19, T.INK, "InkLabel")
 	tip_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	tip_label.custom_minimum_size = Vector2(560, 0)
+	tip_label.custom_minimum_size = Vector2(480, 0)
+	tip_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	tip_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	var hide := HBoxContainer.new()
 	hide.add_theme_constant_override("separation", 6)
+	hide.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	h.add_child(hide)
 	K.keycap(hide, "H", 14)
-	K.label(hide, "gizle", 14, T.MUTED, "MutedLabel").vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	K.label(hide, "gizle", 15, T.INK_MUTED, "MutedLabel").vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 
 
 func _build_corner(root: Control) -> void:
@@ -285,36 +355,59 @@ func _build_corner(root: Control) -> void:
 
 
 # ---------------------------------------------------------------- modallar
+## Gün sonu: yazar kasanın "Z Raporu" fişi.
 func _build_summary(root: Control) -> void:
-	var m := K.modal(root, 580, 0.72)
+	var m := K.modal(root, 520, 0.72)
 	summary_root = m[0]
 	summary_panel = m[1]
+	summary_panel.theme_type_variation = "ReceiptPanel"
 	var vb: VBoxContainer = m[2]
-	summary_title = K.label(vb, "", 38, T.ACCENT, "TitleLabel")
+	vb.add_theme_constant_override("separation", 6)
+	var shop := K.label(vb, "*** BİLGİSAYARCI ***", 26, T.INK, "ReceiptLabel")
+	shop.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var addr := K.label(vb, "Mahalle Cd. No:12  ·  Tel: 0212 555 01 23", 20, T.INK_MUTED, "ReceiptLabel")
+	addr.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	summary_title = K.label(vb, "", 44, T.INK, "SignLabel")
 	summary_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	var sub := K.label(vb, "Dükkân kapandı. İşte günün özeti.", 17, T.MUTED, "MutedLabel")
+	var sub := K.label(vb, "", 22, T.INK_MUTED, "ReceiptLabel")
 	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	var inset := K.panel(vb, "InsetPanel")
+	_summary_sub = sub
+	_receipt_rule(vb)
 	summary_rows = VBoxContainer.new()
-	summary_rows.add_theme_constant_override("separation", 8)
-	inset.add_child(summary_rows)
-	summary_note = K.label(vb, "", 17, T.BAD)
+	summary_rows.add_theme_constant_override("separation", 0)
+	vb.add_child(summary_rows)
+	_receipt_rule(vb)
+	summary_note = K.label(vb, "", 22, T.INK, "ReceiptLabel")
 	summary_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	summary_note.custom_minimum_size = Vector2(500, 0)
+	summary_note.custom_minimum_size = Vector2(440, 0)
 	summary_note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	summary_btn = K.button(vb, "Sonraki Gün", func():
+	var thanks := K.label(vb, "MALİ DEĞERİ YOKTUR  ·  TEŞEKKÜRLER", 19, T.INK_MUTED, "ReceiptLabel")
+	thanks.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	K.spacer(vb, 4)
+	summary_btn = K.button(vb, "Sonraki Gün  ›", func():
 		K.close(summary_root, summary_panel)
 		Game.next_day()
-		_capture(), "PrimaryButton", 23, Vector2(0, 56))
+		_capture(), "PrimaryButton", 23, Vector2(0, 58))
 
 
+func _receipt_rule(parent: Control) -> void:
+	var l := K.label(parent, "- - - - - - - - - - - - - - - - - - - - - - - - - - - -", 20, T.INK_MUTED, "ReceiptLabel")
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.clip_text = true
+
+
+## İflas: metal plakanın üstüne basılmış kırmızı "KAPANDI" mührü.
 func _build_over(root: Control) -> void:
 	var m := K.modal(root, 560, 0.8)
 	over_root = m[0]
 	over_panel = m[1]
 	var vb: VBoxContainer = m[2]
-	var t := K.label(vb, "İflas Ettin!", 46, T.BAD, "TitleLabel")
-	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	K.title(vb, "İflas Ettin", 40, T.BAD)
+	K.spacer(vb, 4)
+	var sh := CenterContainer.new()
+	vb.add_child(sh)
+	K.stamp(sh, "DÜKKÂN KAPANDI", T.BAD, 34, -8.0)
+	K.spacer(vb, 4)
 	over_text = K.label(vb, "", 19, T.TEXT)
 	over_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	over_text.custom_minimum_size = Vector2(480, 0)
@@ -323,67 +416,26 @@ func _build_over(root: Control) -> void:
 	K.button(vb, "Yeni Oyun", func():
 		K.close(over_root, over_panel)
 		Game.new_game()
-		_capture(), "PrimaryButton", 22, Vector2(0, 54))
+		_capture(), "PrimaryButton", 22, Vector2(0, 56))
 	K.button(vb, "Ana Menü", func():
-		Game.return_to_menu(), "", 20, Vector2(0, 48))
+		Game.return_to_menu(), "", 20, Vector2(0, 50))
 
 
 func _build_upgrades(root: Control) -> void:
-	var m := K.modal(root, 760, 0.7)
-	upgrade_root = m[0]
-	upgrade_panel = m[1]
-	var vb: VBoxContainer = m[2]
-	var head := HBoxContainer.new()
-	vb.add_child(head)
-	var tv := VBoxContainer.new()
-	tv.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	tv.add_theme_constant_override("separation", 0)
-	head.add_child(tv)
-	K.label(tv, "Yönetim Paneli", 36, T.ACCENT, "TitleLabel")
-	K.label(tv, "Dükkânını geliştir, daha çok kazan.", 17, T.MUTED, "MutedLabel")
-	var mp := K.panel(head, "HudCard")
-	mp.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	var mh := HBoxContainer.new()
-	mh.add_theme_constant_override("separation", 10)
-	mp.add_child(mh)
-	_coin(mh, 30)
-	upgrade_money = K.label(mh, "", 24, T.TEXT, "BoldLabel")
-	K.hsep(vb)
-	for u in Game.UPGRADE_LIST:
-		var ip := K.panel(vb, "InsetPanel")
-		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 16)
-		ip.add_child(row)
-		var tcol := VBoxContainer.new()
-		tcol.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		tcol.add_theme_constant_override("separation", 0)
-		row.add_child(tcol)
-		K.label(tcol, u.name, 23, T.TEXT, "BoldLabel")
-		K.label(tcol, u.desc, 17, T.MUTED, "MutedLabel")
-		var uid: String = u.id
-		var owned := K.panel(row, "Pill")
-		owned.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		owned.custom_minimum_size = Vector2(190, 0)
-		var ol := K.label(owned, "ALINDI", 18, T.GOOD, "BoldLabel")
-		ol.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		var b := K.button(row, "", func(): Game.buy_upgrade(uid), "PrimaryButton", 19, Vector2(190, 50))
-		b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		upgrade_rows[uid] = [b, owned]
-	K.spacer(vb, 2)
-	upgrade_close = K.button(vb, "Kapat", close_upgrades, "", 20, Vector2(0, 50))
-	_refresh_upgrades()
+	office = OFFICE.new()
+	office.back.connect(close_upgrades)
+	root.add_child(office)
 
 
 # ---------------------------------------------------------------- dış API
-func open_upgrades() -> void:
-	_refresh_upgrades()
-	K.open(upgrade_root, upgrade_panel)
+## Tezgahtaki laptop: ParçaNet / Kargo / Geliştirmeler / Dükkân.
+func open_upgrades(page := 0) -> void:
+	office.open(page)
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-	upgrade_close.grab_focus()
 
 
 func close_upgrades() -> void:
-	K.close(upgrade_root, upgrade_panel)
+	office.close()
 	_capture()
 
 
@@ -395,21 +447,6 @@ func open_pause() -> void:
 	pause.open()
 
 
-func _refresh_upgrades() -> void:
-	if upgrade_money == null:
-		return
-	upgrade_money.text = K.money(Game.money)
-	for u in Game.UPGRADE_LIST:
-		var pair: Array = upgrade_rows[u.id]
-		var b: Button = pair[0]
-		var has := Game.has_upgrade(u.id)
-		pair[1].visible = has
-		b.visible = not has
-		if not has:
-			b.text = "Satın Al  ·  %d TL" % int(u.price)
-			b.disabled = Game.money < int(u.price)
-
-
 func _stars_text(r: float) -> String:
 	return "%.1f" % r
 
@@ -417,7 +454,6 @@ func _stars_text(r: float) -> String:
 func _on_money(v: int) -> void:
 	var old := _money_target
 	_money_target = v
-	_refresh_upgrades()
 	if not _money_init:
 		_money_init = true
 		_money_shown = float(v)
@@ -430,10 +466,11 @@ func _on_money(v: int) -> void:
 	if v != old:
 		if _money_flash:
 			_money_flash.kill()
-		money_label.add_theme_color_override("font_color", T.GOOD if v > old else T.BAD)
+		var fc := Color("e8ffe0") if v > old else Color("ff8a6a")
+		money_label.add_theme_color_override("font_color", fc)
 		_money_flash = create_tween()
 		_money_flash.tween_interval(0.5)
-		_money_flash.tween_method(func(t: float): money_label.add_theme_color_override("font_color", (T.GOOD if v > old else T.BAD).lerp(T.TEXT, t)), 0.0, 1.0, 0.5)
+		_money_flash.tween_method(func(t: float): money_label.add_theme_color_override("font_color", fc.lerp(T.LCD, t)), 0.0, 1.0, 0.5)
 
 
 func _set_money_shown(x: float) -> void:
@@ -446,41 +483,54 @@ func _on_rep(r: float) -> void:
 	rep_label.text = _stars_text(r)
 
 
-func _row(label_text: String, value_text: String, color := T.TEXT, big := false) -> void:
+func _row(label_text: String, value_text: String, color := T.INK, big := false) -> void:
 	var h := HBoxContainer.new()
 	summary_rows.add_child(h)
-	var l := K.label(h, label_text, 22 if big else 20, T.MUTED if not big else T.TEXT, "MutedLabel" if not big else "BoldLabel")
+	var l := K.label(h, label_text.to_upper(), 30 if big else 25, T.INK if big else T.INK_MUTED, "ReceiptLabel")
 	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var r := K.label(h, value_text, 24 if big else 20, color, "BoldLabel")
+	var r := K.label(h, value_text, 32 if big else 25, color, "ReceiptLabel")
 	r.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 
 
 func _on_day_ended(s: Dictionary) -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-	summary_title.text = "Gün %d Tamamlandı" % s.day
+	summary_title.text = "Z RAPORU"
+	_summary_sub.text = "GÜN %d  ·  KAPANIŞ 19:00  ·  FİŞ NO %04d" % [s.day, 1000 + s.day]
 	for c in summary_rows.get_children():
 		c.free()
-	_row("Tamamlanan iş", "%d" % s.jobs)
-	_row("Gelir", "+%s TL" % K.money(s.income), T.GOOD)
-	_row("Parça giderleri", "-%s TL" % K.money(s.parts), T.BAD)
-	_row("Kira", "-%s TL" % K.money(s.rent), T.BAD)
-	K.hsep(summary_rows)
-	_row("Net kazanç", "%s%s TL" % ["+" if s.net >= 0 else "", K.money(s.net)], T.GOOD if s.net >= 0 else T.BAD, true)
+	var green := T.STAMP_GREEN
+	var red := T.STAMP_RED
+	_row("Tamamlanan iş", "%d ADET" % s.jobs)
+	if int(s.get("sales", 0)) > 0:
+		_row("Tezgah satışı", "%d PARÇA" % s.sales)
+	_row("Gelir", "+%s TL" % K.money(s.income), green)
+	_row("Parça siparişi", "-%s TL" % K.money(s.parts), red)
+	if int(s.get("shipping", 0)) > 0:
+		_row("Kargo", "-%s TL" % K.money(s.shipping), red)
+	_row("Kira", "-%s TL" % K.money(s.rent), red)
+	if int(s.get("utility", 0)) > 0:
+		_row("Elektrik faturası", "-%s TL" % K.money(s.utility), red)
+	if int(s.get("wages", 0)) > 0:  # PERSONEL
+		_row("Maaşlar", "-%s TL" % K.money(int(s.wages)), red)
+	_receipt_rule(summary_rows)
+	_row("Net kazanç", "%s%s TL" % ["+" if s.net >= 0 else "", K.money(s.net)], green if s.net >= 0 else red, true)
 	var d: float = s.rep_delta
 	var rh := HBoxContainer.new()
+	rh.add_theme_constant_override("separation", 10)
 	summary_rows.add_child(rh)
-	var rl := K.label(rh, "İtibar", 20, T.MUTED, "MutedLabel")
+	var rl := K.label(rh, "İTİBAR", 25, T.INK_MUTED, "ReceiptLabel")
 	rl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var st := K.stars(rh, 20)
+	var st := K.stars(rh, 19, Color(T.INK.r, T.INK.g, T.INK.b, 0.15), T.INK)
 	st.set("value", s.rep)
 	st.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	var dl := K.label(rh, "(%+.1f)" % d, 18, T.GOOD if d >= 0 else T.BAD, "BoldLabel")
-	dl.custom_minimum_size = Vector2(60, 0)
+	var dl := K.label(rh, "(%+.1f)" % d, 25, green if d >= 0 else red, "ReceiptLabel")
+	dl.custom_minimum_size = Vector2(64, 0)
 	dl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	_row("Kasa", "%s TL" % K.money(s.money), T.GOOD if s.money >= 0 else T.BAD, true)
-	summary_note.text = ("Dikkat: kasa eksiye düştü! Yarın da eksi kalırsan iflas edersin.\n" if s.warn else "") \
+	_row("Kasa", "%s TL" % K.money(s.money), T.INK if s.money >= 0 else red, true)
+	summary_note.text = ("!! DİKKAT: KASA EKSİDE !!\nYarın da eksi kalırsa iflas.\n" if s.warn else "") \
+		+ ("Garanti dönüşü bekleyen: %d iş\n" % int(s.warranty_pending) if int(s.get("warranty_pending", 0)) > 0 else "") \
 		+ "Yarınki kira: %s TL" % K.money(s.next_rent)
-	summary_note.add_theme_color_override("font_color", T.BAD if s.warn else T.MUTED)
+	summary_note.add_theme_color_override("font_color", red if s.warn else T.INK)
 	K.open(summary_root, summary_panel)
 	summary_btn.grab_focus()
 
@@ -504,34 +554,45 @@ func set_patience(f: float) -> void:
 		f = clampf(f, 0.0, 1.0)
 		patience_bar.value = f
 		var c: Color
+		var amber := Color("d98a0b")
 		if f > 0.5:
-			c = T.ACCENT.lerp(T.GOOD, (f - 0.5) * 2.0)
+			c = amber.lerp(T.STAMP_GREEN, (f - 0.5) * 2.0)
 		else:
-			c = T.BAD.lerp(T.ACCENT, f * 2.0)
-		_pfill.bg_color = c
+			c = T.STAMP_RED.lerp(amber, f * 2.0)
+		_pfill.modulate_color = c
 
 
 ## Ödemede yukarı süzülen "+250 TL" ve para kartında parlama.
 func pop_money(amount: int) -> void:
-	var l := K.label(_ui_root, "%s%s TL" % ["+" if amount >= 0 else "-", K.money(absi(amount))], 40, T.GOOD if amount >= 0 else T.BAD, "TitleLabel")
-	l.add_theme_constant_override("outline_size", 10)
-	l.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
-	l.position = Vector2(236, 62)
+	var l := K.label(_ui_root, "%s%s TL" % ["+" if amount >= 0 else "-", K.money(absi(amount))], 38, T.GOOD if amount >= 0 else T.BAD, "SignLabel")
+	l.add_theme_constant_override("outline_size", 12)
+	l.add_theme_color_override("font_outline_color", Color(0.05, 0.05, 0.06, 0.9))
+	l.position = Vector2(30, 232)
 	l.modulate.a = 0.0
 	var tw := l.create_tween()
 	tw.set_parallel(true)
 	tw.tween_property(l, "modulate:a", 1.0, 0.15)
-	tw.tween_property(l, "position:y", 22.0, 1.5).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tw.tween_property(l, "position:y", 205.0, 1.5).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	tw.tween_property(l, "modulate:a", 0.0, 0.5).set_delay(1.1)
 	tw.chain().tween_callback(l.queue_free)
 
 
 func set_job(title: String, desc: String) -> void:
 	var parts := title.split(" — ")
+	var is_job := parts.size() > 1
 	job_name.text = parts[0]
-	job_pay_pill.visible = parts.size() > 1
-	if parts.size() > 1:
+	job_who.text = "MÜŞTERİ" if is_job else "DURUM"
+	job_pay_pill.visible = is_job
+	if is_job:
 		job_pay.text = parts[1]
+		if parts[0] != _last_job:
+			_last_job = parts[0]
+			_ticket += 1
+			# yeni fiş: hafif sallanma
+			var tw := _job_holder.create_tween()
+			tw.tween_property(_job_holder, "rotation_degrees", -2.5, 0.12).set_ease(Tween.EASE_OUT)
+			tw.tween_property(_job_holder, "rotation_degrees", 0.8, 0.5).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+	job_no.text = "No. %04d" % _ticket
 	job_desc.text = desc.replace("[E]", "(E)")
 	job_desc.visible = desc != ""
 
@@ -548,7 +609,6 @@ func show_message(text: String, color := Color.WHITE, kind := "") -> void:
 	var col: Color = {"warn": T.BAD, "money": T.GOOD, "info": T.INFO}[kind]
 	if kind == "warn" and color.g > 0.7:
 		col = T.ACCENT
-	var glyph: String = {"warn": "!", "money": "₺", "info": "i"}[kind]
 	while toasts.get_child_count() > 4:
 		toasts.get_child(0).free()
 	var wrap := Control.new()
@@ -556,18 +616,22 @@ func show_message(text: String, color := Color.WHITE, kind := "") -> void:
 	toasts.add_child(wrap)
 	var inner := K.panel(wrap, "Toast")
 	inner.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	inner.add_theme_stylebox_override("panel", T.flat(Color(0.035, 0.055, 0.11, 0.92), 14, Color(col.r, col.g, col.b, 0.55), 2, Vector2(12, 9), 10))
+	var sb := T.flat(Color(0.07, 0.075, 0.09, 0.94), 4, col, 0, Vector2(14, 9), 8)
+	sb.border_width_left = 5
+	inner.add_theme_stylebox_override("panel", sb)
 	var h := HBoxContainer.new()
 	h.add_theme_constant_override("separation", 12)
 	inner.add_child(h)
-	var ic := PanelContainer.new()
-	ic.add_theme_stylebox_override("panel", T.flat(col, 15, Color(0, 0, 0, 0), 0, Vector2(0, 0)))
-	ic.custom_minimum_size = Vector2(30, 30)
-	ic.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	h.add_child(ic)
-	var gl := K.label(ic, glyph, 19, Color("101423"), "BoldLabel")
-	gl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	gl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	# durum LED'i
+	var led := PanelContainer.new()
+	var ls := T.flat(col, 6, col.lightened(0.5), 1, Vector2(0, 0))
+	ls.shadow_color = Color(col.r, col.g, col.b, 0.55)
+	ls.shadow_size = 6
+	led.add_theme_stylebox_override("panel", ls)
+	led.custom_minimum_size = Vector2(11, 11)
+	led.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	led.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	h.add_child(led)
 	var l := K.label(h, text, 20, T.TEXT)
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	var fnt := l.get_theme_font("font")
@@ -642,7 +706,7 @@ func _hide_tip() -> void:
 # ---------------------------------------------------------------- girdi / kare güncelleme
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("ui_cancel"):
-		if upgrade_root.visible:
+		if office.is_open():
 			Game.sfx.ui_back()
 			close_upgrades()
 			get_viewport().set_input_as_handled()
@@ -669,7 +733,7 @@ func _process(delta: float) -> void:
 	# geliştirici araçları menüsüz fareyi yakalayınca yeni oyun say
 	if captured and not Game.started and Game.dev_mode:
 		Game.new_game()
-	Game.ui_modal = summary_root.visible or over_root.visible or upgrade_root.visible or pause.open_now
+	Game.ui_modal = summary_root.visible or over_root.visible or office.is_open() or pause.open_now
 	Game.running = captured and Game.started and not Game.paused
 	if fps_label.visible:
 		_fps_t += delta
@@ -681,7 +745,7 @@ func _process(delta: float) -> void:
 	var txt := "%d:%d" % [Game.day, minute]
 	if txt != _clock_cache:
 		_clock_cache = txt
-		day_label.text = "Gün %d" % Game.day
+		day_label.text = "GÜN %02d" % Game.day
 		clock_label.text = Game.clock_text()
 		day_bar.value = (Game.clock - Game.OPEN_HOUR) / (Game.CLOSE_HOUR - Game.OPEN_HOUR)
 	var p = Game.player
@@ -694,3 +758,23 @@ func _process(delta: float) -> void:
 			var has_key := h.contains("[E]")
 			prompt_key.visible = has_key
 			prompt_text.text = h.replace("[E]", "").replace("  ", " ").strip_edges()
+
+
+## Para kartının altında: yoldaki/kapıdaki kargo sayısı ve en yakın varış.
+func _refresh_cargo() -> void:
+	if cargo_row == null:
+		return
+	var n := Game.orders.size()
+	cargo_row.visible = n > 0
+	if n == 0:
+		return
+	var door := Game.orders.filter(func(o): return o.get("state", "") == "door").size()
+	if door > 0:
+		cargo_label.text = "%d koli kapıda — aç!" % door
+		cargo_label.add_theme_color_override("font_color", T.GOOD)
+		return
+	var eta := 1e9
+	for o in Game.orders:
+		eta = minf(eta, float(o.eta))
+	cargo_label.text = "Kargo yolda (%d) · %s" % [n, Game.abs_time_text(eta)]
+	cargo_label.add_theme_color_override("font_color", T.TEXT)

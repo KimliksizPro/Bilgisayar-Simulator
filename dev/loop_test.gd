@@ -11,6 +11,7 @@ func _ready() -> void:
 	for type in ["psu", "cpu", "ram", "gpu", "ssd"]:
 		print("bekleniyor: ", type)
 		while jobs.state != "waiting":
+			Game.clock = minf(Game.clock, 15.0)  # test sürerken dükkân kapanmasın
 			await get_tree().create_timer(0.2).timeout
 		var j: Dictionary = jobs._make_job()
 		while j.kind != "repair" or j.broken != type:
@@ -41,9 +42,13 @@ func _ready() -> void:
 		assert(jobs.state == "leaving", "teslim olmadı")
 		print("OK %s: para %d -> %d" % [type, money_before, Game.money])
 		await get_tree().create_timer(0.1).timeout
+	await _supply_tests(main, jobs, p)
+	await _eco_tests(main, jobs, p)
+	await _device_tests(main, jobs, p)
 	for kind in ["overheat_dust", "overheat_paste"]:
 		print("bekleniyor: ", kind)
 		while jobs.state != "waiting":
+			Game.clock = minf(Game.clock, 15.0)  # test sürerken dükkân kapanmasın
 			await get_tree().create_timer(0.2).timeout
 		var j: Dictionary = jobs._make_job()
 		while j.kind != kind:
@@ -105,6 +110,7 @@ func _ready() -> void:
 			t.global_position = Vector3(1.0, 0.8, -2.5)
 		await get_tree().create_timer(0.1).timeout
 	await _day_tests(jobs, p)
+	await _staff_tests(main, jobs)
 	print("TÜM TESTLER GEÇTİ")
 	get_tree().quit()
 
@@ -115,6 +121,7 @@ func _day_tests(jobs, p) -> void:
 	assert(Game.rep > 3.0, "itibar artmalıydı: %f" % Game.rep)
 	# sabır: bekleyen müşteri çok beklerse kızıp gider
 	while jobs.state != "waiting":
+		Game.clock = minf(Game.clock, 15.0)  # test sürerken dükkân kapanmasın
 		await get_tree().create_timer(0.2).timeout
 	Game.running = true
 	var rep_before: float = Game.rep
@@ -138,7 +145,9 @@ func _day_tests(jobs, p) -> void:
 	var d: int = Game.day
 	while Game.phase != "summary":
 		await get_tree().create_timer(0.2).timeout
-	assert(Game.money == m - Game.BASE_RENT, "kira düşmedi")
+	var bill: int = Game.utility_bill()
+	assert(bill >= Game.UTIL_BASE + Game.UTIL_PER_JOB * Game.jobs_today, "elektrik faturası: %d" % bill)
+	assert(Game.money == m - Game.BASE_RENT - bill, "kira + elektrik düşmedi")
 	assert(Game.has_save(), "otomatik kayıt yok")
 	print("OK gün sonu: gün %d, kasa %d -> %d" % [d, m, Game.money])
 	# kayıt yükleme
@@ -157,3 +166,350 @@ func _day_tests(jobs, p) -> void:
 	assert(Game.phase == "over", "iflas")
 	DirAccess.remove_absolute(Game.save_path)
 	print("OK iflas")
+
+
+## Stok, ParçaNet siparişi, kurye teslimatı, rafa geri koyma ve tezgah satışı.
+func _supply_tests(main, jobs, p) -> void:
+	# 5 tamirden sonra CPU stoğu bitti
+	assert(Game.stock_of("cpu", 1) == 0, "cpu stoğu: %d" % Game.stock_of("cpu", 1))
+	main._buy(p, "cpu", 1)
+	assert(p.held == null, "stok yokken parça alındı")
+	# sipariş: 2 CPU + 5 RAM 16 GB (toplu indirim) ekspres
+	Game.add_money(1000)
+	var m: int = Game.money
+	var items := {"cpu:1": 2, "ram:2": 5}
+	var sub: int = Game.cart_subtotal(items)
+	assert(sub < Game.price_of("cpu", 1) * 2 + Game.price_of("ram", 2) * 5, "toplu indirim yok")
+	assert(Game.place_order(items, true), "sipariş verilemedi")
+	assert(Game.money == m - sub - Game.SHIP_EXP_FEE, "sipariş ücreti yanlış")
+	assert(Game.orders.size() == 1 and Game.due_orders().is_empty(), "sipariş hemen geldi")
+	Game.clock += Game.SHIP_EXP_HOURS + 0.01
+	assert(Game.due_orders().size() == 1, "varış zamanı")
+	main.delivery._send_courier()
+	var t := 0.0
+	while main.delivery.boxes.is_empty() and t < 20.0:
+		await get_tree().create_timer(0.2).timeout
+		t += 0.2
+	assert(not main.delivery.boxes.is_empty(), "kurye koliyi bırakmadı")
+	var id: int = main.delivery.boxes.keys()[0]
+	main.delivery.open_box(id, p)
+	assert(Game.stock_of("cpu", 1) == 2 and Game.stock_of("ram", 2) == 5 and Game.orders.is_empty(), "koli stoğa girmedi")
+	print("OK sipariş + kurye: %d TL, stok cpu=%d ram16=%d" % [sub, Game.stock_of("cpu", 1), Game.stock_of("ram", 2)])
+	# rafa geri koy
+	main._buy(p, "ram", 2)
+	assert(p.held != null and Game.stock_of("ram", 2) == 4)
+	main._shelf_use(p, "ram", 2)
+	assert(p.held == null and Game.stock_of("ram", 2) == 5, "rafa geri konmadı")
+	print("OK rafa geri koyma")
+	# tezgah satışı
+	while jobs.state != "waiting":
+		Game.clock = minf(Game.clock, 15.0)  # test sürerken dükkân kapanmasın
+		await get_tree().create_timer(0.2).timeout
+	var j: Dictionary = jobs._make_job()
+	while j.kind != "sale" or j.want != ["ram", 2]:
+		j = jobs._make_job()
+	jobs.job = j
+	jobs._customer_talk(p)  # elinde parça yok -> satış olmaz
+	assert(jobs.state == "waiting", "eli boşken satış oldu")
+	main._buy(p, "ram", 2)
+	var mm: int = Game.money
+	jobs._customer_talk(p)
+	assert(jobs.state == "leaving" and p.held == null and Game.money == mm + int(j.pay), "satış olmadı")
+	assert(int(j.pay) > Game.price_of("ram", 2), "satışta kâr yok")
+	print("OK tezgah satışı: +%d TL (alış %d)" % [j.pay, Game.price_of("ram", 2)])
+	# kayıt: stok ve yoldaki sipariş saklanır
+	assert(Game.place_order({"ssd:1": 1}, false))
+	Game.save_game()
+	var st: int = Game.stock_of("ram", 2)
+	Game.stock = {}
+	Game.orders = []
+	assert(Game.load_game() and Game.stock_of("ram", 2) == st and Game.orders.size() == 1, "stok/sipariş kaydı")
+	print("OK stok ve sipariş kaydı")
+
+
+## Muadil parça, garanti dönüşü, ikinci el pazarı, elektrik faturası ve ekonomi kaydı.
+func _eco_tests(main, jobs, p) -> void:
+	Game.add_money(2000)
+	# 1) muadil sipariş: daha ucuz, muadil stoğuna girer
+	assert(Game.price_of("psu", 1, true) < Game.price_of("psu", 1), "muadil ucuz değil")
+	assert(Game.cart_subtotal({"psu:1:c": 2}) == Game.price_of("psu", 1, true) * 2, "muadil sepet tutarı")
+	var m: int = Game.money
+	var oc: int = Game.stock_cheap_of("psu", 1)
+	var on: int = Game.stock_of("psu", 1)
+	assert(Game.place_order({"psu:1:c": 2, "psu:1": 1}, true))
+	assert(Game.money == m - Game.cart_subtotal({"psu:1:c": 2, "psu:1": 1}) - Game.SHIP_EXP_FEE, "muadil sipariş ücreti")
+	Game.receive_order(int(Game.orders.back().id))
+	assert(Game.stock_cheap_of("psu", 1) == oc + 2 and Game.stock_of("psu", 1) == on + 1, "muadil stoğa girmedi")
+	print("OK muadil sipariş: orijinal %d TL, muadil %d TL" % [Game.price_of("psu", 1), Game.price_of("psu", 1, true)])
+	# 2) raftan muadil al / geri koy
+	main._buy(p, "psu", 1, true)
+	assert(p.held != null and p.held.cheap and "muadil" in p.held.display_name and Game.stock_cheap_of("psu", 1) == oc + 1)
+	main._shelf_use(p, "psu", 1)
+	assert(p.held == null and Game.stock_cheap_of("psu", 1) == oc + 2, "muadil rafa geri konmadı")
+	print("OK raftan muadil alma ve geri koyma")
+	# 3) garanti: muadil parçalı teslim -> geri dönüş işi
+	while jobs.state != "waiting":
+		Game.clock = minf(Game.clock, 15.0)
+		await get_tree().create_timer(0.2).timeout
+	var j: Dictionary = jobs._make_job()
+	while j.kind != "repair" or j.broken != "psu":
+		j = jobs._make_job()
+	jobs.job = j
+	jobs._customer_talk(p)
+	var pc = jobs.pc
+	pc.toggle_panel()
+	var slot = pc.slots.psu
+	slot.interact(p)
+	main._bin_use(p)
+	main._buy(p, "psu", 1, true)  # muadil tak
+	slot.interact(p)
+	pc.power_button()
+	pc.toggle_panel()
+	Game.warranty_chance = 1.0
+	var cname: String = jobs.job.name
+	jobs._customer_talk(p)
+	assert(jobs.state == "leaving", "teslim olmadı")
+	assert(Game.warranty_list.size() == 1 and Game.warranty_list[0].type == "psu", "garanti riski kaydedilmedi")
+	assert(int(Game.warranty_list[0].due) > Game.day and int(Game.warranty_list[0].due) <= Game.day + 2, "garanti günü")
+	Game.warranty_chance = Game.WARRANTY_CHANCE
+	print("OK garanti riski kaydedildi: %s, gün %d" % [Game.warranty_list[0].name, Game.warranty_list[0].due])
+	# kayıt: ekonomi verisi saklanır
+	Game.save_game()
+	Game.warranty_list = []
+	Game.stock_cheap = {}
+	assert(Game.load_game() and Game.warranty_list.size() == 1 and Game.stock_cheap_of("psu", 1) == oc + 1, "ekonomi kaydı")
+	print("OK ekonomi kaydı/yükleme")
+	while jobs.state != "waiting":
+		Game.clock = minf(Game.clock, 15.0)
+		await get_tree().create_timer(0.2).timeout
+	Game.warranty_list[0].due = Game.day  # günü gelsin (müşteri çoktan geldi; iş şimdi üretilir)
+	j = jobs._make_job()
+	assert(j.kind == "warranty" and j.pay == 0 and j.broken == "psu" and Game.warranty_list.is_empty(), "garanti işi üretilmedi")
+	jobs.job = j
+	jobs._customer_talk(p)
+	pc = jobs.pc
+	assert(pc.diagnose() == "nopower", "garanti işinde teşhis: " + pc.diagnose())
+	pc.toggle_panel()
+	slot = pc.slots.psu
+	slot.interact(p)
+	main._bin_use(p)
+	main._buy(p, "psu", 1)
+	slot.interact(p)
+	pc.power_button()
+	pc.toggle_panel()
+	var money_b: int = Game.money
+	var rep_b: float = Game.rep
+	jobs._customer_talk(p)
+	assert(jobs.state == "leaving" and Game.money == money_b, "garanti işi ücretli/teslim olmadı")
+	assert(Game.rep > rep_b, "garanti sonrası itibar artmadı")
+	print("OK garanti işi: ücret yok, itibar %.2f -> %.2f" % [rep_b, Game.rep])
+	# garanti müşterisi kızıp giderse itibar fazla düşer
+	await get_tree().create_timer(0.1).timeout
+	while jobs.state != "waiting":
+		Game.clock = minf(Game.clock, 15.0)
+		await get_tree().create_timer(0.2).timeout
+	jobs.job = {"name": "Test", "kind": "warranty", "warranty": true, "pay": 0, "broken": "psu", "parts": [], "intro": ""}
+	rep_b = Game.rep
+	jobs._leave_angry("test", 0.4)
+	assert(rep_b - Game.rep > 0.5, "garanti kızgınlık cezası")
+	print("OK garanti reddi: itibar %.2f -> %.2f" % [rep_b, Game.rep])
+	# 4) ikinci el pazarı
+	assert(Game.used_listings.size() == Game.UM.COUNT, "ilan yok")
+	assert(Game.UM.generate(Game.day)[0].type == Game.used_listings[0].type, "ilanlar tohumlu değil")
+	var l: Dictionary = Game.used_listings[0]
+	assert(int(l.price) < Game.price_of(l.type, l.tier), "ikinci el pahalı")
+	var k: String = Game.sku(l.type, l.tier)
+	Game.stock[k] = 0
+	Game.stock_dud.erase(k)
+	m = Game.money
+	assert(Game.UM.buy(int(l.id), 1) and Game.money == m - int(l.price) and l.sold, "ikinci el alınamadı")
+	assert(Game.stock_of(l.type, l.tier) == 1 and int(Game.stock_dud.get(k, 0)) == 1)
+	assert(not Game.UM.buy(int(l.id), 1), "aynı ilan iki kez satıldı")
+	while p.held != null:
+		p.drop()
+	main._buy(p, l.type, l.tier)
+	assert(p.held != null and p.held.broken and Game.stock_of(l.type, l.tier) == 0, "gizli arızalı çıkmadı")
+	main._bin_use(p)
+	print("OK ikinci el: %s %%%d, %d TL (yeni %d TL)" % [l.type, l.cond, l.price, Game.price_of(l.type, l.tier)])
+	# 5) elektrik faturası formülü
+	var jt: int = Game.jobs_today
+	var up: Dictionary = Game.upgrades
+	Game.upgrades = {}
+	Game.jobs_today = 4
+	assert(Game.utility_bill() == Game.UTIL_BASE + 4 * Game.UTIL_PER_JOB, "fatura formülü")
+	Game.upgrades = {"coffee": true}
+	assert(Game.utility_bill() == Game.UTIL_BASE + 4 * Game.UTIL_PER_JOB + Game.UTIL_COFFEE, "kahve faturası")
+	Game.upgrades = up
+	Game.jobs_today = jt
+	print("OK elektrik faturası formülü")
+
+
+## Bir koşul gerçekleşene kadar bekle (dükkân kapanmasın); süre dolarsa false.
+func _wait_for(cond: Callable, limit: float) -> bool:
+	var t := 0.0
+	while not cond.call():
+		Game.clock = minf(Game.clock, 15.0)
+		await get_tree().create_timer(0.1).timeout
+		t += 0.1
+		if t > limit:
+			return false
+	return true
+
+
+## Personel: işe alma, tezgahtar karşılama/satış/koli, teknisyen tamiri, maaş, kayıt.
+func _staff_tests(main, jobs) -> void:
+	Game.new_game()
+	var sm = Game.staff_mgr
+	sm.force_run = true
+	assert(Game.staff_candidates.size() == Game.STAFF_CANDIDATES, "aday yok")
+	var clerk: Dictionary = Game.staff_candidates[0]
+	var tech: Dictionary = Game.staff_candidates[1]
+	assert(clerk.role == "tezgahtar" and tech.role == "teknisyen", "aday rolleri")
+	for d in [clerk, tech]:
+		d.skill = 5
+		d.trait = "titiz"
+	assert(Game.hire_staff(int(clerk.id)) and Game.hire_staff(int(tech.id)), "işe alma")
+	assert(not Game.hire_staff(int(Game.staff_candidates[0].id)), "2'den fazla çalışan alındı")
+	assert(sm.npcs.size() == 2, "çalışanlar dükkâna gelmedi")
+	# 1) tezgahtar bekleyen müşteriyi karşılar, teknisyen stoktan parçayla tamir edip teslim eder
+	Game.add_stock("gpu", 1, 2)
+	var ok1 := await _wait_for(func(): return jobs.state == "waiting", 40.0)
+	assert(ok1, "müşteri gelmedi")
+	var j: Dictionary = jobs._make_job()
+	while j.kind != "repair" or j.broken != "gpu":
+		j = jobs._make_job()
+	jobs.job = j
+	var m: int = Game.money
+	var ok2 := await _wait_for(func(): return jobs.state == "working", 20.0)
+	assert(ok2, "tezgahtar müşteriyi karşılamadı")
+	var gpu_before := Game.stock_of("gpu", 1)
+	var ok3 := await _wait_for(func(): return jobs.state == "leaving", 120.0)
+	assert(ok3, "teknisyen işi bitirmedi")
+	assert(Game.money > m, "teknisyenin işinden para gelmedi")
+	assert(Game.stock_of("gpu", 1) < gpu_before, "teknisyen stoktan parça kullanmadı")
+	print("OK personel tamir: tezgahtar kabul etti, teknisyen tamir etti, para %d -> %d" % [m, Game.money])
+	# 2) tezgah satışı: tezgahtar raftan getirip satar
+	Game.add_stock("ram", 2, 1)
+	var ok4 := await _wait_for(func(): return jobs.state == "waiting", 40.0)
+	assert(ok4, "müşteri gelmedi (satış)")
+	j = jobs._make_job()
+	while j.kind != "sale" or j.want != ["ram", 2]:
+		j = jobs._make_job()
+	jobs.job = j
+	var st := Game.stock_of("ram", 2)
+	var mm: int = Game.money
+	var ok5 := await _wait_for(func(): return jobs.state == "leaving", 30.0)
+	assert(ok5, "tezgahtar satış yapmadı")
+	assert(Game.money == mm + int(j.pay) and Game.stock_of("ram", 2) == st - 1, "satış tutarı/stok")
+	print("OK personel satış: +%d TL" % j.pay)
+	# 3) kargo: tezgahtar kapıdaki koliyi açar
+	Game.add_money(500)
+	var ssd := Game.stock_of("ssd", 1)
+	assert(Game.place_order({"ssd:1": 1}, true))
+	Game.clock += Game.SHIP_EXP_HOURS + 0.01
+	main.delivery._send_courier()
+	var ok6 := await _wait_for(func(): return not main.delivery.boxes.is_empty(), 20.0)
+	assert(ok6, "kurye koliyi bırakmadı")
+	var ok7 := await _wait_for(func(): return main.delivery.boxes.is_empty() and Game.orders.is_empty(), 60.0)
+	assert(ok7, "tezgahtar koliyi açmadı")
+	assert(Game.stock_of("ssd", 1) >= ssd, "koli stoğa girmedi")
+	print("OK personel kargo: koli açıldı")
+	# 4) gün sonu: maaşlar Z raporuna gider
+	sm.force_run = false
+	var summary := {}
+	var cb := func(s): summary.merge(s)
+	Game.day_ended.connect(cb)
+	var wages := Game.staff_wages()
+	var m2: int = Game.money
+	var r := Game.rent()
+	Game.end_day()
+	Game.day_ended.disconnect(cb)
+	assert(wages > 0 and int(summary.get("wages", -1)) == wages and Game.money == m2 - r - wages - Game.utility_today, "maaş ödenmedi")
+	assert(sm.npcs.is_empty(), "gün sonunda çalışanlar kalmadı mı")
+	print("OK maaşlar: %d TL (kasa %d -> %d)" % [wages, m2, Game.money])
+	# 5) kayıt / yükleme ve işten çıkarma
+	Game.staff = []
+	assert(Game.continue_game() and Game.staff.size() == 2 and Game.staff[1].role == "teknisyen" and int(Game.staff[1].skill) == 5, "personel kaydı")
+	assert(sm.npcs.size() == 2, "yüklemeden sonra çalışanlar yok")
+	Game.fire_staff(int(Game.staff[0].id))
+	assert(Game.staff.size() == 1 and Game.staff_wages() == int(tech.wage), "işten çıkarma")
+	DirAccess.remove_absolute(Game.save_path)
+	print("OK personel kayıt ve işten çıkarma")
+
+
+## Laptop ve telefon tamiri: her arıza için iş zorla, teşhis et, parçayı değiştir, teslim et.
+func _device_tests(main, jobs, p) -> void:
+	var cases := [["laptop", "bat"], ["laptop", "ssd"], ["laptop", "ram"], ["laptop", "scr"],
+		["phone", "bat"], ["phone", "port"], ["phone", "scr"]]
+	var screens := {"laptop": {"bat": "bat", "ssd": "noboot", "ram": "bsod", "scr": "glitch"},
+		"phone": {"bat": "lowbat", "port": "port", "scr": "glitch"}}
+	# önceki testler stoğu tüketmiş olabilir: her cihaz parçasından en az bir tane olsun
+	for t in ["lap_ram", "lap_ssd", "lap_bat", "lap_scr", "tel_bat", "tel_scr", "tel_port"]:
+		Game.stock_dud.erase(Game.sku(t, 1))
+		if Game.stock_of(t, 1) < 1:
+			Game.add_stock(t, 1, 1)
+	for c in cases:
+		var dev: String = c[0]
+		var broken: String = c[1]
+		print("bekleniyor: ", dev, " ", broken)
+		while jobs.state != "waiting":
+			Game.clock = minf(Game.clock, 15.0)  # test sürerken dükkân kapanmasın
+			await get_tree().create_timer(0.2).timeout
+		var j: Dictionary = jobs._make_job()
+		while j.get("device", "") != dev or j.broken != broken:
+			j = jobs._make_job()
+		jobs.job = j
+		jobs._customer_talk(p)  # kabul
+		var d = jobs.pc
+		assert(d != null and d.has_method("slot_open"), "cihaz masaya gelmedi")
+		assert(d.diagnose() == broken, "teşhis yanlış: " + d.diagnose())
+		assert(Game.stock_of(d.slots[broken].accepts, 1) > 0, "başlangıç stoğu yok: " + d.slots[broken].accepts)
+		# güç: kendi ekranında belirti
+		d.power_button()
+		assert(d.powered, "cihaz açılmadı")
+		await get_tree().create_timer(1.6).timeout
+		var want: String = screens[dev][broken]
+		assert(d.screen_state == want or (want == "lowbat" and d.screen_state == "off"), "ekran durumu %s, beklenen %s" % [d.screen_state, want])
+		if d.powered:
+			d.power_button()  # kapat
+		assert(not d.powered)
+		jobs._customer_talk(p)  # bitmeden teslim -> reddedilmeli
+		assert(jobs.state == "working", "arızalı cihaz teslim edildi")
+		var slot = d.slots[broken]
+		if not d.slot_open(slot):
+			d.toggle_panel()
+		assert(d.slot_open(slot), "yuva açılmadı")
+		slot.interact(p)  # sök
+		assert(p.held != null and p.held.broken, "bozuk parça alınamadı")
+		var type: String = slot.accepts
+		main._bin_use(p)
+		main._buy(p, type, 1)
+		assert(p.held != null and p.held.part_type == type, "raftan parça alınamadı")
+		slot.interact(p)  # tak
+		assert(p.held == null and slot.part != null and not slot.part.broken)
+		assert(d.diagnose() == "ok", "tamirden sonra teşhis: " + d.diagnose())
+		if d.panel_open:
+			jobs._customer_talk(p)  # kapak açık -> reddedilmeli
+			assert(jobs.state == "working", "kapak açıkken teslim edildi")
+			d.toggle_panel()
+		d.power_button()
+		await get_tree().create_timer(1.4).timeout
+		assert(d.powered and d.screen_state == ("desktop" if dev == "laptop" else "home"), "sağlam açılmadı: " + d.screen_state)
+		var m: int = Game.money
+		jobs._customer_talk(p)
+		assert(jobs.state == "leaving", "teslim olmadı")
+		assert(Game.money == m + int(j.pay), "ödeme alınmadı")
+		print("OK %s %s: +%d TL" % [dev, broken, j.pay])
+		await get_tree().create_timer(0.1).timeout
+	# katalog ve stok rafı
+	for t in ["lap_ram", "lap_ssd", "lap_bat", "lap_scr", "tel_bat", "tel_scr", "tel_port"]:
+		assert(Game.CATALOG.has([t, 1]), "katalogda yok: " + t)
+		assert(main._price_labels.any(func(e): return e[2] == t), "rafta yok: " + t)
+	print("OK laptop/telefon katalog ve raf")
+	# telefon garanti dönüşü: aynı cihaz türü, muadil parçanın yuvası arızalı gelir
+	Game.warranty_list = [{"due": Game.day, "name": "Test", "type": "tel_bat", "tier": 1, "device": "phone"}]
+	var wj: Dictionary = jobs._make_job()
+	assert(wj.get("device", "") == "phone" and wj.kind == "warranty" and wj.pay == 0, "cihaz garanti işi")
+	var bad: Array = wj.parts.filter(func(x): return x[3])
+	assert(bad.size() == 1 and bad[0][1] == "tel_bat", "garanti yuvası yanlış")
+	print("OK telefon garanti dönüşü")

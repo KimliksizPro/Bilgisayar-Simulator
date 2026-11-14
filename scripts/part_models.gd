@@ -3,6 +3,7 @@ extends RefCounted
 ## Her model "takılı" pozisyonda kurulur: anakart yüzeyi = yerel X=0, parça +X yönüne çıkar.
 
 const MU := preload("res://scripts/mesh_util.gd")
+const DP := preload("res://scripts/device_parts.gd")  # laptop / telefon parçaları
 
 const INFO := {
 	"cpu": {"size": Vector3(0.064, 0.09, 0.09), "center": Vector3(0.032, 0, 0)},
@@ -10,10 +11,21 @@ const INFO := {
 	"gpu": {"size": Vector3(0.11, 0.042, 0.245), "center": Vector3(0.055, -0.016, 0)},
 	"psu": {"size": Vector3(0.15, 0.085, 0.15), "center": Vector3.ZERO},
 	"ssd": {"size": Vector3(0.07, 0.008, 0.1), "center": Vector3.ZERO},
+	# --- laptop / telefon parçaları (modeller: device_parts.gd) ---
+	"lap_ram": {"size": Vector3(0.068, 0.004, 0.03), "center": Vector3.ZERO},
+	"lap_ssd": {"size": Vector3(0.08, 0.005, 0.022), "center": Vector3.ZERO},
+	"lap_bat": {"size": Vector3(0.22, 0.008, 0.07), "center": Vector3.ZERO},
+	"lap_scr": {"size": Vector3(0.31, 0.005, 0.19), "center": Vector3.ZERO},
+	"tel_bat": {"size": Vector3(0.05, 0.004, 0.08), "center": Vector3.ZERO},
+	"tel_scr": {"size": Vector3(0.072, 0.003, 0.152), "center": Vector3.ZERO},
+	"tel_port": {"size": Vector3(0.05, 0.004, 0.014), "center": Vector3.ZERO},
 }
 
 const TYPE_NAMES := {
 	"cpu": "İşlemci", "ram": "RAM", "gpu": "Ekran Kartı", "psu": "Güç Kaynağı", "ssd": "SSD",
+	# --- laptop / telefon parçaları ---
+	"lap_ram": "Laptop RAM", "lap_ssd": "M.2 SSD", "lap_bat": "Laptop Bataryası", "lap_scr": "Laptop Ekranı",
+	"tel_bat": "Telefon Bataryası", "tel_scr": "Telefon Ekranı", "tel_port": "Şarj Soketi",
 }
 
 
@@ -24,6 +36,8 @@ static func display_name(type: String, tier: int) -> String:
 		"gpu": return "Ekran Kartı (Giriş)" if tier == 1 else "Ekran Kartı (Oyuncu RGB)"
 		"psu": return "Güç Kaynağı 550W"
 		"ssd": return "SSD 512 GB"
+	if DP.has(type):  # laptop / telefon parçaları
+		return DP.display_name(type, tier)
 	return type
 
 
@@ -34,6 +48,8 @@ static func price(type: String, tier: int) -> int:
 		"gpu": return 100 if tier == 1 else 250
 		"psu": return 60
 		"ssd": return 50
+	if DP.has(type):  # laptop / telefon parçaları
+		return DP.price(type, tier)
 	return 0
 
 
@@ -50,6 +66,8 @@ static func build(type: String, tier: int) -> Dictionary:
 		"gpu": _gpu(out, tier)
 		"psu": _psu(out)
 		"ssd": _ssd(out)
+	if DP.has(type):  # laptop / telefon parçaları
+		DP.build(out, type, tier)
 	MU.merge_static(out.node)
 	return out
 

@@ -13,8 +13,10 @@ var arms: Array = []
 var _t := 0.0
 
 
-func build(hint_fn: Callable, action: Callable) -> void:
+func build(hint_fn: Callable, action: Callable, uniform := Color(0, 0, 0, 0)) -> void:
 	var shirt := Color.from_hsv(randf(), randf_range(0.4, 0.8), randf_range(0.45, 0.85))
+	if uniform.a > 0.0:
+		shirt = uniform
 	var pants: Color = [Color(0.15, 0.2, 0.35), Color(0.12, 0.12, 0.13), Color(0.35, 0.28, 0.2)].pick_random()
 	var skin: Color = [Color(0.95, 0.78, 0.64), Color(0.82, 0.62, 0.46), Color(0.6, 0.42, 0.3)].pick_random()
 	var hair: Color = [Color(0.1, 0.07, 0.05), Color(0.35, 0.22, 0.1), Color(0.7, 0.7, 0.7), Color(0.85, 0.65, 0.3)].pick_random()
@@ -40,7 +42,12 @@ func build(hint_fn: Callable, action: Callable) -> void:
 		arms.append(MU.no_merge(piv))
 	MU.cyl(self, 0.05, 0.1, Vector3(0, 1.5, 0), skin_m, Vector3.ZERO, 12)
 	MU.sphere(self, 0.125, Vector3(0, 1.66, 0), skin_m, Vector3(1, 1.15, 1.02))
-	MU.sphere(self, 0.13, Vector3(0, 1.72, -0.02), MU.mat(hair, 0, 0.8), Vector3(1.04, 0.8, 1.04))
+	if uniform.a > 0.0:
+		# kurye şapkası
+		MU.sphere(self, 0.135, Vector3(0, 1.73, -0.01), shirt_m, Vector3(1.04, 0.72, 1.04))
+		MU.rbox(self, Vector3(0.2, 0.015, 0.12), Vector3(0, 1.74, 0.12), shirt_m, 0.006)
+	else:
+		MU.sphere(self, 0.13, Vector3(0, 1.72, -0.02), MU.mat(hair, 0, 0.8), Vector3(1.04, 0.8, 1.04))
 	for x in [-0.125, 0.125]:
 		MU.sphere(self, 0.025, Vector3(x, 1.65, 0), skin_m, Vector3(0.6, 1, 1))
 	var eye_w := MU.mat(Color(0.95, 0.95, 0.95), 0, 0.3)
