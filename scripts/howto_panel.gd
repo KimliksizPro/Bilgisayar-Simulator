@@ -31,6 +31,7 @@ func _ready() -> void:
 	_controls(c)
 	_loop(c)
 	_supply(c)
+	_staff(c)  # PERSONEL
 	_guide(c)
 	_economy(c)
 	_depth(c)
@@ -176,3 +177,12 @@ func _depth(parent: Control) -> void:
 	_step(v, 2, "Garanti dönüşü", "Takılı muadil parçayla teslim ettiğin işin müşterisi 1-2 gün içinde %35 ihtimalle geri gelebilir. Garanti işi ücretsizdir; hızlı çözersen itibarın biraz düzelir, reddedersen ya da müşteri kızıp giderse itibarın düşer.")
 	_step(v, 3, "İkinci el pazarı", "Laptopta İkinci El sekmesi: her gün yeni ilanlar. Çok ucuz ama durumu değişkendir; \"arızalı çıkabilir\" ilanlardaki parça bozuk çıkabilir, rafta gizli kalır, taktığında anlarsın.")
 	_step(v, 4, "Elektrik faturası", "Her gün sonunda kira dışında elektrik faturası da düşer: sabit bedel + çalışılan iş başına ek; Kahve Makinesi ve Reklam Tabelası ek tüketir. Z Raporu'nda görünür.")
+
+
+## PERSONEL: çalışan alma
+func _staff(parent: Control) -> void:
+	var v := _section(parent, "Personel (Çalışan Alma)")
+	_para(v, "Laptop → Personel sekmesinden her sabah gelen adaylardan en fazla 2 kişiyi işe alabilirsin. Her adayın becerisi (1-5 yıldız), huyu ve günlük maaşı var; maaşlar gün sonunda kasadan düşer.")
+	_step(v, 1, "Tezgahtar", "Bekleyen müşteriyi karşılar ve işi kabul eder; parça isteyene raftan getirip satar; boşta kalınca kapıdaki ParçaNet kolilerini açar.")
+	_step(v, 2, "Teknisyen", "Masadaki işi stoktaki parçalarla kendisi tamir eder ve müşteriye teslim eder; para yine sana gelir. Ona bakıp E'ye bas ya da Personel sekmesinden \"İşi Ver\". Parça stokta yoksa haber verir.")
+	_para(v, "Beceri ne kadar yüksekse o kadar hızlı ve hatasız çalışır. Hata yaparsa bir parça yanar ve itibar düşer.", T.MUTED)

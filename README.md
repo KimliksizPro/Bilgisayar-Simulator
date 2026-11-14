@@ -79,6 +79,21 @@ MSAA kapalı, gölgeler hafifletilmiş.
 - **Kurye Anlaşması** (yükseltme): kargolar yarı sürede ve ücretsiz gelir. Z raporunda parça siparişi ve kargo
   giderleri ayrı satırdır.
 
+## Personel (çalışan alma)
+
+- **Personel sekmesi (laptop):** her sabah 3 aday başvurur (Türkçe isim, rol, 1–5 yıldız beceri, huy, günlük maaş).
+  En fazla **2 çalışan** alınır; "Çıkar" ile işten çıkarılır. Maaşlar gün sonunda ödenir ve Z raporunda
+  **Maaşlar** satırında görünür. Çalışanlar kayıtla saklanır.
+- **Tezgahtar** (kırmızı önlük): bekleyen müşteriyi kendisi karşılar (sabrı bitmeden işi kabul eder), parça
+  isteyen müşteriye raftan getirip satar (stokta yoksa haber verir), boşta kalınca kapıdaki kolileri açar.
+- **Teknisyen** (mavi önlük): masadaki işi stoktaki parçalarla kendisi yapar (arızalı parça, yükseltme, toz,
+  termal macun, sıfırdan toplama), sonra müşteriye teslim eder; ücret sana gelir. İşi ona bakıp E ile ya da
+  sekmedeki **İşi Ver** ile verirsin; "Kendi alır" açıksa masaya konan işi kendiliğinden alır. Süre ve hata
+  olasılığı beceriye/huya bağlıdır; hata yaparsa bir parça yanar ve itibar düşer. Parça yoksa "stok yok" der.
+- Huylar: Titiz, Hızlı ama dalgın, Güler yüzlü (itibar +), Hevesli çaylak (ucuz), Eski toprak, Biraz uykucu.
+- Kod: `scripts/staff.gd` (yönetici, davranışlar), `scripts/employee.gd` (önlüklü model), `scripts/staff_data.gd`
+  (aday/huy verisi); `game.gd` sonundaki PERSONEL bölümü (kayıt, maaş).
+
 ## Oynanış
 
 - **Müşteri** tezgaha gelir. Onunla konuşunca bilgisayarı masana bırakır.
@@ -135,6 +150,9 @@ scripts/job_manager.gd  Müşteri/iş akışı
 scripts/hud.gd          HUD, gün sonu / iflas ekranları, öğretici ipuçları
 scripts/office_panel.gd Laptop: ParçaNet siparişi, Kargo Takip, Geliştirmeler, Dükkân istatistikleri
 scripts/delivery.gd     Kurye ve kargo kolileri
+scripts/staff.gd        Personel: çalışanların davranışları (tezgahtar, teknisyen)
+scripts/employee.gd     Önlüklü çalışan modeli
+scripts/staff_data.gd   Aday üretimi, roller ve huylar
 scripts/menu.gd         Ana menü (+ emeği geçenler, onay penceresi)
 scripts/pause_menu.gd   Duraklatma menüsü (bulanık arka plan)
 scripts/settings.gd     Ayarlar (autoload): kayıt, uygulama, ses kanalları

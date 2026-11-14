@@ -109,6 +109,7 @@ func _ready() -> void:
 			t.global_position = Vector3(1.0, 0.8, -2.5)
 		await get_tree().create_timer(0.1).timeout
 	await _day_tests(jobs, p)
+	await _staff_tests(main, jobs)
 	print("TÜM TESTLER GEÇTİ")
 	get_tree().quit()
 
@@ -340,3 +341,96 @@ func _eco_tests(main, jobs, p) -> void:
 	Game.upgrades = up
 	Game.jobs_today = jt
 	print("OK elektrik faturası formülü")
+
+
+## Bir koşul gerçekleşene kadar bekle (dükkân kapanmasın); süre dolarsa false.
+func _wait_for(cond: Callable, limit: float) -> bool:
+	var t := 0.0
+	while not cond.call():
+		Game.clock = minf(Game.clock, 15.0)
+		await get_tree().create_timer(0.1).timeout
+		t += 0.1
+		if t > limit:
+			return false
+	return true
+
+
+## Personel: işe alma, tezgahtar karşılama/satış/koli, teknisyen tamiri, maaş, kayıt.
+func _staff_tests(main, jobs) -> void:
+	Game.new_game()
+	var sm = Game.staff_mgr
+	sm.force_run = true
+	assert(Game.staff_candidates.size() == Game.STAFF_CANDIDATES, "aday yok")
+	var clerk: Dictionary = Game.staff_candidates[0]
+	var tech: Dictionary = Game.staff_candidates[1]
+	assert(clerk.role == "tezgahtar" and tech.role == "teknisyen", "aday rolleri")
+	for d in [clerk, tech]:
+		d.skill = 5
+		d.trait = "titiz"
+	assert(Game.hire_staff(int(clerk.id)) and Game.hire_staff(int(tech.id)), "işe alma")
+	assert(not Game.hire_staff(int(Game.staff_candidates[0].id)), "2'den fazla çalışan alındı")
+	assert(sm.npcs.size() == 2, "çalışanlar dükkâna gelmedi")
+	# 1) tezgahtar bekleyen müşteriyi karşılar, teknisyen stoktan parçayla tamir edip teslim eder
+	Game.add_stock("gpu", 1, 2)
+	var ok1 := await _wait_for(func(): return jobs.state == "waiting", 40.0)
+	assert(ok1, "müşteri gelmedi")
+	var j: Dictionary = jobs._make_job()
+	while j.kind != "repair" or j.broken != "gpu":
+		j = jobs._make_job()
+	jobs.job = j
+	var m: int = Game.money
+	var ok2 := await _wait_for(func(): return jobs.state == "working", 20.0)
+	assert(ok2, "tezgahtar müşteriyi karşılamadı")
+	var gpu_before := Game.stock_of("gpu", 1)
+	var ok3 := await _wait_for(func(): return jobs.state == "leaving", 120.0)
+	assert(ok3, "teknisyen işi bitirmedi")
+	assert(Game.money > m, "teknisyenin işinden para gelmedi")
+	assert(Game.stock_of("gpu", 1) < gpu_before, "teknisyen stoktan parça kullanmadı")
+	print("OK personel tamir: tezgahtar kabul etti, teknisyen tamir etti, para %d -> %d" % [m, Game.money])
+	# 2) tezgah satışı: tezgahtar raftan getirip satar
+	Game.add_stock("ram", 2, 1)
+	var ok4 := await _wait_for(func(): return jobs.state == "waiting", 40.0)
+	assert(ok4, "müşteri gelmedi (satış)")
+	j = jobs._make_job()
+	while j.kind != "sale" or j.want != ["ram", 2]:
+		j = jobs._make_job()
+	jobs.job = j
+	var st := Game.stock_of("ram", 2)
+	var mm: int = Game.money
+	var ok5 := await _wait_for(func(): return jobs.state == "leaving", 30.0)
+	assert(ok5, "tezgahtar satış yapmadı")
+	assert(Game.money == mm + int(j.pay) and Game.stock_of("ram", 2) == st - 1, "satış tutarı/stok")
+	print("OK personel satış: +%d TL" % j.pay)
+	# 3) kargo: tezgahtar kapıdaki koliyi açar
+	Game.add_money(500)
+	var ssd := Game.stock_of("ssd", 1)
+	assert(Game.place_order({"ssd:1": 1}, true))
+	Game.clock += Game.SHIP_EXP_HOURS + 0.01
+	main.delivery._send_courier()
+	var ok6 := await _wait_for(func(): return not main.delivery.boxes.is_empty(), 20.0)
+	assert(ok6, "kurye koliyi bırakmadı")
+	var ok7 := await _wait_for(func(): return main.delivery.boxes.is_empty() and Game.orders.is_empty(), 60.0)
+	assert(ok7, "tezgahtar koliyi açmadı")
+	assert(Game.stock_of("ssd", 1) >= ssd, "koli stoğa girmedi")
+	print("OK personel kargo: koli açıldı")
+	# 4) gün sonu: maaşlar Z raporuna gider
+	sm.force_run = false
+	var summary := {}
+	var cb := func(s): summary.merge(s)
+	Game.day_ended.connect(cb)
+	var wages := Game.staff_wages()
+	var m2: int = Game.money
+	var r := Game.rent()
+	Game.end_day()
+	Game.day_ended.disconnect(cb)
+	assert(wages > 0 and int(summary.get("wages", -1)) == wages and Game.money == m2 - r - wages - Game.utility_today, "maaş ödenmedi")
+	assert(sm.npcs.is_empty(), "gün sonunda çalışanlar kalmadı mı")
+	print("OK maaşlar: %d TL (kasa %d -> %d)" % [wages, m2, Game.money])
+	# 5) kayıt / yükleme ve işten çıkarma
+	Game.staff = []
+	assert(Game.continue_game() and Game.staff.size() == 2 and Game.staff[1].role == "teknisyen" and int(Game.staff[1].skill) == 5, "personel kaydı")
+	assert(sm.npcs.size() == 2, "yüklemeden sonra çalışanlar yok")
+	Game.fire_staff(int(Game.staff[0].id))
+	assert(Game.staff.size() == 1 and Game.staff_wages() == int(tech.wage), "işten çıkarma")
+	DirAccess.remove_absolute(Game.save_path)
+	print("OK personel kayıt ve işten çıkarma")

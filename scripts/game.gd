@@ -460,6 +460,7 @@ func new_game() -> void:
 	next_order_id = 1
 	market = 1.0
 	market_prev = 1.0
+	_reset_staff()  # PERSONEL
 	started = true
 	money_changed.emit(money)
 	rep_changed.emit(rep)
@@ -495,11 +496,13 @@ func end_day() -> void:
 	var bill := utility_bill()
 	utility_today = bill
 	money -= r + bill
+	var wg := _pay_wages()  # PERSONEL: maaşlar
 	money_changed.emit(money)
 	var s := {"day": day, "income": income_today, "parts": parts_today, "rent": r, "shipping": shipping_today, "utility": bill,
 		"warranty_pending": warranty_list.size(),
 		"sales": sales_today, "net": income_today - parts_today - shipping_today - r - bill, "rep_delta": rep - rep_day_start, "rep": rep,
 		"money": money, "jobs": jobs_today, "warn": false}
+	s.wages = wg; s.net -= wg  # PERSONEL
 	debt_days = debt_days + 1 if money < 0 else 0
 	if day % RENT_RAISE_EVERY == 0:
 		rent_level += 1
@@ -561,6 +564,7 @@ func save_game() -> void:
 		d.day = day + 1
 		d.clock = OPEN_HOUR
 		d.market = market
+	_save_staff(d)  # PERSONEL
 	var f := FileAccess.open(save_path, FileAccess.WRITE)
 	if f:
 		f.store_string(JSON.stringify(d))
@@ -601,6 +605,7 @@ func load_game() -> bool:
 			items[str(k)] = int(o.items[k])
 		orders.append({"id": int(o.id), "items": items, "eta": float(o.eta), "express": bool(o.get("express", false)),
 			"cost": int(o.get("cost", 0)), "state": "transit"})
+	_load_staff(d)  # PERSONEL
 	return true
 
 
@@ -620,3 +625,95 @@ func continue_game() -> bool:
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_CLOSE_REQUEST and started and (phase == "day" or phase == "summary"):
 		save_game()
+
+
+# ================================================================ PERSONEL (çalışan alma)
+signal staff_changed
+
+const STAFF_DATA := preload("res://scripts/staff_data.gd")
+const STAFF_MAX := 2              # en fazla kaç çalışan
+const STAFF_CANDIDATES := 3       # iş ilanına her sabah gelen aday sayısı
+
+var staff: Array = []             # işe alınanlar: {id, name, role, skill, trait, wage, auto}
+var staff_candidates: Array = []
+var staff_next_id := 1
+var staff_mgr = null              # sahnedeki personel yöneticisi (scripts/staff.gd)
+
+
+func staff_wages() -> int:
+	var w := 0
+	for e in staff:
+		w += int(e.wage)
+	return w
+
+
+## Gün sonu: maaşlar kasadan düşer.
+func _pay_wages() -> int:
+	var w := staff_wages()
+	money -= w
+	return w
+
+
+## Her sabah iş ilanına yeni adaylar gelir (ilk ikisi: bir tezgahtar, bir teknisyen).
+func roll_staff_candidates() -> void:
+	staff_candidates = []
+	for i in STAFF_CANDIDATES:
+		var role := "tezgahtar" if i == 0 else ("teknisyen" if i == 1 else "")
+		staff_candidates.append(STAFF_DATA.make_candidate(staff_next_id, role))
+		staff_next_id += 1
+	staff_changed.emit()
+
+
+func hire_staff(id: int) -> bool:
+	if staff.size() >= STAFF_MAX:
+		sfx.error()
+		msg("En fazla %d çalışan alabilirsin." % STAFF_MAX, Color(1, 0.5, 0.4))
+		return false
+	for i in staff_candidates.size():
+		if int(staff_candidates[i].id) == id:
+			var c: Dictionary = staff_candidates[i]
+			staff_candidates.remove_at(i)
+			staff.append(c)
+			sfx.coin()
+			msg("%s işe başladı (%s, günlük %d TL)." % [c.name, STAFF_DATA.role_name(c.role), int(c.wage)], Color(0.6, 0.9, 1.0))
+			staff_changed.emit()
+			return true
+	return false
+
+
+func fire_staff(id: int) -> void:
+	for i in staff.size():
+		if int(staff[i].id) == id:
+			var c: Dictionary = staff[i]
+			staff.remove_at(i)
+			msg("%s ile yollarınız ayrıldı." % c.name, Color(1, 0.8, 0.5))
+			staff_changed.emit()
+			return
+
+
+func staff_by_id(id: int) -> Dictionary:
+	for e in staff:
+		if int(e.id) == id:
+			return e
+	return {}
+
+
+func _reset_staff() -> void:
+	staff = []
+	staff_next_id = 1
+	roll_staff_candidates()
+
+
+func _save_staff(d: Dictionary) -> void:
+	d.staff = staff
+	d.staff_next_id = staff_next_id
+
+
+func _load_staff(d: Dictionary) -> void:
+	staff = []
+	for e in d.get("staff", []):
+		staff.append({"id": int(e.get("id", 0)), "name": str(e.get("name", "Çırak")), "role": str(e.get("role", "tezgahtar")),
+			"skill": clampi(int(e.get("skill", 1)), 1, 5), "trait": str(e.get("trait", "titiz")),
+			"wage": int(e.get("wage", 60)), "auto": bool(e.get("auto", true))})
+	staff_next_id = int(d.get("staff_next_id", staff.size() + 1))
+	roll_staff_candidates()

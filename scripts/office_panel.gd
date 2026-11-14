@@ -59,7 +59,7 @@ func _ready() -> void:
 	tabs.add_theme_constant_override("separation", 6)
 	vb.add_child(tabs)
 	var group := ButtonGroup.new()
-	var names := ["ParçaNet", "Kargo Takip", "Geliştirmeler", "Dükkân", "İkinci El"]
+	var names := ["ParçaNet", "Kargo Takip", "Geliştirmeler", "Dükkân", "İkinci El", "Personel"]
 	for i in names.size():
 		var b := K.button(tabs, names[i], func(): _show_page(i), "TabButton", 19, Vector2(0, 42))
 		b.toggle_mode = true
@@ -82,6 +82,7 @@ func _ready() -> void:
 	_build_upgrades(_pages[2])
 	_build_stats(_pages[3])
 	_build_used(_pages[4])
+	_build_staff(_pages[5])  # PERSONEL
 	K.hsep(vb)
 	var foot := HBoxContainer.new()
 	vb.add_child(foot)
@@ -92,6 +93,7 @@ func _ready() -> void:
 	Game.orders_changed.connect(refresh)
 	Game.upgrade_bought.connect(func(_id): refresh())
 	Game.day_started.connect(refresh)
+	Game.staff_changed.connect(refresh)  # PERSONEL
 	_show_page(0)
 
 
@@ -451,6 +453,8 @@ func refresh() -> void:
 		_refresh_stats()
 	if _pages[4].visible:
 		_refresh_used()
+	if _pages[5].visible:  # PERSONEL
+		_refresh_staff()
 
 
 func _refresh_shop() -> void:
@@ -509,3 +513,120 @@ func _refresh_shop() -> void:
 
 func _hours_text(h: float) -> String:
 	return ("%d dk" % roundi(h * 60.0)) if h < 1.0 else ("%s saat" % (str(int(h)) if is_equal_approx(h, roundf(h)) else "%.1f" % h))
+
+
+# ---------------------------------------------------------------- Personel (çalışan alma)
+const SD := preload("res://scripts/staff_data.gd")
+var _team_box: VBoxContainer
+var _cand_box: VBoxContainer
+var _team_title: Label
+var _wage_l: Label
+
+
+func _build_staff(p: Control) -> void:
+	p.add_theme_constant_override("separation", 8)
+	var top := HBoxContainer.new()
+	top.add_theme_constant_override("separation", 14)
+	p.add_child(top)
+	var brand := VBoxContainer.new()
+	brand.add_theme_constant_override("separation", -2)
+	brand.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top.add_child(brand)
+	K.label(brand, "Personel  ·  Çırak ve Usta İlanı", 20, T.INFO, "SignLabel")
+	K.label(brand, "Maaşlar gün sonunda kasadan ödenir. En fazla %d çalışan. Teknisyene işi vermek için ona bakıp E'ye bas." % Game.STAFF_MAX, 15, T.MUTED, "MutedLabel")
+	var lc := K.lcd(top, "", 24, Vector2(12, 0))
+	lc[0].size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_wage_l = lc[1]
+	_team_title = K.label(p, "", 12, T.MUTED, "SmallCaps")
+	_team_box = VBoxContainer.new()
+	_team_box.add_theme_constant_override("separation", 6)
+	p.add_child(_team_box)
+	K.label(p, "BUGÜNKÜ ADAYLAR", 12, T.MUTED, "SmallCaps")
+	_cand_box = VBoxContainer.new()
+	_cand_box.add_theme_constant_override("separation", 6)
+	p.add_child(_cand_box)
+
+
+func _refresh_staff() -> void:
+	# düğmenin kendi sinyali içinde silinmemesi için free değil queue_free
+	for box in [_team_box, _cand_box]:
+		for c in box.get_children():
+			box.remove_child(c)
+			c.queue_free()
+	_team_title.text = "EKİBİN  (%d / %d)" % [Game.staff.size(), Game.STAFF_MAX]
+	_wage_l.text = "MAAŞ %d TL/GÜN" % Game.staff_wages()
+	if Game.staff.is_empty():
+		var ip := K.panel(_team_box, "InsetPanel")
+		K.label(ip, "Henüz çalışanın yok. Aşağıdaki adaylardan birini işe alabilirsin.", 16, T.MUTED, "MutedLabel")
+	for d in Game.staff:
+		var row := _person_row(_team_box, d)
+		var id := int(d.id)
+		var mgr = Game.staff_mgr
+		if d.role == "teknisyen":
+			var ab := K.button(row, "İşi Ver", func():
+				var err: String = mgr.assign(id) if mgr else "iş yok"
+				if err != "":
+					Game.sfx.error()
+					Game.msg({"iş yok": "Masada teknisyene verilecek iş yok.", "meşgul": "%s şu an meşgul." % d.name,
+						"başkası yapıyor": "Bu işi zaten başka biri yapıyor."}.get(err, "Stokta gerekli parça yok!"), Color(1, 0.6, 0.4))
+				refresh(), "", 16, Vector2(100, 42))
+			ab.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			ab.disabled = mgr == null or mgr.jobs.state != "working"
+			var ob := K.button(row, "", func():
+				d.auto = not bool(d.get("auto", true))
+				refresh(), "SegButton", 15, Vector2(122, 42))
+			ob.toggle_mode = true
+			ob.set_pressed_no_signal(bool(d.get("auto", true)))
+			ob.text = "Kendi alır" if bool(d.get("auto", true)) else "Sen verirsin"
+			ob.tooltip_text = "Açıkken masaya konan işi kendiliğinden alır."
+			ob.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		var fb := K.button(row, "Çıkar", func(): Game.fire_staff(id), "DangerButton", 16, Vector2(96, 42))
+		fb.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	for d in Game.staff_candidates:
+		var row := _person_row(_cand_box, d)
+		var id := int(d.id)
+		var hb := K.button(row, "İşe Al", func(): Game.hire_staff(id), "PrimaryButton", 17, Vector2(130, 44))
+		hb.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		hb.disabled = Game.staff.size() >= Game.STAFF_MAX
+	if Game.staff_candidates.is_empty():
+		K.label(_cand_box, "Bugün başka başvuru yok, yarın yeni adaylar gelir.", 16, T.MUTED, "MutedLabel")
+
+
+## Çalışan / aday satırı: rol şeridi, isim, rol · huy, beceri yıldızları, maaş. Düğmeler sona eklenir.
+func _person_row(parent: Control, d: Dictionary) -> HBoxContainer:
+	var ip := K.panel(parent, "InsetPanel")
+	ip.add_theme_stylebox_override("panel", T.flat(Color(0, 0, 0, 0.25), 5, Color(1, 1, 1, 0.04), 1, Vector2(12, 6)))
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	ip.add_child(row)
+	var role_c: Color = SD.ROLES.get(d.role, SD.ROLES.tezgahtar).color
+	var strip := ColorRect.new()
+	strip.color = role_c.lightened(0.15)
+	strip.custom_minimum_size = Vector2(6, 0)
+	row.add_child(strip)
+	var nm := VBoxContainer.new()
+	nm.add_theme_constant_override("separation", -3)
+	nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(nm)
+	var tr := SD.trait_info(d.trait)
+	K.label(nm, "%s  ·  %s" % [d.name, SD.role_name(d.role)], 19, T.TEXT, "BoldLabel")
+	K.label(nm, "%s — %s" % [tr.name, tr.desc], 14, T.MUTED, "MutedLabel")
+	var sk := VBoxContainer.new()
+	sk.add_theme_constant_override("separation", 0)
+	sk.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	sk.custom_minimum_size.x = 92
+	row.add_child(sk)
+	K.label(sk, "BECERİ", 11, T.MUTED, "SmallCaps")
+	var st := K.stars(sk, 16)
+	st.set("value", float(d.skill))
+	var w := K.label(row, "%d TL/gün" % int(d.wage), 19, T.ACCENT_HI, "BoldLabel")
+	w.custom_minimum_size.x = 110
+	w.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	w.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	# düğmeler sabit genişlikte sağa yaslı: sütunlar satırlar arasında hizalı kalsın
+	var act := HBoxContainer.new()
+	act.add_theme_constant_override("separation", 8)
+	act.alignment = BoxContainer.ALIGNMENT_END
+	act.custom_minimum_size.x = 360
+	row.add_child(act)
+	return act

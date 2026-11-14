@@ -510,6 +510,8 @@ func _on_day_ended(s: Dictionary) -> void:
 	_row("Kira", "-%s TL" % K.money(s.rent), red)
 	if int(s.get("utility", 0)) > 0:
 		_row("Elektrik faturası", "-%s TL" % K.money(s.utility), red)
+	if int(s.get("wages", 0)) > 0:  # PERSONEL
+		_row("Maaşlar", "-%s TL" % K.money(int(s.wages)), red)
 	_receipt_rule(summary_rows)
 	_row("Net kazanç", "%s%s TL" % ["+" if s.net >= 0 else "", K.money(s.net)], green if s.net >= 0 else red, true)
 	var d: float = s.rep_delta
