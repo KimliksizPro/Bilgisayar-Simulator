@@ -11,6 +11,7 @@ const MONITOR := preload("res://scripts/monitor.gd")
 const JOBS := preload("res://scripts/job_manager.gd")
 const MENU := preload("res://scripts/menu.gd")
 const DELIVERY := preload("res://scripts/delivery.gd")
+const DEVICE_RACK := preload("res://scripts/device_rack.gd")  # laptop / telefon parça rafı
 
 const DESK_Y := 0.75
 
@@ -36,6 +37,7 @@ func _ready() -> void:
 	_build_desk()
 	_build_tools()
 	_build_shelf()
+	DEVICE_RACK.build(self)
 	_build_counter()
 	_build_decor()
 	MU.no_merge(monitor)

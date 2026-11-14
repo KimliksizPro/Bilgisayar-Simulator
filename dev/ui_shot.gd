@@ -3,6 +3,9 @@ extends Node
 ## ayarlar ve nasıl oynanır ekranlarının görüntülerini alır.
 
 func _ready() -> void:
+	if "--devshot" in OS.get_cmdline_user_args():  # laptop / telefon görüntüleri
+		await load("res://dev/device_shot.gd").run(self)
+		return
 	var p = Game.player
 	Game.save_path = "user://test_save.json"
 	Settings.tips_seen = []

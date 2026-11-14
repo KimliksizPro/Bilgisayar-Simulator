@@ -32,6 +32,7 @@ func _ready() -> void:
 	_loop(c)
 	_supply(c)
 	_guide(c)
+	_devices(c)
 	_economy(c)
 	K.hsep(vb)
 	var foot := HBoxContainer.new()
@@ -167,3 +168,28 @@ func _supply(parent: Control) -> void:
 	_step(v, 3, "Kurye ve koli", "Varış saatinde kurye gelir, koliyi kapının yanına bırakır. Koliye bakıp E'ye bas: parçalar stoğa girer. Kargo Takip sekmesinden izleyebilirsin.")
 	_step(v, 4, "Piyasa", "Fiyatlar her sabah kura göre değişir. Ucuzken stok yap. Sağlam parçayı rafa geri koyabilirsin (elinde tutarken rafa E).")
 	_step(v, 5, "Tezgah satışı", "Bazı müşteriler sadece parça almaya gelir. İstediği parçayı raftan al, elinde tutarken ona E'ye bas; kârlı fiyattan satılır.")
+
+
+## Laptop ve telefon tamiri.
+func _devices(parent: Control) -> void:
+	var v := _section(parent, "Laptop ve Telefon Tamiri")
+	_step(v, 1, "Laptop", "Güç düğmesi klavyenin sağ üstünde; laptop kendi ekranında hatayı gösterir. Klavyeye bakıp E: laptop ters döner, alt kapak sökülür. İçeride RAM (SO-DIMM), M.2 SSD ve batarya var. Kırık ekran paneli laptop düzken kapaktan sökülür.")
+	_step(v, 2, "Telefon", "Güç tuşu sağ kenarda. Telefonun üstüne bakıp E: ekran modülü kitap gibi yana kalkar. İçeride batarya ve şarj soketi var; ekran modülü de sökülür.")
+	var g := GridContainer.new()
+	g.columns = 2
+	g.add_theme_constant_override("h_separation", 24)
+	g.add_theme_constant_override("v_separation", 6)
+	v.add_child(g)
+	var rows := [
+		["Laptop: mavi ekran (MEMORY_MANAGEMENT)", "Laptop RAM"],
+		["Laptop: \"Boot device not found\"", "M.2 SSD"],
+		["Laptop: pil %0, şarj olmuyor; touchpad kabarık", "Laptop bataryası"],
+		["Laptop / telefon: çatlak cam, bozuk görüntü", "Ekran"],
+		["Telefon: %1 pil, hemen kapanıyor; ekran kalkık", "Telefon bataryası"],
+		["Telefon: açılıyor ama şarj olmuyor; pas izi", "Şarj soketi"],
+	]
+	for r in rows:
+		var a := K.label(g, r[0], 18, T.TEXT)
+		a.custom_minimum_size = Vector2(440, 0)
+		K.label(g, r[1], 18, T.ACCENT_HI, "BoldLabel")
+	_para(v, "Parçalar arka duvardaki LAPTOP & TELEFON rafında; ParçaNet'ten sipariş edilir. Teslimden önce kapağı kapat ve çalıştığını gör.", T.MUTED)

@@ -43,6 +43,7 @@ func _ready() -> void:
 		print("OK %s: para %d -> %d" % [type, money_before, Game.money])
 		await get_tree().create_timer(0.1).timeout
 	await _supply_tests(main, jobs, p)
+	await _device_tests(main, jobs, p)
 	for kind in ["overheat_dust", "overheat_paste"]:
 		print("bekleniyor: ", kind)
 		while jobs.state != "waiting":
@@ -220,3 +221,69 @@ func _supply_tests(main, jobs, p) -> void:
 	Game.orders = []
 	assert(Game.load_game() and Game.stock_of("ram", 2) == st and Game.orders.size() == 1, "stok/sipariş kaydı")
 	print("OK stok ve sipariş kaydı")
+
+
+## Laptop ve telefon tamiri: her arıza için iş zorla, teşhis et, parçayı değiştir, teslim et.
+func _device_tests(main, jobs, p) -> void:
+	var cases := [["laptop", "bat"], ["laptop", "ssd"], ["laptop", "ram"], ["laptop", "scr"],
+		["phone", "bat"], ["phone", "port"], ["phone", "scr"]]
+	var screens := {"laptop": {"bat": "bat", "ssd": "noboot", "ram": "bsod", "scr": "glitch"},
+		"phone": {"bat": "lowbat", "port": "port", "scr": "glitch"}}
+	for c in cases:
+		var dev: String = c[0]
+		var broken: String = c[1]
+		print("bekleniyor: ", dev, " ", broken)
+		while jobs.state != "waiting":
+			Game.clock = minf(Game.clock, 15.0)  # test sürerken dükkân kapanmasın
+			await get_tree().create_timer(0.2).timeout
+		var j: Dictionary = jobs._make_job()
+		while j.get("device", "") != dev or j.broken != broken:
+			j = jobs._make_job()
+		jobs.job = j
+		jobs._customer_talk(p)  # kabul
+		var d = jobs.pc
+		assert(d != null and d.has_method("slot_open"), "cihaz masaya gelmedi")
+		assert(d.diagnose() == broken, "teşhis yanlış: " + d.diagnose())
+		assert(Game.stock_of(d.slots[broken].accepts, 1) > 0, "başlangıç stoğu yok: " + d.slots[broken].accepts)
+		# güç: kendi ekranında belirti
+		d.power_button()
+		assert(d.powered, "cihaz açılmadı")
+		await get_tree().create_timer(1.6).timeout
+		var want: String = screens[dev][broken]
+		assert(d.screen_state == want or (want == "lowbat" and d.screen_state == "off"), "ekran durumu %s, beklenen %s" % [d.screen_state, want])
+		if d.powered:
+			d.power_button()  # kapat
+		assert(not d.powered)
+		jobs._customer_talk(p)  # bitmeden teslim -> reddedilmeli
+		assert(jobs.state == "working", "arızalı cihaz teslim edildi")
+		var slot = d.slots[broken]
+		if not d.slot_open(slot):
+			d.toggle_panel()
+		assert(d.slot_open(slot), "yuva açılmadı")
+		slot.interact(p)  # sök
+		assert(p.held != null and p.held.broken, "bozuk parça alınamadı")
+		var type: String = slot.accepts
+		main._bin_use(p)
+		main._buy(p, type, 1)
+		assert(p.held != null and p.held.part_type == type, "raftan parça alınamadı")
+		slot.interact(p)  # tak
+		assert(p.held == null and slot.part != null and not slot.part.broken)
+		assert(d.diagnose() == "ok", "tamirden sonra teşhis: " + d.diagnose())
+		if d.panel_open:
+			jobs._customer_talk(p)  # kapak açık -> reddedilmeli
+			assert(jobs.state == "working", "kapak açıkken teslim edildi")
+			d.toggle_panel()
+		d.power_button()
+		await get_tree().create_timer(1.4).timeout
+		assert(d.powered and d.screen_state == ("desktop" if dev == "laptop" else "home"), "sağlam açılmadı: " + d.screen_state)
+		var m: int = Game.money
+		jobs._customer_talk(p)
+		assert(jobs.state == "leaving", "teslim olmadı")
+		assert(Game.money == m + int(j.pay), "ödeme alınmadı")
+		print("OK %s %s: +%d TL" % [dev, broken, j.pay])
+		await get_tree().create_timer(0.1).timeout
+	# katalog ve stok rafı
+	for t in ["lap_ram", "lap_ssd", "lap_bat", "lap_scr", "tel_bat", "tel_scr", "tel_port"]:
+		assert(Game.CATALOG.has([t, 1]), "katalogda yok: " + t)
+		assert(main._price_labels.any(func(e): return e[2] == t), "rafta yok: " + t)
+	print("OK laptop/telefon katalog ve raf")
