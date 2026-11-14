@@ -12,7 +12,7 @@ const SFX := preload("res://scripts/sfx.gd")
 const PM := preload("res://scripts/part_models.gd")
 const FADER := preload("res://scripts/fader.gd")
 const MUSIC := preload("res://scripts/music.gd")
-const DEV_ARGS := ["--shot", "--uishot", "--perf", "--partshot", "--looptest"]
+const DEV_ARGS := ["--propshot", "--shot", "--uishot", "--perf", "--partshot", "--looptest"]
 
 # --- Ayarlanabilir sabitler ---
 const OPEN_HOUR := 9.0

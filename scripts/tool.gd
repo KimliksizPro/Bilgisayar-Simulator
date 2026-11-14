@@ -81,9 +81,12 @@ func _build_air() -> void:
 	# dikey sprey kutusu, nozul üstte
 	var can := MU.mat(Color(0.1, 0.3, 0.7), 0.7, 0.3)
 	var steel := MU.mat(Color(0.8, 0.82, 0.85), 0.9, 0.28)
-	MU.cyl(self, 0.028, 0.14, Vector3(0, 0, 0), can, Vector3.ZERO, 18)
-	MU.cyl(self, 0.028, 0.008, Vector3(0, -0.07, 0), steel, Vector3.ZERO, 18, 0.025)
-	MU.cyl(self, 0.019, 0.02, Vector3(0, 0.08, 0), steel, Vector3.ZERO, 16, 0.028)
+	MU.lathe(self, PackedVector2Array([Vector2(0, -0.064), Vector2(0.026, -0.064), Vector2(0.028, -0.06), Vector2(0.028, 0.058),
+		Vector2(0.026, 0.066), Vector2(0.019, 0.075), Vector2(0.0, 0.079)]), Vector3.ZERO, can, 24)
+	MU.lathe(self, PackedVector2Array([Vector2(0, -0.071), Vector2(0.024, -0.071), Vector2(0.0285, -0.066), Vector2(0.0285, -0.061),
+		Vector2(0.026, -0.06), Vector2(0, -0.06)]), Vector3.ZERO, steel, 24)
+	MU.lathe(self, PackedVector2Array([Vector2(0.0, 0.074), Vector2(0.02, 0.074), Vector2(0.021, 0.079), Vector2(0.019, 0.084),
+		Vector2(0.013, 0.088), Vector2(0, 0.088)]), Vector3.ZERO, steel, 20)
 	MU.cyl(self, 0.012, 0.012, Vector3(0, 0.096, 0), MU.mat(Color(0.9, 0.2, 0.15), 0, 0.4), Vector3.ZERO, 12)
 	MU.cyl(self, 0.0025, 0.03, Vector3(0.012, 0.102, 0), steel, Vector3(0, 0, -90), 6)
 	MU.cyl(self, 0.0015, 0.05, Vector3(0.04, 0.102, 0), MU.mat(Color(0.9, 0.9, 0.92), 0.3, 0.4), Vector3(0, 0, -90), 6)

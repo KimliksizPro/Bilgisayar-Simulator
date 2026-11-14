@@ -176,12 +176,12 @@ static func cyl(parent: Node, radius: float, height: float, pos: Vector3, m: Mat
 	return _add(parent, cm, pos, m, rot)
 
 
-static func sphere(parent: Node, radius: float, pos: Vector3, m: Material, scl := Vector3.ONE) -> MeshInstance3D:
+static func sphere(parent: Node, radius: float, pos: Vector3, m: Material, scl := Vector3.ONE, segments := 16) -> MeshInstance3D:
 	var sm := SphereMesh.new()
 	sm.radius = radius
 	sm.height = radius * 2.0
-	sm.radial_segments = 16
-	sm.rings = 8
+	sm.radial_segments = segments
+	sm.rings = segments / 2
 	var mi := _add(parent, sm, pos, m, Vector3.ZERO)
 	mi.scale = scl
 	return mi
@@ -205,6 +205,7 @@ static func label(parent: Node, text: String, pos: Vector3, font_size := 32, col
 	l.pixel_size = pixel
 	l.modulate = color
 	l.outline_size = 0
+	l.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF   # yazılar gölge geçişlerinde boşuna çizilmesin
 	parent.add_child(l)
 	return l
 
@@ -354,9 +355,11 @@ static func merge_static(root: Node3D) -> MeshInstance3D:
 		var ok := not mi.has_meta("no_merge")
 		while ok and p != root:
 			p = p.get_parent()
+			if p == root:
+				break
 			if p == null or not (p is Node3D) or p.has_meta("no_merge"):
 				ok = false
-			elif p != root:
+			else:
 				rel = p.transform * rel
 		if not ok:
 			continue
@@ -368,6 +371,10 @@ static func merge_static(root: Node3D) -> MeshInstance3D:
 		for si in mi.mesh.get_surface_count():
 			tools[mat].append_from(mi.mesh, si, rel)
 		mi.mesh = null
+		# boşalan düğümü sil: sahne ağacı küçülür, dönüşüm güncellemesi ve görünürlük testi maliyeti kalmaz
+		if mi.get_child_count() == 0:
+			mi.get_parent().remove_child(mi)
+			mi.free()
 	if order.is_empty():
 		return null
 	var am := ArrayMesh.new()
@@ -470,3 +477,311 @@ static func dust_texture() -> Texture2D:
 	var t := ImageTexture.create_from_image(img)
 	_tex_cache["dust"] = t
 	return t
+
+
+# ---------------------------------------------------------------- gelişmiş şekiller
+
+## Üçgeni, köşe normallerinin ortalamasına göre doğru yöne (Godot: ön yüz saat yönü) çevirerek ekler.
+static func _tri_idx(st: SurfaceTool, verts: PackedVector3Array, norms: PackedVector3Array, a: int, b: int, c: int) -> void:
+	var fn := (verts[b] - verts[a]).cross(verts[c] - verts[a])
+	if fn.length_squared() < 1e-14:
+		return
+	if fn.dot(norms[a] + norms[b] + norms[c]) > 0.0:
+		st.add_index(a); st.add_index(c); st.add_index(b)
+	else:
+		st.add_index(a); st.add_index(b); st.add_index(c)
+
+
+static func _rrect_outline(hx: float, hz: float, r: float, seg: int) -> Array:
+	# merkez çevresinde yuvarlatılmış dikdörtgen: [noktalar, dış normaller]
+	var pts: Array[Vector2] = []
+	var nrm: Array[Vector2] = []
+	var corners := [Vector2(hx - r, hz - r), Vector2(-hx + r, hz - r), Vector2(-hx + r, -hz + r), Vector2(hx - r, -hz + r)]
+	for ci in 4:
+		for s in seg + 1:
+			var a := PI / 2.0 * ci + PI / 2.0 * s / seg
+			var d := Vector2(cos(a), sin(a))
+			pts.append(corners[ci] + d * r)
+			nrm.append(d)
+	return [pts, nrm]
+
+
+static var _slab_cache := {}
+
+
+## Telefon/laptop gibi gövdeler: XZ düzleminde köşeleri `corner_r` ile yuvarlatılmış, üst ve alt
+## kenarları `bevel` ile pahlanmış (yumuşak) levha. Kutudan çok daha "ürün" gibi görünür.
+static func slab_mesh(size: Vector3, corner_r: float, bevel: float, corner_seg := 5) -> ArrayMesh:
+	var key := "%s|%s|%s|%s" % [size, corner_r, bevel, corner_seg]
+	if _slab_cache.has(key):
+		return _slab_cache[key]
+	var h := size / 2.0
+	bevel = minf(bevel, minf(h.y, minf(h.x, h.z)) * 0.99)
+	corner_r = clampf(corner_r, bevel + 0.0001, minf(h.x, h.z))
+	var core: Array = _rrect_outline(h.x - bevel, h.z - bevel, corner_r - bevel, corner_seg)
+	var cp: Array[Vector2] = core[0]
+	var cn: Array[Vector2] = core[1]
+	var n := cp.size()
+	var rings := [[-90.0, -1.0], [-45.0, -1.0], [0.0, -1.0], [0.0, 1.0], [45.0, 1.0], [90.0, 1.0]]
+	var verts := PackedVector3Array()
+	var norms := PackedVector3Array()
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for rg in rings:
+		var phi := deg_to_rad(rg[0])
+		var yb: float = rg[1] * (h.y - bevel)
+		for i in n:
+			var o := cn[i] * cos(phi)
+			var p := Vector3(cp[i].x + o.x * bevel, yb + sin(phi) * bevel, cp[i].y + o.y * bevel)
+			var nn := Vector3(cn[i].x * cos(phi), sin(phi), cn[i].y * cos(phi)).normalized()
+			verts.append(p)
+			norms.append(nn)
+			st.set_normal(nn)
+			st.set_uv(Vector2(p.x / size.x + 0.5, p.z / size.z + 0.5))
+			st.add_vertex(p)
+	for ri in rings.size() - 1:
+		for i in n:
+			var j := (i + 1) % n
+			var a := ri * n + i
+			var b := ri * n + j
+			var c := (ri + 1) * n + i
+			var d := (ri + 1) * n + j
+			_tri_idx(st, verts, norms, a, c, b)
+			_tri_idx(st, verts, norms, b, c, d)
+	# kapaklar (merkezden yelpaze)
+	for cap in [[-1.0, 0], [1.0, rings.size() - 1]]:
+		var ci := verts.size()
+		var cpos := Vector3(0, cap[0] * h.y, 0)
+		var cnor := Vector3(0, cap[0], 0)
+		verts.append(cpos)
+		norms.append(cnor)
+		st.set_normal(cnor)
+		st.set_uv(Vector2(0.5, 0.5))
+		st.add_vertex(cpos)
+		var base: int = cap[1] * n
+		for i in n:
+			_tri_idx(st, verts, norms, ci, base + i, base + (i + 1) % n)
+	st.generate_tangents()
+	var mesh := st.commit()
+	_slab_cache[key] = mesh
+	return mesh
+
+
+static func slab(parent: Node, size: Vector3, pos: Vector3, m: Material, corner_r := 0.01, bevel := 0.002, rot := Vector3.ZERO) -> MeshInstance3D:
+	return _add(parent, slab_mesh(size, corner_r, bevel), pos, m, rot)
+
+
+static var _lathe_cache := {}
+
+
+## Torna yüzeyi: (yarıçap, yükseklik) profilini Y ekseni etrafında döndürür. Kupa, lamba başlığı,
+## sprey kutusu, saksı gibi yuvarlak nesneler için. Aynı nokta art arda iki kez verilirse keskin kenar olur.
+static func lathe_mesh(profile: PackedVector2Array, sides := 24) -> ArrayMesh:
+	var key := "%s|%s" % [profile, sides]
+	if _lathe_cache.has(key):
+		return _lathe_cache[key]
+	var np := profile.size()
+	var pn: Array[Vector2] = []
+	var vlen := 0.0
+	var vs: Array[float] = [0.0]
+	for i in np:
+		var prev := i - 1 if i > 0 and not profile[i - 1].is_equal_approx(profile[i]) else i
+		var next := i + 1 if i < np - 1 and not profile[i + 1].is_equal_approx(profile[i]) else i
+		var t := profile[next] - profile[prev]
+		pn.append(Vector2(t.y, -t.x).normalized() if t.length() > 0.0 else Vector2.UP)
+		if i > 0:
+			vlen += profile[i].distance_to(profile[i - 1])
+			vs.append(vlen)
+	var verts := PackedVector3Array()
+	var norms := PackedVector3Array()
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for s in sides + 1:
+		var a := TAU * s / sides
+		var ca := cos(a)
+		var sa := sin(a)
+		for i in np:
+			var p := Vector3(profile[i].x * ca, profile[i].y, profile[i].x * sa)
+			var nn := Vector3(pn[i].x * ca, pn[i].y, pn[i].x * sa).normalized()
+			verts.append(p)
+			norms.append(nn)
+			st.set_normal(nn)
+			st.set_uv(Vector2(float(s) / sides, vs[i] / maxf(vlen, 0.0001)))
+			st.add_vertex(p)
+	for s in sides:
+		for i in np - 1:
+			if profile[i].is_equal_approx(profile[i + 1]):
+				continue
+			var a := s * np + i
+			var b := (s + 1) * np + i
+			_tri_idx(st, verts, norms, a, b, a + 1)
+			_tri_idx(st, verts, norms, b, b + 1, a + 1)
+	st.generate_tangents()
+	var mesh := st.commit()
+	_lathe_cache[key] = mesh
+	return mesh
+
+
+static func lathe(parent: Node, profile: PackedVector2Array, pos: Vector3, m: Material, sides := 24, rot := Vector3.ZERO) -> MeshInstance3D:
+	return _add(parent, lathe_mesh(profile, sides), pos, m, rot)
+
+
+# ---------------------------------------------------------------- klavye
+
+## Q klavye düzeni (birim = 1 tuş genişliği). Her satır: [[etiket, genişlik], ...]; etiket "" boşluk demek.
+const KB_ROWS := [
+	[["Esc", 1], ["", 0.5], ["F1", 1], ["F2", 1], ["F3", 1], ["F4", 1], ["", 0.25], ["F5", 1], ["F6", 1], ["F7", 1], ["F8", 1], ["", 0.25], ["F9", 1], ["F10", 1], ["F11", 1], ["F12", 1]],
+	[["\"", 1], ["1", 1], ["2", 1], ["3", 1], ["4", 1], ["5", 1], ["6", 1], ["7", 1], ["8", 1], ["9", 1], ["0", 1], ["*", 1], ["-", 1], ["⌫", 2]],
+	[["Tab", 1.5], ["Q", 1], ["W", 1], ["E", 1], ["R", 1], ["T", 1], ["Y", 1], ["U", 1], ["I", 1], ["O", 1], ["P", 1], ["Ğ", 1], ["Ü", 1], [",", 1.5]],
+	[["Caps", 1.75], ["A", 1], ["S", 1], ["D", 1], ["F", 1], ["G", 1], ["H", 1], ["J", 1], ["K", 1], ["L", 1], ["Ş", 1], ["İ", 1], ["Enter", 2.25]],
+	[["Shift", 2.25], ["Z", 1], ["X", 1], ["C", 1], ["V", 1], ["B", 1], ["N", 1], ["M", 1], ["Ö", 1], ["Ç", 1], [".", 1], ["Shift", 1.75], ["▲", 1]],
+	[["Ctrl", 1.25], ["❖", 1.25], ["Alt", 1.25], ["", 0], [" ", 6.25], ["AltGr", 1], ["Fn", 1], ["◀", 1], ["▼", 1], ["▶", 1]],
+]
+
+const NUMPAD_ROWS := [
+	[["7", 1], ["8", 1], ["9", 1], ["×", 1]],
+	[["4", 1], ["5", 1], ["6", 1], ["−", 1]],
+	[["1", 1], ["2", 1], ["3", 1], ["+", 1]],
+	[["0", 2], [".", 1], ["=", 1]],
+]
+
+
+## Tuş kapakları: TÜM tuşlar tek bir mesh ve tek malzemeyle çizilir (1 draw call). Harfler, klavyenin
+## üstten görünüşü olarak bir kez 2D'de çizilip dokuya pişirilir; tuşların üst yüzü bu dokuya planar
+## eşlenir. `u` = bir tuş birimi (metre), `h` = tuş yüksekliği, `taper` = kapak daralması (0: düz chiclet).
+## Dönüş: tuş bloğunun boyutu (x genişlik, z derinlik). Blok, `pos` merkezli kurulur; tuşlar +Y'ye çıkar.
+static func keycaps(parent: Node, rows: Array, pos: Vector3, u: float, h: float, cap_col: Color, legend_col: Color,
+		taper := 0.12, gap := 0.1, legend_px := 22, roughness := 0.55) -> Vector2:
+	var row_u := 0.0
+	for row in rows:
+		var w := 0.0
+		for k in row:
+			w += k[1]
+		row_u = maxf(row_u, w)
+	var size := Vector2(row_u * u, rows.size() * u)
+	var keys := []  # [x0, z0, w, d, etiket] (blok sol-üst köşesine göre, metre)
+	for ri in rows.size():
+		var x := 0.0
+		for k in rows[ri]:
+			if k[0] != "":
+				keys.append([x * u, ri * u, k[1] * u, u, k[0]])
+			x += k[1]
+	var m := StandardMaterial3D.new()
+	m.albedo_color = Color.WHITE
+	m.roughness = roughness
+	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+	var px_per_m := 2048.0 / maxf(size.x, size.y)
+	var tex_size := Vector2i(int(size.x * px_per_m), int(size.y * px_per_m))
+	bake_2d(parent, tex_size, m, func(root: Control):
+		var bg := ColorRect.new()
+		bg.color = cap_col
+		bg.size = Vector2(tex_size)
+		root.add_child(bg)
+		for k in keys:
+			var lab: String = k[4]
+			if lab == " ":
+				continue
+			var l := Label.new()
+			l.text = lab
+			l.position = Vector2(k[0], k[1]) * px_per_m
+			l.size = Vector2(k[2], k[3]) * px_per_m
+			var wide: bool = k[2] >= u * 1.5 and lab.length() > 1
+			l.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT if wide else HORIZONTAL_ALIGNMENT_CENTER
+			l.vertical_alignment = VERTICAL_ALIGNMENT_TOP if wide else VERTICAL_ALIGNMENT_CENTER
+			if wide:
+				l.position += Vector2(u * 0.2, u * 0.16) * px_per_m
+			var fs := legend_px if lab.length() <= 2 else int(legend_px * 0.62)
+			l.add_theme_font_size_override("font_size", int(fs * px_per_m * u / 48.0))
+			l.add_theme_color_override("font_color", legend_col)
+			root.add_child(l)
+	)
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var g := gap * u
+	var tp := taper * u * 0.5
+	var ch := minf(h * 0.25, u * 0.06)
+	for k in keys:
+		var x0: float = k[0] + g / 2 - size.x / 2
+		var z0: float = k[1] + g / 2 - size.y / 2
+		var x1: float = k[0] + k[2] - g / 2 - size.x / 2
+		var z1: float = k[1] + k[3] - g / 2 - size.y / 2
+		var r0 := [x0, z0, x1, z1, 0.0]
+		var r1 := [x0 + tp, z0 + tp, x1 - tp, z1 - tp, h - ch]
+		var r2 := [x0 + tp + ch, z0 + tp + ch, x1 - tp - ch, z1 - tp - ch, h]
+		_keycap_band(st, r0, r1, size)
+		_keycap_band(st, r1, r2, size)
+		var c := _ring_pts(r2)
+		_quad_flat(st, c[0], c[1], c[2], c[3], Vector3.UP, size)
+	st.generate_tangents()
+	var mi := MeshInstance3D.new()
+	mi.mesh = st.commit()
+	mi.material_override = m
+	mi.position = pos
+	parent.add_child(mi)
+	return size
+
+
+static func _ring_pts(r: Array) -> Array:
+	return [Vector3(r[0], r[4], r[1]), Vector3(r[2], r[4], r[1]), Vector3(r[2], r[4], r[3]), Vector3(r[0], r[4], r[3])]
+
+
+static func _keycap_band(st: SurfaceTool, ra: Array, rb: Array, size: Vector2) -> void:
+	var a := _ring_pts(ra)
+	var b := _ring_pts(rb)
+	var outs := [Vector3(0, 0, -1), Vector3(1, 0, 0), Vector3(0, 0, 1), Vector3(-1, 0, 0)]
+	for i in 4:
+		var j := (i + 1) % 4
+		var n: Vector3 = (b[i] - a[i]).cross(a[j] - a[i]).normalized()
+		if n.dot(outs[i]) < 0.0:
+			n = -n
+		_quad_flat(st, a[i], a[j], b[j], b[i], n, size)
+
+
+static func _quad_flat(st: SurfaceTool, p0: Vector3, p1: Vector3, p2: Vector3, p3: Vector3, n: Vector3, size: Vector2) -> void:
+	var tris := [[p0, p1, p2], [p0, p2, p3]]
+	for t in tris:
+		var fn: Vector3 = (t[1] - t[0]).cross(t[2] - t[0])
+		if fn.dot(n) > 0.0:
+			t = [t[0], t[2], t[1]]
+		for p in t:
+			st.set_normal(n)
+			st.set_uv(Vector2(p.x / size.x + 0.5, p.z / size.y + 0.5))
+			st.add_vertex(p)
+
+
+## 2D arayüzü (Label, ColorRect...) bir kez çizip malzemenin albedo dokusuna "pişirir".
+## Çizimden sonra SubViewport silinir ve mipmap'li statik doku kalır: sürekli maliyeti yok.
+## `emissive` true ise doku aynı zamanda ışık yayar (ekranlar için).
+static func bake_2d(owner: Node, size: Vector2i, m: StandardMaterial3D, build: Callable, emissive := 0.0) -> void:
+	var vp := SubViewport.new()
+	vp.size = size
+	vp.transparent_bg = false
+	vp.render_target_update_mode = SubViewport.UPDATE_ONCE
+	var root := Control.new()
+	root.size = Vector2(size)
+	vp.add_child(root)
+	build.call(root)
+	owner.add_child(vp)
+	var vtex := vp.get_texture()
+	m.albedo_texture = vtex
+	if emissive > 0.0:
+		m.emission_enabled = true
+		m.emission_texture = vtex
+		m.emission = Color.WHITE
+		m.emission_energy_multiplier = emissive
+	var job := func():
+		if not vp.is_inside_tree():
+			await vp.tree_entered
+		await RenderingServer.frame_post_draw
+		await RenderingServer.frame_post_draw
+		if not is_instance_valid(vp):
+			return
+		var img := vp.get_texture().get_image()
+		if img and not img.is_empty():
+			img.generate_mipmaps()
+			var t := ImageTexture.create_from_image(img)
+			m.albedo_texture = t
+			if m.emission_enabled:
+				m.emission_texture = t
+			vp.queue_free()
+	job.call()

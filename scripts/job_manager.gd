@@ -155,7 +155,7 @@ func _next_customer(delay: float) -> void:
 	customer = CUSTOMER.new()
 	customer.position = SPAWN
 	world.add_child(customer)
-	customer.build(_customer_hint, _customer_talk)
+	customer.build(_customer_hint, _customer_talk, job.name)
 	customer.say("")
 	state = "arriving"
 	hud.set_job("%s geliyor..." % job.name, "")

@@ -109,7 +109,8 @@ scripts/ui_kit.gd       Arayüz yardımcıları (düğme, tuş kapağı, modal, 
 scripts/music.gd        Kodla üretilen fon müziği
 assets/fonts/           Exo 2 yazı tipi + OFL.txt
 assets/ui/theme.tres    Proje varsayılan teması (`dev/make_theme.gd` ile yeniden üretilir)
-scripts/mesh_util.gd    Prosedürel model ve doku yardımcıları
+scripts/mesh_util.gd    Prosedürel model ve doku yardımcıları (yuvarlak kutu, levha, torna, tuş kapakları, 2D→doku pişirme)
+scripts/props.gd        Detaylı eşyalar: klavye, fare, laptop, telefon, monitör, masa lambası, kupa, yazar kasa, CRT
 scripts/sfx.gd          Kodla üretilen sesler (SFX kanalı)
 assets/                 Dokular ve HDRI (Poly Haven, CC0)
 dev/                    Geliştirici araçları (ekran görüntüsü, otomatik test)
@@ -118,15 +119,25 @@ dev/                    Geliştirici araçları (ekran görüntüsü, otomatik t
 Otomatik test (tamir döngüsü + gün/itibar/kayıt/iflas): `godot --headless -- --looptest`
 Arayüz görüntüleri: `godot -- --uishot` (oyun içi), `godot -- --menushot` (ana menü); menü akışı testi: `godot --headless -- --flowtest`  
 Dev argümanları (`--shot`, `--uishot`, `--perf`, `--partshot`, `--looptest`) ana menüyü atlayıp doğrudan oyuna girer.  
-Performans ölçümü: `godot -- --perf`  ·  Parça vitrini görseli: `godot -- --partshot`
+Performans ölçümü: `godot -- --perf`  ·  Parça vitrini görseli: `godot -- --partshot`  
+Eşya/müşteri yakın çekimleri: `godot -- --propshot` (isteğe bağlı `--only=keyboard,laptop,faces`)
 
 ## Grafik
 
 - **Yüksek kalite:** SDFGI (dolaylı ışık), SSIL, SSR yansımaları, hacimsel sis (ışık huzmeleri).
 - **Orta kalite:** SSAO + SSR. **Düşük kalite:** hepsi kapalı, zayıf ekran kartlarında akıcı çalışır.
-- Optimizasyon: sabit nesneler malzemeye göre tek mesh'te birleştirilir (`MU.merge_static`),
-  sadece 3 ışık gölge düşürür, monitör ekranı sadece değişince yeniden çizilir.
-- Tonlama: AgX. Kenarlar yuvarlatılmış özel mesh'ler (`MU.rbox`) ile yapılıyor.
+- Optimizasyon: sabit nesneler malzemeye göre tek mesh'te birleştirilir (`MU.merge_static`) ve boşalan
+  düğümler silinir (sahnede ~1100 yerine ~95 MeshInstance kalır); dönen fanlar ve müşteri kol/bacakları da
+  kendi içinde birleştirilir. Sadece 3 ışık gölge düşürür, 3D yazılar gölge geçişlerine girmez,
+  monitör ekranı sadece değişince yeniden çizilir.
+- Klavye tuşları gerçek eğimli kapaklardır ve harfleri basılıdır (Türkçe Q düzeni); bütün tuşlar tek mesh +
+  tek malzemeyle çizilir. Harfler, laptop/telefon/yazar kasa ekranları bir kez 2D olarak çizilip mipmap'li
+  dokuya "pişirilir" (`MU.bake_2d`), ardından SubViewport silinir: sürekli maliyeti yoktur.
+- Şekiller: köşeleri yuvarlatılmış kutular (`MU.rbox`), telefon/laptop gibi pahlı levhalar (`MU.slab`),
+  kupa/lamba/kutu gibi yuvarlak nesneler için torna profilleri (`MU.lathe`).
+- Müşteriler adlarına göre görünür: "Teyze" gri topuzlu, "Amca" bıyıklı/kel olabilir, kadınlar uzun saçlı;
+  kıyafet (tişört / gömlek / kapüşonlu), gözlük, sakal ve renkler rastgeledir.
+- Tonlama: AgX.
 
 ## Lisanslar
 
