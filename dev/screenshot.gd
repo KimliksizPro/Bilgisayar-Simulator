@@ -19,6 +19,14 @@ func _ready() -> void:
 	jobs.pc.toggle_panel()
 	await get_tree().create_timer(0.8).timeout
 	await _shot(p, Vector3(0.45, 0, -1.85), 0, -45, "inside")
+	jobs.pc.set_dust(0.9)
+	await _shot(p, Vector3(0.45, 0, -1.85), 0, -45, "dust")
+	p.cam.fov = 40
+	await _shot(p, Vector3(0.0, 0, -1.9), 0, -35, "dust2")
+	p.cam.fov = 72
+	await _shot(p, Vector3(1.0, 0, -1.75), 0, -45, "tools")
+	jobs.pc.slots.cpu.install(jobs.pc.slots.cpu.part) if false else null
+	jobs.pc.clean_dust()
 	jobs.pc.power_button()
 	await get_tree().create_timer(2.5).timeout
 	await _shot(p, Vector3(0.0, 0, -1.7), 0, -25, "powered")

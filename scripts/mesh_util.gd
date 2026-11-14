@@ -269,6 +269,67 @@ static func fan(parent: Node, radius: float, pos: Vector3, rot: Vector3, frame_m
 	return rotor
 
 
+## Noktalardan geçen Catmull-Rom eğrisi boyunca düzgün bir tüp (kablo) üretir. Noktalar parent uzayındadır.
+static func tube(parent: Node, points: Array[Vector3], radius: float, m: Material, sides := 6) -> MeshInstance3D:
+	var path := _catmull(points, 8)
+	var n := path.size()
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var t0 := (path[1] - path[0]).normalized()
+	var up := Vector3.UP if absf(t0.dot(Vector3.UP)) < 0.9 else Vector3.RIGHT
+	var normal := t0.cross(up).normalized()
+	for i in n:
+		var t: Vector3
+		if i == 0:
+			t = path[1] - path[0]
+		elif i == n - 1:
+			t = path[n - 1] - path[n - 2]
+		else:
+			t = path[i + 1] - path[i - 1]
+		t = t.normalized()
+		normal = (normal - t * normal.dot(t)).normalized()
+		var bn := t.cross(normal)
+		for s in sides:
+			var a := TAU * s / sides
+			var dir := normal * cos(a) + bn * sin(a)
+			st.set_normal(dir)
+			st.set_uv(Vector2(float(s) / sides, float(i) / n))
+			st.add_vertex(path[i] + dir * radius)
+	for i in n - 1:
+		for s in sides:
+			var a := i * sides + s
+			var b := i * sides + (s + 1) % sides
+			var c := (i + 1) * sides + s
+			var d := (i + 1) * sides + (s + 1) % sides
+			st.add_index(a)
+			st.add_index(c)
+			st.add_index(b)
+			st.add_index(b)
+			st.add_index(c)
+			st.add_index(d)
+	var mi := MeshInstance3D.new()
+	mi.mesh = st.commit()
+	mi.material_override = m
+	parent.add_child(mi)
+	return mi
+
+
+static func _catmull(pts: Array[Vector3], sub: int) -> Array[Vector3]:
+	var out: Array[Vector3] = []
+	for i in pts.size() - 1:
+		var p0: Vector3 = pts[maxi(i - 1, 0)]
+		var p1: Vector3 = pts[i]
+		var p2: Vector3 = pts[i + 1]
+		var p3: Vector3 = pts[mini(i + 2, pts.size() - 1)]
+		for k in sub:
+			var t := float(k) / sub
+			var t2 := t * t
+			var t3 := t2 * t
+			out.append(0.5 * ((2.0 * p1) + (-p0 + p2) * t + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t2 + (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * t3))
+	out.append(pts[pts.size() - 1])
+	return out
+
+
 # ---------------------------------------------------------------- optimizasyon
 
 ## Bu düğüm (ve altı) birleştirilmez: hareket eden/dönen/görünürlüğü değişen şeyler için.
@@ -386,4 +447,26 @@ static func wood_texture() -> Texture2D:
 			img.set_pixel(x, y, Color(c.r + n, c.g + n, c.b + n))
 	var t := ImageTexture.create_from_image(img)
 	_tex_cache["wood"] = t
+	return t
+
+
+## Tüylü toz dokusu: gri, rastgele alfa lekeleri (toz katmanları için).
+static func dust_texture() -> Texture2D:
+	if _tex_cache.has("dust"):
+		return _tex_cache["dust"]
+	var noise := FastNoiseLite.new()
+	noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	noise.frequency = 0.05
+	noise.seed = 7
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 11
+	var img := Image.create(96, 96, false, Image.FORMAT_RGBA8)
+	for y in 96:
+		for x in 96:
+			var v := noise.get_noise_2d(x, y) * 0.5 + 0.5
+			var a := clampf((v - 0.25) * 1.8, 0.0, 1.0) * rng.randf_range(0.8, 1.0)
+			var g := rng.randf_range(0.58, 0.66)
+			img.set_pixel(x, y, Color(g, g, g * 0.97, a))
+	var t := ImageTexture.create_from_image(img)
+	_tex_cache["dust"] = t
 	return t

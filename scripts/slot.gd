@@ -28,12 +28,14 @@ func setup(type: String, owner_pc):
 func _process(_delta: float) -> void:
 	var p = Game.player
 	ghost.visible = part == null and p != null and p.held != null \
-		and p.held.part_type == accepts and pc.panel_open
+		and not p.held.is_tool() and p.held.part_type == accepts and pc.panel_open
 
 
 func get_hint(player) -> String:
 	if not pc.panel_open:
 		return ""
+	if player.held and player.held.is_tool():
+		return pc.tool_hint(player.held, self)
 	if part:
 		if player.held == null:
 			return "Sök: %s  [E]" % part.display_name
@@ -46,6 +48,9 @@ func get_hint(player) -> String:
 func interact(player) -> void:
 	if not pc.panel_open:
 		return
+	if player.held and player.held.is_tool():
+		pc.tool_use(player, player.held, self)
+		return
 	if part and player.held == null:
 		player.pick_up(part)
 	elif part == null and player.held and player.held.part_type == accepts:
@@ -56,6 +61,8 @@ func interact(player) -> void:
 func install(p) -> void:
 	part = p
 	p.install_into(self)
+	if accepts == "cpu":
+		pc.cpu_installed(p)
 	pc.on_parts_changed()
 
 
@@ -63,4 +70,6 @@ func detach() -> void:
 	if part:
 		part.slot = null
 		part = null
+		if accepts == "cpu":
+			pc.socket_paste = false
 		pc.on_parts_changed()

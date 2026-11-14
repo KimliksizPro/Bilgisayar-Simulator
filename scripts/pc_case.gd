@@ -32,6 +32,16 @@ var led_mat: StandardMaterial3D
 var inner_light: OmniLight3D
 var debug_leds := {}
 var _hue := 0.0
+var dust := 0.0            # 0..1 toz miktarı
+var socket_paste := false  # CPU soketinde taze termal macun var mı
+var cpu_temp := 35.0
+var paste_blob: MeshInstance3D
+var cable_groups := {}     # parça adı -> kablo düğümü (parça takılıysa görünür)
+var _dust_nodes: Array = []  # [MeshInstance3D, gereken_slot]
+var _dust_mat: StandardMaterial3D
+var _dust_vis := 0.0
+var _dust_tween: Tween
+var _last_temp_i := -1
 
 
 func _ready() -> void:
@@ -120,7 +130,11 @@ func _build() -> void:
 	add_child(inner_light)
 	for f in case_fans:
 		MU.no_merge(f)
+	_build_cables()
+	_build_rear_io()
+	_build_dust()
 	MU.merge_static(self)
+	_update_visuals()
 	hum = AudioStreamPlayer3D.new()
 	hum.stream = Game.sfx.hum()
 	hum.volume_db = -14.0
@@ -196,21 +210,224 @@ func _build_board() -> void:
 	# ses kondansatörleri
 	for i in 3:
 		MU.cyl(board, 0.0035, 0.009, Vector3(bx + 0.0045, 0.155 + i * 0.012, 0.035), MU.mat(Color(0.85, 0.7, 0.25), 0.6, 0.35), Vector3(0, 0, 90), 10)
-	# kablolar (24-pin ve CPU güç kablosu)
-	var cable := MU.mat(Color(0.06, 0.06, 0.07), 0, 0.7)
-	for i in 4:
-		MU.cyl(board, 0.0035, 0.2, Vector3(-0.072 + i * 0.008, 0.2, 0.135), cable, Vector3.ZERO, 8)
-	MU.cyl(board, 0.004, 0.25, Vector3(-0.08, 0.3, -0.19), cable, Vector3.ZERO, 8)
-	MU.cyl(board, 0.004, 0.06, Vector3(-0.08, 0.425, -0.16), cable, Vector3(90, 0, 0), 8)
 	# PCIe braketleri (arka)
 	for i in 5:
 		MU.box(board, Vector3(0.03, 0.012, 0.002), Vector3(-0.06, 0.25 - i * 0.02, -0.217), metal)
 
 
+## Gerçekçi eğrisel kablolar. PSU/GPU/SSD takılı değilse ilgili kablolar gizlenir (birleştirilmez).
+func _build_cables() -> void:
+	var sleeve := MU.mat(Color(0.07, 0.07, 0.08), 0.1, 0.75)
+	var sleeve2 := MU.mat(Color(0.12, 0.12, 0.13), 0.1, 0.7)
+	var plug_m := MU.mat(Color(0.04, 0.04, 0.045), 0.1, 0.5)
+	var red := MU.mat(Color(0.75, 0.1, 0.1), 0, 0.6)
+	var psu_g := MU.no_merge(Node3D.new())
+	var gpu_g := MU.no_merge(Node3D.new())
+	var ssd_g := MU.no_merge(Node3D.new())
+	add_child(psu_g)
+	add_child(gpu_g)
+	add_child(ssd_g)
+	cable_groups = {"psu": psu_g, "gpu": gpu_g, "ssd": ssd_g}
+	var bx := BOARD_X
+	# 24-pin: kalın, örgülü; PSU'dan ön kenardaki konnektöre
+	var p24: Array[Vector3] = [Vector3(0.015, 0.118, -0.025), Vector3(0.025, 0.15, 0.04), Vector3(0.0, 0.22, 0.118),
+		Vector3(-0.045, 0.31, 0.122), Vector3(-0.062, 0.352, 0.112)]
+	MU.tube(psu_g, p24, 0.0085, sleeve2, 8)
+	var p24b: Array[Vector3] = [Vector3(0.0, 0.118, -0.025), Vector3(0.012, 0.15, 0.045), Vector3(-0.012, 0.22, 0.126),
+		Vector3(-0.05, 0.31, 0.13), Vector3(-0.064, 0.355, 0.118)]
+	MU.tube(psu_g, p24b, 0.0055, sleeve, 6)
+	MU.rbox(psu_g, Vector3(0.016, 0.056, 0.016), Vector3(bx + 0.016, 0.355, 0.114), plug_m, 0.002)
+	# CPU 4+4 pin: PSU'dan sağ taraftan dolanıp kasa üstündeki konnektöre
+	var pcpu: Array[Vector3] = [Vector3(-0.015, 0.118, -0.025), Vector3(0.05, 0.17, -0.05), Vector3(0.068, 0.28, -0.1),
+		Vector3(0.03, 0.405, -0.13), Vector3(-0.03, 0.438, -0.128), Vector3(-0.068, 0.436, -0.125)]
+	MU.tube(psu_g, pcpu, 0.0055, sleeve, 6)
+	MU.rbox(psu_g, Vector3(0.014, 0.012, 0.03), Vector3(bx + 0.012, 0.43, -0.125), plug_m, 0.002)
+	# SATA güç (SSD)
+	var psata: Array[Vector3] = [Vector3(0.045, 0.0675, 0.0), Vector3(0.07, 0.05, 0.08), Vector3(0.05, 0.03, 0.18), Vector3(0.022, 0.012, 0.176)]
+	MU.tube(ssd_g, psata, 0.003, sleeve, 5)
+	MU.rbox(ssd_g, Vector3(0.012, 0.007, 0.012), Vector3(0.022, 0.012, 0.176), plug_m, 0.001)
+	# SATA data (kırmızı): anakart SATA portundan SSD'ye
+	var pdata: Array[Vector3] = [Vector3(bx + 0.012, 0.2, 0.124), Vector3(-0.05, 0.17, 0.16), Vector3(-0.02, 0.07, 0.195), Vector3(0.005, 0.02, 0.185), Vector3(0.006, 0.012, 0.176)]
+	MU.tube(ssd_g, pdata, 0.0025, red, 5)
+	MU.rbox(ssd_g, Vector3(0.008, 0.006, 0.012), Vector3(0.006, 0.012, 0.176), plug_m, 0.001)
+	# PCIe güç (GPU 8-pin) ve GPU destek direği
+	var pgpu: Array[Vector3] = [Vector3(-0.045, 0.118, -0.025), Vector3(0.0, 0.14, 0.01), Vector3(0.052, 0.2, 0.045),
+		Vector3(0.05, 0.27, 0.04), Vector3(0.012, 0.275, 0.035), Vector3(0.0105, 0.258, 0.035)]
+	MU.tube(gpu_g, pgpu, 0.0055, sleeve, 6)
+	MU.rbox(gpu_g, Vector3(0.012, 0.014, 0.026), Vector3(0.0105, 0.252, 0.035), plug_m, 0.002)
+	MU.cyl(gpu_g, 0.004, 0.2, Vector3(0.025, 0.105, 0.07), MU.mat(Color(0.7, 0.72, 0.75), 0.9, 0.3), Vector3.ZERO, 8)
+	MU.rbox(gpu_g, Vector3(0.022, 0.003, 0.016), Vector3(0.025, 0.207, 0.07), plug_m, 0.001)
+	MU.rbox(gpu_g, Vector3(0.026, 0.004, 0.026), Vector3(0.025, 0.002, 0.07), plug_m, 0.001)
+
+
+## Kasa arkası: I/O kalkanı, PSU girişi, PCIe kapakları (dış yüz).
+func _build_rear_io() -> void:
+	var z := -D / 2 - 0.0015
+	var plate := MU.mat(Color(0.55, 0.57, 0.6), 0.9, 0.35)
+	var black := MU.mat(Color(0.03, 0.03, 0.035), 0.2, 0.5)
+	MU.box(self, Vector3(0.06, 0.09, 0.002), Vector3(-0.06, 0.38, z), plate)
+	for i in 4:
+		MU.box(self, Vector3(0.012, 0.007, 0.0025), Vector3(-0.08 + (i % 2) * 0.015, 0.415 - (i / 2) * 0.012, z - 0.0005), MU.mat(Color(0.1, 0.3, 0.9), 0, 0.5))
+	MU.box(self, Vector3(0.014, 0.012, 0.0028), Vector3(-0.045, 0.415, z - 0.0005), black)
+	MU.box(self, Vector3(0.012, 0.009, 0.0028), Vector3(-0.045, 0.395, z - 0.0005), MU.mat(Color(0.8, 0.8, 0.82), 0.9, 0.3))
+	var jacks := [Color(0.2, 0.8, 0.3), Color(0.9, 0.3, 0.5), Color(0.2, 0.5, 0.9)]
+	for i in 3:
+		MU.cyl(self, 0.003, 0.003, Vector3(-0.085 + i * 0.01, 0.355, z - 0.0005), MU.mat(jacks[i]), Vector3(90, 0, 0), 8)
+	for i in 5:
+		MU.box(self, Vector3(0.05, 0.012, 0.002), Vector3(-0.06, 0.25 - i * 0.02, z), plate)
+		MU.box(self, Vector3(0.04, 0.003, 0.0025), Vector3(-0.06, 0.25 - i * 0.02, z - 0.0004), black)
+	# PSU girişi: IEC soket + anahtar + ızgara
+	MU.box(self, Vector3(0.15, 0.085, 0.002), Vector3(0.0, 0.0475, z), black)
+	MU.rbox(self, Vector3(0.03, 0.022, 0.004), Vector3(0.04, 0.035, z - 0.0015), MU.mat(Color(0.12, 0.12, 0.13), 0.2, 0.5), 0.002)
+	MU.rbox(self, Vector3(0.012, 0.016, 0.004), Vector3(0.012, 0.035, z - 0.0015), MU.mat(Color(0.8, 0.1, 0.1), 0, 0.4), 0.002)
+	for i in 6:
+		MU.box(self, Vector3(0.08, 0.003, 0.0025), Vector3(-0.025, 0.02 + i * 0.01, z - 0.0005), MU.mat(Color(0.08, 0.08, 0.09)))
+
+
+## Toz katmanları (yarı saydam gri tüylü quad'lar): gizlenebilir, birleştirilmez.
+func _build_dust() -> void:
+	_dust_mat = MU.new_mat(Color(1, 1, 1, 0.0), 0, 1.0)
+	_dust_mat.albedo_texture = MU.dust_texture()
+	_dust_mat.uv1_scale = Vector3(2, 2, 1)
+	_dust_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_dust_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	var holder := MU.no_merge(Node3D.new())
+	holder.name = "Dust"
+	add_child(holder)
+	var specs := [
+		[Vector2(0.3, 0.3), Vector3(BOARD_X + 0.0007, 0.29, -0.02), Vector3(0, 90, 0), ""],
+		[Vector2(0.2, 0.42), Vector3(0.0, 0.009, 0.0), Vector3(-90, 0, 0), ""],
+		[Vector2(0.088, 0.088), SLOT_POS.cpu + Vector3(0.0605, 0, 0), Vector3(0, 90, 0), "cpu"],
+		[Vector2(0.088, 0.088), SLOT_POS.cpu + Vector3(0.0545, 0, 0), Vector3(0, 90, 0), "cpu"],
+		[Vector2(0.24, 0.028), SLOT_POS.gpu + Vector3(0.1085, -0.013, 0), Vector3(0, 90, 0), "gpu"],
+		[Vector2(0.104, 0.24), SLOT_POS.gpu + Vector3(0.053, -0.0335, 0), Vector3(90, 0, 0), "gpu"],
+		[Vector2(0.12, 0.12), SLOT_POS.psu + Vector3(0, 0.0446, 0), Vector3(-90, 0, 0), "psu"],
+		[Vector2(0.11, 0.11), Vector3(0.02, 0.36, -D / 2 + 0.036), Vector3.ZERO, ""],
+		[Vector2(0.125, 0.125), Vector3(0.0, 0.15, D / 2 - 0.038), Vector3(0, 180, 0), ""],
+		[Vector2(0.125, 0.125), Vector3(0.0, 0.31, D / 2 - 0.038), Vector3(0, 180, 0), ""],
+	]
+	for sp in specs:
+		var qm := QuadMesh.new()
+		qm.size = sp[0]
+		var mi := MeshInstance3D.new()
+		mi.mesh = qm
+		mi.material_override = _dust_mat
+		mi.position = sp[1]
+		mi.rotation_degrees = sp[2]
+		mi.visible = false
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		holder.add_child(mi)
+		_dust_nodes.append([mi, sp[3]])
+	# macun lekesi (CPU soketinde)
+	paste_blob = MU.sphere(self, 0.011, SLOT_POS.cpu + Vector3(0.0045, 0, 0), MU.mat(Color(0.7, 0.72, 0.76), 0.8, 0.25), Vector3(0.22, 1, 1))
+	MU.no_merge(paste_blob)
+	paste_blob.visible = false
+
+
+func set_dust(v: float) -> void:
+	dust = clampf(v, 0.0, 1.0)
+	_dust_vis = dust
+	_apply_dust(dust)
+
+
+## Basınçlı hava ile temizle: toz yavaşça kaybolur.
+func clean_dust() -> void:
+	var from := _dust_vis
+	dust = 0.0
+	_dust_vis = 0.0
+	if _dust_tween:
+		_dust_tween.kill()
+	_dust_tween = create_tween()
+	_dust_tween.tween_method(_apply_dust, from, 0.0, 0.8)
+
+
+func _apply_dust(v: float) -> void:
+	if _dust_mat == null:
+		return
+	_dust_mat.albedo_color.a = clampf(v * 1.1, 0.0, 1.0) * 0.5
+	_update_visuals(v > 0.04)
+
+
+func _update_visuals(dust_on = null) -> void:
+	var on: bool = (dust > 0.04) if dust_on == null else dust_on
+	for d in _dust_nodes:
+		var req: String = d[1]
+		d[0].visible = on and (req == "" or slots[req].part != null)
+	for k in cable_groups:
+		cable_groups[k].visible = slots[k].part != null
+	if paste_blob:
+		paste_blob.visible = socket_paste and slots.cpu.part == null
+
+
+func cpu_installed(p) -> void:
+	if socket_paste:
+		p.paste_ok = true
+		socket_paste = false
+		Game.msg("İşlemci macunla takıldı.", Color(0.7, 0.9, 1.0))
+
+
+# ---------------------------------------------------------------- aletler
+
+func tool_hint(tool, slot) -> String:
+	match tool.tool_type:
+		"paste":
+			if slot == null or slot.accepts != "cpu":
+				return "Termal macun: boş işlemci soketine sürülür"
+			if slot.part:
+				return "Macun için önce işlemciyi sök"
+			if socket_paste:
+				return "Soket zaten macunlu, işlemciyi tak"
+			return "Termal macun sür  [E]"
+		"air":
+			return "Tozu üfle  [E]" if dust > 0.02 else "Üfle  [E] (zaten temiz)"
+	return ""
+
+
+func tool_use(player, tool, slot) -> void:
+	match tool.tool_type:
+		"paste":
+			if slot == null or slot.accepts != "cpu":
+				Game.msg("Macunu boş işlemci soketine sürmelisin.", Color(1, 0.8, 0.4))
+			elif slot.part:
+				Game.msg("Önce işlemciyi sökmelisin.", Color(1, 0.8, 0.4))
+			elif socket_paste:
+				Game.msg("Soket zaten macunlu.", Color(1, 0.8, 0.4))
+			else:
+				socket_paste = true
+				Game.sfx.squish()
+				_update_visuals()
+				Game.msg("Termal macun sürüldü. Şimdi işlemciyi tak.", Color(0.7, 0.9, 1.0))
+		"air":
+			tool.puff(player)
+			if dust > 0.02:
+				clean_dust()
+				Game.msg("Kasanın içi tozdan arındı!", Color(0.7, 0.9, 1.0))
+			else:
+				Game.msg("İçerisi zaten temiz.")
+
+
+func get_hint(player) -> String:
+	if player.held and player.held.is_tool():
+		if not panel_open:
+			return "Aleti kullanmak için kapağı aç"
+		return tool_hint(player.held, null)
+	return ""
+
+
+func interact(player) -> void:
+	if player.held and player.held.is_tool() and panel_open:
+		tool_use(player, player.held, null)
+
+
 ## Müşteri bilgisayarını doldurur. parts: [[slot_adı, tip, seviye, bozuk_mu], ...]
 func fill(parts: Array) -> void:
 	for p in parts:
+		if p[0] == "dust":  # ["dust", "", miktar, false]: kasa tozu
+			set_dust(p[2])
+			continue
 		var part = PART.new().setup(p[1], p[2], p[3])
+		if p.size() > 4:  # 5. eleman: CPU macunu sağlam mı
+			part.paste_ok = p[4]
 		slots[p[0]].install(part)
 
 
@@ -235,7 +452,7 @@ func total_ram() -> int:
 	return gb
 
 
-## Teşhis kodu: "nopower", "cpu", "ram", "gpu", "ssd" veya "ok"
+## Teşhis kodu: "nopower", "cpu", "ram", "gpu", "ssd", "overheat" veya "ok"
 func diagnose() -> String:
 	var psu = part_in("psu")
 	if psu == null or psu.broken:
@@ -255,6 +472,8 @@ func diagnose() -> String:
 	var ssd = part_in("ssd")
 	if ssd == null or ssd.broken:
 		return "ssd"
+	if dust > 0.5 or not cpu.paste_ok:
+		return "overheat"
 	return "ok"
 
 
@@ -277,6 +496,8 @@ func power_button() -> void:
 		Game.msg("Hiçbir tepki yok... Fanlar bile dönmüyor.", Color(1, 0.6, 0.4))
 		return
 	powered = true
+	cpu_temp = 36.0
+	_last_temp_i = -1
 	var led_name: String = {"cpu": "CPU", "ram": "DRAM", "gpu": "VGA", "ssd": "BOOT"}.get(code, "")
 	if led_name != "":
 		var lm: StandardMaterial3D = debug_leds[led_name]
@@ -308,6 +529,10 @@ func power_button() -> void:
 			Game.sfx.beeps([0.15])
 			monitor.boot(self)
 			Game.msg("Tek kısa bip... Bilgisayar sorunsuz açıldı!", Color(0.5, 1, 0.5))
+		"overheat":
+			Game.sfx.beeps([0.15])
+			monitor.boot(self)
+			Game.msg("Tek kısa bip... Bilgisayar açıldı ama fanlar çok yüksek sesle dönüyor.", Color(1, 0.85, 0.5))
 
 
 func power_off() -> void:
@@ -325,6 +550,8 @@ func power_off() -> void:
 
 
 func on_parts_changed() -> void:
+	if slots.size() == 6:
+		_update_visuals(null if dust <= 0.0 else dust > 0.04)
 	if powered:
 		power_off()
 		Game.msg("Parça değişince bilgisayar kapandı.")
@@ -339,10 +566,15 @@ func _all_rgb() -> Array:
 
 func _process(delta: float) -> void:
 	if not powered:
+		cpu_temp = move_toward(cpu_temp, 30.0, 8.0 * delta)
+		return
+	_heat(delta)
+	if not powered:
 		return
 	_hue = fmod(_hue + delta * 0.15, 1.0)
+	var spin := 1.0 + maxf(cpu_temp - 50.0, 0.0) / 40.0
 	for r in case_fans:
-		r.rotate_object_local(Vector3.UP, delta * 30.0)
+		r.rotate_object_local(Vector3.UP, delta * 30.0 * spin)
 	for p in installed_parts():
 		for r in p.rotors:
 			r.rotate_object_local(Vector3.UP, delta * 28.0)
@@ -355,3 +587,20 @@ func _process(delta: float) -> void:
 		m.emission_energy_multiplier = 2.5
 		i += 1
 	inner_light.light_color = Color.from_hsv(_hue, 0.6, 1.0)
+
+
+## CPU sıcaklığı: masaüstü açıkken ısınma/soğuma; aşırı ısınırsa bilgisayar kapanır.
+func _heat(delta: float) -> void:
+	if monitor == null or not monitor.desktop.visible:
+		return
+	var hot := diagnose() == "overheat"
+	var target := 99.0 if hot else 45.0
+	cpu_temp = move_toward(cpu_temp, target, (14.0 if hot else 18.0) * delta)
+	var ti := int(cpu_temp)
+	if ti != _last_temp_i:
+		_last_temp_i = ti
+		monitor.set_temp(ti)
+	if cpu_temp >= 98.5:
+		power_off()
+		Game.sfx.error()
+		Game.msg("Bilgisayar aşırı ısınıp kapandı!", Color(1, 0.4, 0.3))

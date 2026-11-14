@@ -4,6 +4,7 @@ extends Node3D
 const MU := preload("res://scripts/mesh_util.gd")
 const PM := preload("res://scripts/part_models.gd")
 const PART := preload("res://scripts/part.gd")
+const TOOL := preload("res://scripts/tool.gd")
 const PLAYER := preload("res://scripts/player.gd")
 const HUD := preload("res://scripts/hud.gd")
 const MONITOR := preload("res://scripts/monitor.gd")
@@ -22,6 +23,7 @@ func _ready() -> void:
 	_build_room()
 	_build_outside()
 	_build_desk()
+	_build_tools()
 	_build_shelf()
 	_build_counter()
 	_build_decor()
@@ -300,7 +302,7 @@ func _build_desk() -> void:
 	MU.box(poster, Vector3(1.3, 0.12, 0.014), Vector3(0, 0.365, 0), MU.mat(Color(0.75, 0.15, 0.15), 0, 0.7))
 	var t1 := MU.label(poster, "ARIZA REHBERİ", Vector3(0, 0.365, 0.009), 64, Color.WHITE, Vector3.ZERO, 0.0012)
 	t1.double_sided = false
-	var t2 := MU.label(poster, "• Hiçbir tepki yok  →  Güç Kaynağı (PSU)\n• Fan dönüyor, bip yok, görüntü yok  →  İşlemci (CPU)\n• Sürekli kısa bipler  →  RAM\n• 1 uzun 3 kısa bip  →  Ekran Kartı (GPU)\n• \"Boot device\" hatası  →  SSD\n• Tek kısa bip  →  Her şey yolunda!", Vector3(0, -0.06, 0.009), 34, Color(0.12, 0.12, 0.14), Vector3.ZERO, 0.0011)
+	var t2 := MU.label(poster, "• Hiçbir tepki yok  →  Güç Kaynağı (PSU)\n• Fan dönüyor, bip yok, görüntü yok  →  İşlemci (CPU)\n• Sürekli kısa bipler  →  RAM\n• 1 uzun 3 kısa bip  →  Ekran Kartı (GPU)\n• \"Boot device\" hatası  →  SSD\n• Açılıp kendi kendine kapanma  →  Toz / Termal Macun\n• Tek kısa bip  →  Her şey yolunda!", Vector3(0, -0.06, 0.009), 34, Color(0.12, 0.12, 0.14), Vector3.ZERO, 0.0011)
 	t2.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	t2.line_spacing = 6
 	t2.double_sided = false
@@ -314,7 +316,20 @@ func _build_desk() -> void:
 	MU.interactable(self, Vector3(0.46, 0.55, 0.46), Vector3(1.85, 0.27, -2.55), _bin_hint, _bin_use)
 
 
+## Masadaki aletler: termal macun ve basınçlı hava.
+func _build_tools() -> void:
+	var tools := [["paste", Vector3(0.95, DESK_Y + 0.016, -2.5), 20.0], ["air", Vector3(1.13, DESK_Y + 0.096, -2.42), 0.0]]
+	for t in tools:
+		var tool = TOOL.new().setup(t[0])
+		add_child(tool)
+		tool.position = t[1]
+		tool.rotation_degrees.y = t[2]
+		tool.freeze = true
+
+
 func _bin_hint(p) -> String:
+	if p.held and p.held.is_tool():
+		return "Aletler hurdaya atılmaz"
 	if p.held:
 		if p.held.broken:
 			return "Arızalı parçayı at  [E]"
@@ -323,7 +338,7 @@ func _bin_hint(p) -> String:
 
 
 func _bin_use(p) -> void:
-	if p.held == null:
+	if p.held == null or p.held.is_tool():
 		return
 	var part = p.release_held()
 	if part.broken:

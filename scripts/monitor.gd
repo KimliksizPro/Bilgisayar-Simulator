@@ -11,6 +11,7 @@ var center_box: PanelContainer
 var center_label: Label
 var desktop: Control
 var clock: Label
+var temp_label: Label
 var _token := 0
 
 
@@ -91,6 +92,15 @@ func _build_screen() -> void:
 	clock.position = Vector2(570, 333)
 	clock.add_theme_font_size_override("font_size", 16)
 	desktop.add_child(clock)
+	temp_label = Label.new()
+	temp_label.position = Vector2(470, 8)
+	temp_label.size = Vector2(160, 24)
+	temp_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	temp_label.add_theme_font_size_override("font_size", 18)
+	temp_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
+	temp_label.add_theme_constant_override("outline_size", 4)
+	desktop.add_child(temp_label)
+	set_temp(36)
 	var welcome := Label.new()
 	welcome.text = "BilgiOS 11\nHoş geldiniz!"
 	welcome.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -172,6 +182,18 @@ func boot(pc) -> void:
 		return
 	text.text = ""
 	desktop.visible = true
+	_refresh()
+
+
+## CPU sıcaklığı göstergesi (masaüstünde sağ üst): yeşil/sarı/kırmızı.
+func set_temp(c: int) -> void:
+	temp_label.text = "CPU: %d°C" % c
+	var col := Color(0.5, 1, 0.5)
+	if c >= 85:
+		col = Color(1, 0.25, 0.2)
+	elif c >= 65:
+		col = Color(1, 0.85, 0.3)
+	temp_label.add_theme_color_override("font_color", col)
 	_refresh()
 
 
