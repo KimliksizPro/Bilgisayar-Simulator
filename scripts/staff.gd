@@ -354,6 +354,13 @@ func assign(id: int, quiet := false) -> String:
 	if _pc_taken(jobs.pc):
 		return "başkası yapıyor"
 	var p = jobs.pc
+	# teknisyen sadece masaüstü kasalarla çalışır; laptop/telefon ustaya kalır
+	if str(jobs.job.get("device", "")) != "":
+		if e.noted != p:
+			e.noted = p
+			if not quiet:
+				e.say_for("Laptop/telefon benim işim değil usta, sen bakarsın.", 3.0)
+		return "masaüstü değil"
 	var pl := make_plan(p, jobs.job)
 	# gereken parçaları stoktan ayır
 	var res := []

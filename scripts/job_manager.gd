@@ -5,6 +5,7 @@ const PC := preload("res://scripts/pc_case.gd")
 const CUSTOMER := preload("res://scripts/customer.gd")
 const PM := preload("res://scripts/part_models.gd")
 const WARRANTY := preload("res://scripts/warranty.gd")
+const DJ := preload("res://scripts/device_jobs.gd")  # laptop / telefon işleri
 
 const SPAWN := Vector3(-0.3, 0, 9.0)
 const DOOR := Vector3(0, 0, 3.6)
@@ -190,6 +191,8 @@ func _make_job() -> Dictionary:
 	var due := WARRANTY.take_due()
 	if not due.is_empty():
 		return WARRANTY.make_job(due, base)
+	if roll < 0.85 and randf() < DJ.CHANCE:  # laptop / telefon tamiri
+		return DJ.make(j)
 	if roll >= 0.85:
 		# tezgahtan parça satışı
 		var w: Array = SALE_WANTS.pick_random()
@@ -249,7 +252,7 @@ func _customer_hint(p) -> String:
 		return "%s ile konuş  [E]" % job.name
 	match state:
 		"waiting": return "%s ile konuş  [E]" % job.name
-		"working": return "Bilgisayarı teslim et  [E]"
+		"working": return DJ.deliver_hint(job)
 	return ""
 
 
@@ -269,14 +272,17 @@ func _accept() -> void:
 	work_hours = 0.0
 	fail_count = 0
 	_warned = false
-	pc = PC.new()
-	pc.transform = pc_spot
+	pc = DJ.new_device(job) if DJ.is_device(job) else PC.new()
+	pc.transform = DJ.spot(pc, pc_spot)
 	world.add_child(pc)
 	pc.monitor = monitor
 	pc.fill(job.parts)
 	state = "working"
 	customer.say("Tamamdır usta, ben burada bekliyorum. Ücreti %d TL." % job.pay)
 	hud.set_job("%s — %s" % [job.name, "GARANTİ (ücretsiz)" if job.get("warranty", false) else "%d TL" % job.pay], job.goal + "\n\nBitince müşteriyle konuş [E]")
+	if DJ.is_device(job):  # laptop / telefon: kendi ipuçları
+		DJ.on_accept(hud, job)
+		return
 	Game.msg("Bilgisayar masana kondu. Kapağı açıp incele!", Color(0.6, 0.9, 1.0))
 	hud.dismiss_tip("talk")
 	hud.tip("glass", "Kapağı açmak için bilgisayarın camına bakıp E'ye bas.")
@@ -284,6 +290,8 @@ func _accept() -> void:
 
 
 func _problem() -> String:
+	if DJ.is_device(job):  # laptop / telefon kendi kontrolünü yapar
+		return pc.problem()
 	var code: String = pc.diagnose()
 	if code == "overheat":
 		return _overheat_problem()

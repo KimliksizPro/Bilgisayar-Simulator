@@ -33,6 +33,7 @@ func _ready() -> void:
 	_supply(c)
 	_staff(c)  # PERSONEL
 	_guide(c)
+	_devices(c)
 	_economy(c)
 	_depth(c)
 	K.hsep(vb)
@@ -186,3 +187,28 @@ func _staff(parent: Control) -> void:
 	_step(v, 1, "Tezgahtar", "Bekleyen müşteriyi karşılar ve işi kabul eder; parça isteyene raftan getirip satar; boşta kalınca kapıdaki ParçaNet kolilerini açar.")
 	_step(v, 2, "Teknisyen", "Masadaki işi stoktaki parçalarla kendisi tamir eder ve müşteriye teslim eder; para yine sana gelir. Ona bakıp E'ye bas ya da Personel sekmesinden \"İşi Ver\". Parça stokta yoksa haber verir.")
 	_para(v, "Beceri ne kadar yüksekse o kadar hızlı ve hatasız çalışır. Hata yaparsa bir parça yanar ve itibar düşer.", T.MUTED)
+
+
+## Laptop ve telefon tamiri.
+func _devices(parent: Control) -> void:
+	var v := _section(parent, "Laptop ve Telefon Tamiri")
+	_step(v, 1, "Laptop", "Güç düğmesi klavyenin sağ üstünde; laptop kendi ekranında hatayı gösterir. Klavyeye bakıp E: laptop ters döner, alt kapak sökülür. İçeride RAM (SO-DIMM), M.2 SSD ve batarya var. Kırık ekran paneli laptop düzken kapaktan sökülür.")
+	_step(v, 2, "Telefon", "Güç tuşu sağ kenarda. Telefonun üstüne bakıp E: ekran modülü kitap gibi yana kalkar. İçeride batarya ve şarj soketi var; ekran modülü de sökülür.")
+	var g := GridContainer.new()
+	g.columns = 2
+	g.add_theme_constant_override("h_separation", 24)
+	g.add_theme_constant_override("v_separation", 6)
+	v.add_child(g)
+	var rows := [
+		["Laptop: mavi ekran (MEMORY_MANAGEMENT)", "Laptop RAM"],
+		["Laptop: \"Boot device not found\"", "M.2 SSD"],
+		["Laptop: pil %0, şarj olmuyor; touchpad kabarık", "Laptop bataryası"],
+		["Laptop / telefon: çatlak cam, bozuk görüntü", "Ekran"],
+		["Telefon: %1 pil, hemen kapanıyor; ekran kalkık", "Telefon bataryası"],
+		["Telefon: açılıyor ama şarj olmuyor; pas izi", "Şarj soketi"],
+	]
+	for r in rows:
+		var a := K.label(g, r[0], 18, T.TEXT)
+		a.custom_minimum_size = Vector2(440, 0)
+		K.label(g, r[1], 18, T.ACCENT_HI, "BoldLabel")
+	_para(v, "Parçalar arka duvardaki LAPTOP & TELEFON rafında; ParçaNet'ten sipariş edilir. Teslimden önce kapağı kapat ve çalıştığını gör.", T.MUTED)

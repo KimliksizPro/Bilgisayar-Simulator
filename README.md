@@ -65,7 +65,7 @@ MSAA kapalı, gölgeler hafifletilmiş.
 
 - **Stok rafı:** raftaki parçalar dükkânın stoğudur; etikette `STOK: N` yazar, biten ürün raftan kalkar (`TÜKENDİ`).
   Sağlam bir parçayı elinde tutarken rafa E'ye basınca stoğa geri girer. Yeni oyunda küçük bir başlangıç stoğu var.
-- **ParçaNet (tezgahtaki laptop):** 7 ürünlük katalog, adet seçimi, sepet, toplu alım indirimi (aynı üründen 5+ adet %10),
+- **ParçaNet (tezgahtaki laptop):** 14 ürünlük katalog (masaüstü + laptop/telefon parçaları), adet seçimi, sepet, toplu alım indirimi (aynı üründen 5+ adet %10),
   Standart (2 saat, 250 TL üstü ücretsiz) veya Ekspres (30 dk, 45 TL) kargo. Fiyatlar her sabah değişen **piyasa kuruna**
   göre oynar (0.80 - 1.30); kur değişimi ▲/▼ ile gösterilir. Toptan Anlaşma %15 indirim verir.
 - **Kurye:** varış saati gelince turuncu üniformalı kurye yürüyerek gelir, ParçaNet kolisini kapının yanına bırakır.
@@ -193,3 +193,22 @@ Yazı tipleri, hepsi [SIL Open Font License 1.1](https://openfontlicense.org): *
 **VT323** (The VT323 Project Authors, [OFL_VT323.txt](assets/fonts/OFL_VT323.txt)),
 **Caveat** (The Caveat Project Authors, [OFL_Caveat.txt](assets/fonts/OFL_Caveat.txt)).
 Oyun motoru: [Godot Engine](https://godotengine.org) (MIT). Ses efektleri ve fon müziği oyun içinde kodla üretilir.
+
+## Laptop ve telefon tamiri
+
+Tamir işlerinin bir kısmında müşteri masaüstü yerine **laptop** ya da **telefon** getirir; cihaz masaya düz konur
+ve kendi küçük ekranında belirtiyi gösterir.
+
+- **Laptop:** güç düğmesi klavyenin sağ üstünde. Klavyeye bakıp E: ekran kapanır, laptop ters döner, vidalı alt kapak
+  sökülüp yana konur. İçeride SO-DIMM RAM, M.2 NVMe SSD ve batarya (anakart, fan, ısı borusu, hoparlörler).
+  Ekran paneli kapaktadır; laptop düzken sökülür.
+  Belirtiler: RAM → mavi ekran `MEMORY_MANAGEMENT`; SSD → `Boot device not found`; batarya → "%0, takılı, şarj olmuyor"
+  uyarısı ve şişen pilin kabarttığı touchpad (içeride şişmiş pil görünür); ekran → çatlak cam ve renkli çizgiler.
+- **Telefon:** güç tuşu sağ kenarda. Üstüne bakıp E: ekran modülü kitap gibi yana kalkar. İçeride batarya ve şarj soketi.
+  Belirtiler: batarya → kırmızı %1 pil simgesi, hemen kapanır, şişen pil ekranı kaldırır; şarj soketi → "Şarj olmuyor"
+  uyarısı, sokette pas; ekran → örümcek ağı çatlak.
+- Yeni parçalar (Laptop RAM, M.2 SSD, laptop/telefon bataryası, laptop/telefon ekranı, şarj soketi) ParçaNet'te
+  satılır ve arka duvardaki **LAPTOP & TELEFON** rafında durur; yeni oyunda birer adet stok vardır.
+- Kod: `scripts/device_base.gd` (ortak), `laptop_device.gd`, `phone_device.gd`, `device_slot.gd`, `device_parts.gd`
+  (modeller), `device_jobs.gd` (müşteri cümleleri, iş üretimi), `device_rack.gd` (raf).
+- Geliştirici: `-- --uishot --devshot` cihaz görüntülerini `shot_dev_*.png` olarak kaydeder.

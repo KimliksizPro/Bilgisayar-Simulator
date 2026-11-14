@@ -164,7 +164,14 @@ func _build_shop(p: Control) -> void:
 		l.custom_minimum_size.x = t[1]
 	var list := VBoxContainer.new()
 	list.add_theme_constant_override("separation", 4)
-	p.add_child(list)
+	# katalog uzun (laptop/telefon parçaları): kaydırılabilir liste
+	var lsc := ScrollContainer.new()
+	lsc.custom_minimum_size = Vector2(0, 330)
+	lsc.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	lsc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	p.add_child(lsc)
+	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	lsc.add_child(list)
 	for it in Game.CATALOG:
 		var type: String = it[0]
 		var tier: int = it[1]
