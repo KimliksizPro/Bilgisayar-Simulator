@@ -22,12 +22,14 @@ yüzeylerde gerçek PBR dokular ve gökyüzü için gerçek bir şehir HDRI'si k
 | G / Sağ tık | Elindekini bırak |
 | Esc | Duraklat |
 | F2 | Grafik kalitesi (Yüksek/Düşük) — oyun kasarsa Düşük yap |
+| F3 | FPS ve draw call sayacı |
 
 ## Oynanış
 
 - **Müşteri** tezgaha gelir. Onunla konuşunca bilgisayarı masana bırakır.
 - **Cam kapağı** aç, **güç düğmesine** bas ve belirtileri izle (bip sesleri, ekran).
 - Duvardaki **Arıza Rehberi** hangi belirtinin hangi parçayı gösterdiğini söyler.
+- Anakarttaki **hata LED'leri** (CPU / DRAM / VGA / BOOT) açılışta sorunlu parçayı gösterir.
 - Arızalı parçayı sök, **raftan** yenisini satın al, tak.
 - Kapağı kapat, müşteriyle konuş ve paranı al.
 - Eski parçaları **hurda kutusuna** at (sağlam parçalar hurdacıya satılır).
@@ -55,12 +57,15 @@ assets/                 Dokular ve HDRI (Poly Haven, CC0)
 dev/                    Geliştirici araçları (ekran görüntüsü, otomatik test)
 ```
 
-Otomatik test: `godot --headless -- --looptest`
+Otomatik test: `godot --headless -- --looptest`  
+Performans ölçümü: `godot -- --perf`  ·  Parça vitrini görseli: `godot -- --partshot`
 
 ## Grafik
 
 - **Yüksek kalite:** SDFGI (dolaylı ışık), SSIL, SSR yansımaları, hacimsel sis (ışık huzmeleri).
 - **Düşük kalite:** bunlar kapalı, zayıf ekran kartlarında akıcı çalışır.
+- Optimizasyon: sabit nesneler malzemeye göre tek mesh'te birleştirilir (`MU.merge_static`),
+  sadece 3 ışık gölge düşürür, monitör ekranı sadece değişince yeniden çizilir.
 - Tonlama: AgX. Kenarlar yuvarlatılmış özel mesh'ler (`MU.rbox`) ile yapılıyor.
 
 ## Lisanslar

@@ -25,6 +25,8 @@ func _ready() -> void:
 	_build_shelf()
 	_build_counter()
 	_build_decor()
+	MU.no_merge(monitor)
+	MU.merge_static(self)
 	hud = HUD.new()
 	add_child(hud)
 	var player = PLAYER.new()
@@ -40,6 +42,10 @@ func _ready() -> void:
 	jobs.start()
 	if "--shot" in OS.get_cmdline_user_args() and ResourceLoader.exists("res://dev/screenshot.gd"):
 		add_child(load("res://dev/screenshot.gd").new())
+	if "--perf" in OS.get_cmdline_user_args() and ResourceLoader.exists("res://dev/perf.gd"):
+		add_child(load("res://dev/perf.gd").new())
+	if "--partshot" in OS.get_cmdline_user_args() and ResourceLoader.exists("res://dev/parts_shot.gd"):
+		add_child(load("res://dev/parts_shot.gd").new())
 	if "--looptest" in OS.get_cmdline_user_args() and ResourceLoader.exists("res://dev/loop_test.gd"):
 		Engine.time_scale = 4.0
 		add_child(load("res://dev/loop_test.gd").new())
@@ -109,7 +115,8 @@ func _build_environment() -> void:
 	sun.light_color = Color(1.0, 0.93, 0.8)
 	sun.shadow_enabled = true
 	sun.shadow_blur = 1.5
-	sun.directional_shadow_max_distance = 25.0
+	sun.directional_shadow_max_distance = 14.0
+	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
 	sun.light_volumetric_fog_energy = 1.5
 	add_child(sun)
 	var probe := ReflectionProbe.new()
@@ -213,7 +220,8 @@ func _build_room() -> void:
 		l.light_energy = 1.0
 		l.light_color = Color(1.0, 0.93, 0.82)
 		l.light_size = 0.3
-		l.shadow_enabled = true
+		l.shadow_enabled = p.x > 0.0  # sadece masa üstündeki lamba gölge düşürür
+		l.omni_shadow_mode = OmniLight3D.SHADOW_DUAL_PARABOLOID
 		add_child(l)
 	# klima
 	var ac := MU.rbox(self, Vector3(0.9, 0.28, 0.2), Vector3(-2.2, 2.6, -2.88), MU.mat(Color(0.95, 0.95, 0.94), 0, 0.35), 0.04)

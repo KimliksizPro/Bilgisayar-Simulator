@@ -11,6 +11,7 @@ var overlay: ColorRect
 var overlay_title: Label
 var overlay_sub: Label
 var _started := false
+var fps_label: Label
 
 
 func _ready() -> void:
@@ -63,7 +64,7 @@ func _ready() -> void:
 	messages.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(messages)
 
-	var help := _label(root, "WASD: Yürü   Shift: Koş   E / Sol Tık: Etkileşim   G / Sağ Tık: Bırak   Esc: Duraklat   F2: Grafik kalitesi", 15, Color(1, 1, 1, 0.55))
+	var help := _label(root, "WASD: Yürü   Shift: Koş   E / Sol Tık: Etkileşim   G / Sağ Tık: Bırak   Esc: Duraklat   F2: Grafik kalitesi   F3: FPS", 15, Color(1, 1, 1, 0.55))
 	help.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
 	help.position = Vector2(20, -34)
 
@@ -84,6 +85,10 @@ func _ready() -> void:
 	overlay_sub = _label(ov, "Mahallenin bilgisayarcısı sensin. Müşterilerin derdini dinle,\narızayı bul, parçayı değiştir, parayı kap!\n\nBaşlamak için tıkla", 22)
 	var sub := overlay_sub
 	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+
+	fps_label = _label(root, "", 16, Color(0.7, 1.0, 0.7))
+	fps_label.position = Vector2(20, 84)
+	fps_label.visible = false
 
 	Game.money_changed.connect(_on_money)
 	_on_money(Game.money)
@@ -133,7 +138,15 @@ func show_message(text: String, color := Color.WHITE) -> void:
 	tw.tween_callback(l.queue_free)
 
 
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_F3:
+		fps_label.visible = not fps_label.visible
+
+
 func _process(_delta: float) -> void:
+	if fps_label.visible:
+		fps_label.text = "FPS: %d   Draw call: %d" % [Engine.get_frames_per_second(),
+			RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME)]
 	var captured := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
 	if captured:
 		_started = true

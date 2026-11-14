@@ -28,7 +28,7 @@ func build(hint_fn: Callable, action: Callable) -> void:
 		add_child(piv)
 		MU.capsule(piv, 0.075, 0.86, Vector3(0, -0.42, 0), pants_m)
 		MU.rbox(piv, Vector3(0.12, 0.07, 0.25), Vector3(0, -0.85, 0.04), shoe_m, 0.03)
-		legs.append(piv)
+		legs.append(MU.no_merge(piv))
 	MU.rbox(self, Vector3(0.42, 0.62, 0.24), Vector3(0, 1.16, 0), shirt_m, 0.09)
 	MU.rbox(self, Vector3(0.4, 0.12, 0.23), Vector3(0, 0.88, 0), pants_m, 0.05)
 	for x in [-0.26, 0.26]:
@@ -37,7 +37,7 @@ func build(hint_fn: Callable, action: Callable) -> void:
 		add_child(piv)
 		MU.capsule(piv, 0.058, 0.5, Vector3(0, -0.22, 0), shirt_m)
 		MU.sphere(piv, 0.05, Vector3(0, -0.52, 0), skin_m, Vector3(0.9, 1.2, 0.8))
-		arms.append(piv)
+		arms.append(MU.no_merge(piv))
 	MU.cyl(self, 0.05, 0.1, Vector3(0, 1.5, 0), skin_m, Vector3.ZERO, 12)
 	MU.sphere(self, 0.125, Vector3(0, 1.66, 0), skin_m, Vector3(1, 1.15, 1.02))
 	MU.sphere(self, 0.13, Vector3(0, 1.72, -0.02), MU.mat(hair, 0, 0.8), Vector3(1.04, 0.8, 1.04))
@@ -51,6 +51,9 @@ func build(hint_fn: Callable, action: Callable) -> void:
 		MU.rbox(self, Vector3(0.04, 0.008, 0.01), Vector3(x, 1.715, 0.118), MU.mat(hair, 0, 0.8), 0.003)
 	MU.sphere(self, 0.018, Vector3(0, 1.645, 0.128), skin_m, Vector3(0.8, 1.1, 1))
 	MU.rbox(self, Vector3(0.05, 0.01, 0.01), Vector3(0, 1.6, 0.118), MU.mat(Color(0.55, 0.28, 0.25), 0, 0.5), 0.004)
+	for limb in legs + arms:
+		MU.merge_static(limb)
+	MU.merge_static(self)
 	MU.interactable(self, Vector3(0.55, 1.8, 0.45), Vector3(0, 0.9, 0), hint_fn, action)
 	speech = Label3D.new()
 	speech.position = Vector3(0, 2.08, 0)

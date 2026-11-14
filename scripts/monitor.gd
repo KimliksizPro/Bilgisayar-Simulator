@@ -33,13 +33,14 @@ func _ready() -> void:
 	screen.material_override = m
 	screen.position = Vector3(0, 0.435, 0.0128)
 	add_child(screen)
+	MU.merge_static(self)
 	show_off()
 
 
 func _build_screen() -> void:
 	vp = SubViewport.new()
 	vp.size = Vector2i(640, 360)
-	vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	vp.render_target_update_mode = SubViewport.UPDATE_ONCE
 	add_child(vp)
 	var root := Control.new()
 	root.size = Vector2(640, 360)
@@ -119,8 +120,13 @@ func _build_screen() -> void:
 	root.add_child(center_box)
 
 
+func _refresh() -> void:
+	vp.render_target_update_mode = SubViewport.UPDATE_ONCE
+
+
 func _reset(color: Color) -> void:
 	_token += 1
+	_refresh()
 	bg.color = color
 	desktop.visible = false
 	text.text = ""
@@ -160,14 +166,19 @@ func boot(pc) -> void:
 		if my != _token:
 			return
 		text.text += l + "\n"
+		_refresh()
 	await get_tree().create_timer(0.9).timeout
 	if my != _token:
 		return
 	text.text = ""
 	desktop.visible = true
+	_refresh()
 
 
 func _process(_delta: float) -> void:
 	if desktop.visible:
 		var t := Time.get_time_dict_from_system()
-		clock.text = "%02d:%02d" % [t.hour, t.minute]
+		var c := "%02d:%02d" % [t.hour, t.minute]
+		if clock.text != c:
+			clock.text = c
+			_refresh()

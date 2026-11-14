@@ -92,7 +92,8 @@ static var _rbox_cache := {}
 
 ## Kenarları yuvarlatılmış kutu. Keskin kutulardan çok daha "gerçek" görünür (kenarlar ışığı yakalar).
 static func rbox(parent: Node, size: Vector3, pos: Vector3, m: Material, radius := 0.01, rot := Vector3.ZERO) -> MeshInstance3D:
-	return _add(parent, rounded_box_mesh(size, radius), pos, m, rot)
+	var seg := 1 if radius <= 0.006 else 2
+	return _add(parent, rounded_box_mesh(size, radius, seg), pos, m, rot)
 
 
 static func rounded_box_mesh(size: Vector3, radius: float, seg := 3) -> ArrayMesh:
@@ -245,7 +246,7 @@ static func interactable(parent: Node, size: Vector3, pos: Vector3, hint_fn: Cal
 
 
 ## Fan: ekseni yerel Y. Dönen kısmı (rotor) döndürür.
-static func fan(parent: Node, radius: float, pos: Vector3, rot: Vector3, frame_m: Material, blade_m: Material, ring_m: Material = null) -> Node3D:
+static func fan(parent: Node, radius: float, pos: Vector3, rot: Vector3, frame_m: Material, blade_m: Material, ring_m: Material = null, hub_m: Material = null) -> Node3D:
 	var root := Node3D.new()
 	root.position = pos
 	root.rotation_degrees = rot
@@ -253,14 +254,70 @@ static func fan(parent: Node, radius: float, pos: Vector3, rot: Vector3, frame_m
 	var depth := radius * 0.45
 	torus(root, radius * 0.9, radius * 1.02, Vector3.ZERO, ring_m if ring_m else frame_m)
 	var rotor := Node3D.new()
+	no_merge(rotor)
 	root.add_child(rotor)
 	cyl(rotor, radius * 0.3, depth, Vector3.ZERO, frame_m, Vector3.ZERO, 14)
+	if hub_m:
+		cyl(rotor, radius * 0.22, depth * 0.1, Vector3(0, depth * 0.52, 0), hub_m, Vector3.ZERO, 14)
+		cyl(rotor, radius * 0.22, depth * 0.1, Vector3(0, -depth * 0.52, 0), hub_m, Vector3.ZERO, 14)
 	for i in 7:
 		var piv := Node3D.new()
 		piv.rotation.y = TAU * i / 7.0
 		rotor.add_child(piv)
 		box(piv, Vector3(radius * 0.6, depth * 0.12, radius * 0.34), Vector3(radius * 0.58, 0, 0), blade_m, Vector3(28, 0, 0))
+	merge_static(rotor)
 	return rotor
+
+
+# ---------------------------------------------------------------- optimizasyon
+
+## Bu düğüm (ve altı) birleştirilmez: hareket eden/dönen/görünürlüğü değişen şeyler için.
+static func no_merge(n: Node) -> Node:
+	n.set_meta("no_merge", true)
+	return n
+
+
+## Static batching: root altındaki sabit MeshInstance'ları malzemeye göre tek bir mesh'te birleştirir.
+## Yüzlerce küçük nesne (tuşlar, kanatçıklar, vidalar) birkaç draw call'a iner.
+static func merge_static(root: Node3D) -> MeshInstance3D:
+	var tools := {}
+	var order := []
+	for mi in root.find_children("*", "MeshInstance3D", true, false):
+		if mi.mesh == null or not mi.visible:
+			continue
+		var mat: Material = mi.material_override
+		if mat == null or (mat is BaseMaterial3D and mat.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED):
+			continue
+		var rel: Transform3D = mi.transform
+		var p: Node = mi
+		var ok := not mi.has_meta("no_merge")
+		while ok and p != root:
+			p = p.get_parent()
+			if p == null or not (p is Node3D) or p.has_meta("no_merge"):
+				ok = false
+			elif p != root:
+				rel = p.transform * rel
+		if not ok:
+			continue
+		if not tools.has(mat):
+			var st := SurfaceTool.new()
+			st.begin(Mesh.PRIMITIVE_TRIANGLES)
+			tools[mat] = st
+			order.append(mat)
+		for si in mi.mesh.get_surface_count():
+			tools[mat].append_from(mi.mesh, si, rel)
+		mi.mesh = null
+	if order.is_empty():
+		return null
+	var am := ArrayMesh.new()
+	for mat in order:
+		tools[mat].commit(am)
+		am.surface_set_material(am.get_surface_count() - 1, mat)
+	var merged := MeshInstance3D.new()
+	merged.name = "Merged"
+	merged.mesh = am
+	root.add_child(merged)
+	return merged
 
 
 # ---------------------------------------------------------------- dokular

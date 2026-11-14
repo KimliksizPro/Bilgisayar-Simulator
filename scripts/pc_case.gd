@@ -30,6 +30,7 @@ var rgb_mats: Array = []
 var hum: AudioStreamPlayer3D
 var led_mat: StandardMaterial3D
 var inner_light: OmniLight3D
+var debug_leds := {}
 var _hue := 0.0
 
 
@@ -76,7 +77,7 @@ func _build() -> void:
 		func(_p): return "Güç düğmesi  [E]" if not powered else "Bilgisayarı kapat  [E]",
 		func(_p): power_button())
 	# cam yan kapak (menteşe arka kenarda)
-	panel_pivot = Node3D.new()
+	panel_pivot = MU.no_merge(Node3D.new())
 	panel_pivot.position = Vector3(W / 2 - 0.002, 0, -D / 2)
 	add_child(panel_pivot)
 	var panel = MU.interactable(panel_pivot, Vector3(0.006, H, D), Vector3(0, H / 2, D / 2),
@@ -88,6 +89,7 @@ func _build() -> void:
 	MU.box(panel, Vector3(0.005, 0.01, D), Vector3(0, -H / 2 + 0.005, 0), frame_m)
 	MU.box(panel, Vector3(0.005, H, 0.01), Vector3(0, 0, D / 2 - 0.005), frame_m)
 	MU.box(panel, Vector3(0.005, H, 0.01), Vector3(0, 0, -D / 2 + 0.005), frame_m)
+	MU.merge_static(panel_pivot)
 	_build_board()
 	# fanlar
 	var fan_frame := MU.mat(Color(0.1, 0.1, 0.11))
@@ -101,6 +103,7 @@ func _build() -> void:
 	for name in SLOT_POS:
 		var s = SLOT.new()
 		s.name = name
+		MU.no_merge(s)
 		s.position = SLOT_POS[name]
 		add_child(s)
 		s.setup("ram" if name.begins_with("ram") else name, self)
@@ -115,6 +118,9 @@ func _build() -> void:
 	inner_light.light_energy = 0.35
 	inner_light.light_color = Color(0.9, 0.95, 1.0)
 	add_child(inner_light)
+	for f in case_fans:
+		MU.no_merge(f)
+	MU.merge_static(self)
 	hum = AudioStreamPlayer3D.new()
 	hum.stream = Game.sfx.hum()
 	hum.volume_db = -14.0
@@ -125,28 +131,80 @@ func _build() -> void:
 func _build_board() -> void:
 	var board := Node3D.new()
 	add_child(board)
+	var bx := -0.0875  # anakart ön yüzeyi
 	MU.box(board, Vector3(0.005, 0.3, 0.3), Vector3(-0.09, 0.29, -0.02), MU.tex_mat(MU.pcb_texture(Color(0.06, 0.07, 0.09))))
-	var dark := MU.mat(Color(0.05, 0.05, 0.06))
-	var metal := MU.mat(Color(0.55, 0.56, 0.6), 0.85, 0.35)
-	MU.box(board, Vector3(0.002, 0.05, 0.05), SLOT_POS.cpu + Vector3(0.0005, 0, 0), MU.mat(Color(0.75, 0.72, 0.6), 0.6, 0.4))
+	var dark := MU.mat(Color(0.05, 0.05, 0.06), 0.1, 0.5)
+	var slot_m := MU.mat(Color(0.1, 0.1, 0.11), 0.1, 0.45)
+	var metal := MU.mat(Color(0.5, 0.52, 0.56), 0.85, 0.3)
+	var dark_metal := MU.mat(Color(0.18, 0.19, 0.21), 0.85, 0.35)
+	var silver := MU.mat(Color(0.82, 0.83, 0.85), 0.95, 0.25)
+	# CPU soketi
+	var cpu: Vector3 = SLOT_POS.cpu
+	MU.rbox(board, Vector3(0.003, 0.058, 0.058), cpu + Vector3(0.0015, 0, 0), MU.mat(Color(0.72, 0.7, 0.62), 0.6, 0.4), 0.002)
+	MU.cyl(board, 0.0012, 0.05, cpu + Vector3(0.003, 0, 0.033), silver, Vector3.ZERO, 6)
+	# VRM soğutucuları (oluklu)
+	MU.rbox(board, Vector3(0.016, 0.022, 0.07), Vector3(bx + 0.008, 0.418, -0.06), dark_metal, 0.002)
+	for i in 4:
+		MU.box(board, Vector3(0.0165, 0.0015, 0.07), Vector3(bx + 0.008, 0.409 + i * 0.006, -0.06), metal)
+	MU.rbox(board, Vector3(0.016, 0.07, 0.022), Vector3(bx + 0.008, 0.36, -0.122), dark_metal, 0.002)
+	for i in 4:
+		MU.box(board, Vector3(0.0165, 0.07, 0.0015), Vector3(bx + 0.008, 0.36, -0.131 + i * 0.006), metal)
+	# kondansatörler
+	for i in 6:
+		MU.cyl(board, 0.003, 0.008, Vector3(bx + 0.004, 0.398, -0.088 + i * 0.011), silver, Vector3(0, 0, 90), 10)
+	for i in 5:
+		MU.cyl(board, 0.003, 0.008, Vector3(bx + 0.004, 0.33 - i * 0.011, -0.104), silver, Vector3(0, 0, 90), 10)
+	# RAM yuvaları + mandallar
 	for z in [SLOT_POS.ram1.z, SLOT_POS.ram2.z]:
-		MU.box(board, Vector3(0.006, 0.14, 0.006), Vector3(-0.085, 0.35, z), dark)
-	MU.box(board, Vector3(0.006, 0.006, 0.09), Vector3(-0.085, 0.235, -0.07), dark)
-	MU.box(board, Vector3(0.006, 0.006, 0.04), Vector3(-0.085, 0.16, -0.09), dark)
-	MU.box(board, Vector3(0.015, 0.02, 0.06), Vector3(-0.08, 0.418, -0.06), metal)
-	MU.box(board, Vector3(0.015, 0.06, 0.02), Vector3(-0.08, 0.36, -0.12), metal)
-	MU.box(board, Vector3(0.01, 0.05, 0.05), Vector3(-0.083, 0.18, 0.06), metal)
-	MU.box(board, Vector3(0.03, 0.08, 0.03), Vector3(-0.072, 0.38, -0.155), MU.mat(Color(0.3, 0.3, 0.33), 0.7, 0.4))
-	MU.box(board, Vector3(0.008, 0.05, 0.012), Vector3(-0.084, 0.34, 0.11), MU.mat(Color(0.9, 0.9, 0.88)))
+		MU.box(board, Vector3(0.006, 0.14, 0.006), Vector3(bx + 0.003, 0.35, z), slot_m)
+		for y in [0.279, 0.421]:
+			MU.box(board, Vector3(0.008, 0.006, 0.006), Vector3(bx + 0.004, y, z), MU.mat(Color(0.6, 0.6, 0.62), 0.2, 0.5))
+	# PCIe yuvaları (metal destekli)
+	MU.box(board, Vector3(0.006, 0.006, 0.09), Vector3(bx + 0.003, 0.235, -0.07), slot_m)
+	MU.box(board, Vector3(0.0065, 0.0068, 0.088), Vector3(bx + 0.0028, 0.235, -0.07), silver)
+	MU.box(board, Vector3(0.006, 0.006, 0.09), Vector3(bx + 0.003, 0.152, -0.07), slot_m)
+	MU.box(board, Vector3(0.006, 0.006, 0.025), Vector3(bx + 0.003, 0.205, -0.1), slot_m)
+	# M.2 soğutucu
+	MU.rbox(board, Vector3(0.004, 0.02, 0.08), Vector3(bx + 0.002, 0.18, -0.01), dark_metal, 0.0015)
+	var m2 := MU.label(board, "M.2", Vector3(bx + 0.0042, 0.18, 0.015), 40, Color(0.75, 0.75, 0.78), Vector3(0, 90, 0), 0.0003)
+	m2.double_sided = false
+	# yonga seti soğutucusu + logo
+	MU.rbox(board, Vector3(0.008, 0.045, 0.045), Vector3(bx + 0.004, 0.172, 0.085), dark_metal, 0.004)
+	var logo := MU.label(board, "BİLGİ\nBOARD", Vector3(bx + 0.0082, 0.172, 0.085), 40, Color(0.85, 0.7, 0.3), Vector3(0, 90, 0), 0.00028)
+	logo.double_sided = false
+	# SATA portları (ön kenar)
+	for i in 4:
+		MU.rbox(board, Vector3(0.008, 0.006, 0.01), Vector3(bx + 0.004, 0.2 + i * 0.009, 0.122), MU.mat(Color(0.1, 0.12, 0.3), 0, 0.4), 0.001)
+	# CMOS pili
+	MU.cyl(board, 0.01, 0.003, Vector3(bx + 0.0015, 0.268, 0.1), silver, Vector3(0, 0, 90), 20)
+	# 24-pin güç konnektörü
+	MU.rbox(board, Vector3(0.01, 0.055, 0.012), Vector3(bx + 0.005, 0.35, 0.112), dark, 0.0015)
+	for i in 6:
+		MU.box(board, Vector3(0.0102, 0.004, 0.009), Vector3(bx + 0.005, 0.328 + i * 0.009, 0.112), MU.mat(Color(0.18, 0.18, 0.2)))
+	# hata LED'leri (CPU / DRAM / VGA / BOOT)
+	var names := ["CPU", "DRAM", "VGA", "BOOT"]
+	for i in names.size():
+		var lm := MU.new_mat(Color(0.25, 0.12, 0.05), 0, 0.4)
+		debug_leds[names[i]] = lm
+		MU.box(board, Vector3(0.002, 0.003, 0.005), Vector3(bx + 0.001, 0.432 - i * 0.008, 0.096), lm)
+		var ll := MU.label(board, names[i], Vector3(bx + 0.0011, 0.432 - i * 0.008, 0.085), 24, Color(0.9, 0.9, 0.9), Vector3(0, 90, 0), 0.00022)
+		ll.double_sided = false
+	# arka I/O kapağı
+	MU.rbox(board, Vector3(0.03, 0.08, 0.03), Vector3(-0.072, 0.38, -0.155), MU.mat(Color(0.22, 0.22, 0.25), 0.7, 0.35), 0.004)
+	var io := MU.label(board, "GAMING", Vector3(-0.0565, 0.38, -0.155), 40, Color(0.85, 0.2, 0.25), Vector3(0, 90, 90), 0.00035)
+	io.double_sided = false
+	# ses kondansatörleri
+	for i in 3:
+		MU.cyl(board, 0.0035, 0.009, Vector3(bx + 0.0045, 0.155 + i * 0.012, 0.035), MU.mat(Color(0.85, 0.7, 0.25), 0.6, 0.35), Vector3(0, 0, 90), 10)
 	# kablolar (24-pin ve CPU güç kablosu)
 	var cable := MU.mat(Color(0.06, 0.06, 0.07), 0, 0.7)
 	for i in 4:
-		MU.cyl(board, 0.0035, 0.2, Vector3(-0.075 + i * 0.008, 0.2, 0.135), cable, Vector3.ZERO, 8)
+		MU.cyl(board, 0.0035, 0.2, Vector3(-0.072 + i * 0.008, 0.2, 0.135), cable, Vector3.ZERO, 8)
 	MU.cyl(board, 0.004, 0.25, Vector3(-0.08, 0.3, -0.19), cable, Vector3.ZERO, 8)
 	MU.cyl(board, 0.004, 0.06, Vector3(-0.08, 0.425, -0.16), cable, Vector3(90, 0, 0), 8)
-	# arka I/O plakası ve PCIe braketleri
+	# PCIe braketleri (arka)
 	for i in 5:
-		MU.box(board, Vector3(0.03, 0.012, 0.002), Vector3(-0.06, 0.25 - i * 0.02, -0.217), MU.mat(Color(0.5, 0.5, 0.52), 0.85, 0.35))
+		MU.box(board, Vector3(0.03, 0.012, 0.002), Vector3(-0.06, 0.25 - i * 0.02, -0.217), metal)
 
 
 ## Müşteri bilgisayarını doldurur. parts: [[slot_adı, tip, seviye, bozuk_mu], ...]
@@ -219,6 +277,13 @@ func power_button() -> void:
 		Game.msg("Hiçbir tepki yok... Fanlar bile dönmüyor.", Color(1, 0.6, 0.4))
 		return
 	powered = true
+	var led_name: String = {"cpu": "CPU", "ram": "DRAM", "gpu": "VGA", "ssd": "BOOT"}.get(code, "")
+	if led_name != "":
+		var lm: StandardMaterial3D = debug_leds[led_name]
+		lm.albedo_color = Color(1.0, 0.45, 0.1)
+		lm.emission_enabled = true
+		lm.emission = Color(1.0, 0.45, 0.1)
+		lm.emission_energy_multiplier = 6.0
 	led_mat.emission_enabled = true
 	led_mat.emission = Color(0.2, 0.6, 1.0)
 	led_mat.emission_energy_multiplier = 3.0
@@ -247,6 +312,9 @@ func power_button() -> void:
 
 func power_off() -> void:
 	powered = false
+	for lm in debug_leds.values():
+		lm.emission_enabled = false
+		lm.albedo_color = Color(0.25, 0.12, 0.05)
 	led_mat.emission_enabled = false
 	hum.stop()
 	for m in _all_rgb():

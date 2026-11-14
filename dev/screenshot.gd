@@ -23,6 +23,9 @@ func _ready() -> void:
 	await get_tree().create_timer(2.5).timeout
 	await _shot(p, Vector3(0.0, 0, -1.7), 0, -25, "powered")
 	await _shot(p, Vector3(-2.6, 0, -0.9), 90, -15, "shelf")
+	p.cam.fov = 32
+	await _shot(p, Vector3(0.48, 0, -1.75), 0, -40, "closeup")
+	p.cam.fov = 72
 	get_tree().quit()
 
 
