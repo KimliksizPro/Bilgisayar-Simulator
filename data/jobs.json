@@ -1,0 +1,365 @@
+{
+ "base_parts": [
+  [
+   "psu",
+   "psu",
+   1
+  ],
+  [
+   "cpu",
+   "cpu",
+   1
+  ],
+  [
+   "ram1",
+   "ram",
+   1
+  ],
+  [
+   "gpu",
+   "gpu",
+   1
+  ],
+  [
+   "ssd",
+   "ssd",
+   1
+  ]
+ ],
+ "text": {
+  "names": [
+   "Ahmet Abi",
+   "Ayşe Teyze",
+   "Mehmet",
+   "Zeynep",
+   "Kerem",
+   "Hasan Amca",
+   "Elif",
+   "Burak",
+   "Fatma Abla",
+   "Emre",
+   "Selin",
+   "Mustafa Amca"
+  ],
+  "vague_pc": [
+   "Bozuldu abi, bi bakıver.",
+   "Ne olduğunu anlamadım, bir sabah açılmadı.",
+   "Oğlan bişey yaptı, çalışmıyor artık.",
+   "Abi bu bilgisayar bozuk, acil lazım."
+  ],
+  "vague_laptop": [
+   "Laptop bozuldu usta, bi bakıver.",
+   "Üniversite ödevim içinde, ne olur kurtar şu laptopu.",
+   "Bu laptop bir tuhaf usta, ne olduğunu sen anla."
+  ],
+  "vague_phone": [
+   "Telefon bozuldu usta, WhatsApp gruplarından kopmuşum.",
+   "Annemin telefonu, bir tuhaf oldu, bi bakar mısın?",
+   "Telefon bozuk usta, bugün lazım."
+  ],
+  "sale_lines": [
+   "Usta bir %s lazım, var mı sende?",
+   "Merhaba, %s alacaktım. Stokta var mı?",
+   "Oğlana %s alacağım, en iyisinden ver usta.",
+   "Kendim takacağım abi, bir %s versene."
+  ],
+  "fail_default": [
+   "Usta bu bilgisayar hâlâ düzgün çalışmıyor ki!"
+  ],
+  "warranty_pc_intro": [
+   "Usta taktığın parça bozuldu, garantiden bakacaksın!"
+  ],
+  "warranty_pc_goal": [
+   "GARANTİ: ücretsiz tamir. Takılan %s bozulmuş; değiştir. Hızlı çözersen itibarın düzelir."
+  ],
+  "warranty_dev_intro": [
+   "Usta geçen gün taktığın parça bozuldu, garantiden bakacaksın!"
+  ],
+  "warranty_dev_goal": [
+   "GARANTİ: ücretsiz tamir. Takılan %s bozulmuş; değiştir."
+  ]
+ },
+ "templates": [
+  {
+   "id": "repair_psu",
+   "kind": "repair",
+   "job_kind": "repair",
+   "family": "psu",
+   "weight": 8,
+   "min_money": 0,
+   "min_day": 0,
+   "min_rep": 0.0,
+   "fault": "psu_dead",
+   "specific_chance": 0.6,
+   "intro_pool": "vague_pc",
+   "goal": "Arızalı parçayı bul ve değiştir.",
+   "ram2_chance": 0.5
+  },
+  {
+   "id": "repair_cpu",
+   "kind": "repair",
+   "job_kind": "repair",
+   "family": "cpu",
+   "weight": 8,
+   "min_money": 0,
+   "min_day": 0,
+   "min_rep": 0.0,
+   "fault": "cpu_dead",
+   "specific_chance": 0.6,
+   "intro_pool": "vague_pc",
+   "goal": "Arızalı parçayı bul ve değiştir.",
+   "ram2_chance": 0.5
+  },
+  {
+   "id": "repair_ram",
+   "kind": "repair",
+   "job_kind": "repair",
+   "family": "ram",
+   "weight": 7,
+   "min_money": 0,
+   "min_day": 0,
+   "min_rep": 0.0,
+   "fault": "ram_dead",
+   "specific_chance": 0.6,
+   "intro_pool": "vague_pc",
+   "goal": "Arızalı parçayı bul ve değiştir.",
+   "ram2_chance": 0.5
+  },
+  {
+   "id": "repair_gpu",
+   "kind": "repair",
+   "job_kind": "repair",
+   "family": "gpu",
+   "weight": 7,
+   "min_money": 0,
+   "min_day": 0,
+   "min_rep": 0.0,
+   "fault": "gpu_dead",
+   "specific_chance": 0.6,
+   "intro_pool": "vague_pc",
+   "goal": "Arızalı parçayı bul ve değiştir.",
+   "ram2_chance": 0.5
+  },
+  {
+   "id": "repair_ssd",
+   "kind": "repair",
+   "job_kind": "repair",
+   "family": "ssd",
+   "weight": 7,
+   "min_money": 0,
+   "min_day": 0,
+   "min_rep": 0.0,
+   "fault": "ssd_dead",
+   "specific_chance": 0.6,
+   "intro_pool": "vague_pc",
+   "goal": "Arızalı parçayı bul ve değiştir.",
+   "ram2_chance": 0.5
+  },
+  {
+   "id": "overheat_dust",
+   "kind": "overheat",
+   "job_kind": "overheat_dust",
+   "family": "cooling",
+   "weight": 4,
+   "min_money": 0,
+   "min_day": 0,
+   "min_rep": 0.0,
+   "fault": "overheat_dust",
+   "specific_chance": 1.0,
+   "goal": "Bilgisayar aşırı ısınıp kapanıyor. Nedenini bul ve gider."
+  },
+  {
+   "id": "overheat_paste",
+   "kind": "overheat",
+   "job_kind": "overheat_paste",
+   "family": "cooling",
+   "weight": 4,
+   "min_money": 0,
+   "min_day": 0,
+   "min_rep": 0.0,
+   "fault": "overheat_paste",
+   "specific_chance": 1.0,
+   "goal": "Bilgisayar aşırı ısınıp kapanıyor. Nedenini bul ve gider."
+  },
+  {
+   "id": "upgrade_gpu",
+   "kind": "upgrade",
+   "job_kind": "upgrade_gpu",
+   "family": "gpu",
+   "weight": 5,
+   "min_money": 0,
+   "min_day": 0,
+   "min_rep": 0.0,
+   "intro": "Oyunlar çok kasıyor usta. Bana iyi bir ekran kartı tak, parasını veririm.",
+   "goal": "Oyuncu (RGB) ekran kartı tak.",
+   "pay_part": [
+    "gpu",
+    2
+   ],
+   "pay_count": 1,
+   "pay_extra": 140,
+   "with_base_parts": true,
+   "target": {
+    "part": "gpu",
+    "min_tier": 2,
+    "fail": "Abi bu aynı kart, oyunlar yine kasacak."
+   }
+  },
+  {
+   "id": "upgrade_ram",
+   "kind": "upgrade",
+   "job_kind": "upgrade_ram",
+   "family": "ram",
+   "weight": 5,
+   "min_money": 0,
+   "min_day": 0,
+   "min_rep": 0.0,
+   "intro": "Chrome açınca bilgisayar donuyor. RAM'i 32 GB yap abi.",
+   "goal": "Toplam RAM'i 32 GB'a çıkar (2 x 16 GB).",
+   "pay_part": [
+    "ram",
+    2
+   ],
+   "pay_count": 2,
+   "pay_extra": 110,
+   "with_base_parts": true,
+   "target": {
+    "ram_gb": 32,
+    "fail": "Usta RAM hâlâ %d GB, 32 olacaktı."
+   }
+  },
+  {
+   "id": "build",
+   "kind": "build",
+   "job_kind": "build",
+   "family": "build",
+   "weight": 5,
+   "min_money": 300,
+   "min_day": 0,
+   "min_rep": 0.0,
+   "hours": 7.0,
+   "intro": "Sıfırdan bir bilgisayar topla abi. Kasa bende, parçaları sen al, toplayınca hakkını veririm.",
+   "goal": "Boş kasaya tüm parçaları tak ve çalıştır.",
+   "pay_extra": 600
+  },
+  {
+   "id": "sale_ram1",
+   "kind": "sale",
+   "job_kind": "sale",
+   "family": "ram",
+   "weight": 2,
+   "min_money": 0,
+   "min_day": 0,
+   "min_rep": 0.0,
+   "want": "ram:1",
+   "intro_pool": "sale_lines",
+   "goal": "Raftan %s al, elinde tutarken müşteriyle konuş [E]."
+  },
+  {
+   "id": "sale_ram2",
+   "kind": "sale",
+   "job_kind": "sale",
+   "family": "ram",
+   "weight": 1,
+   "min_money": 0,
+   "min_day": 0,
+   "min_rep": 0.0,
+   "want": "ram:2",
+   "intro_pool": "sale_lines",
+   "goal": "Raftan %s al, elinde tutarken müşteriyle konuş [E]."
+  },
+  {
+   "id": "sale_ssd",
+   "kind": "sale",
+   "job_kind": "sale",
+   "family": "ssd",
+   "weight": 3,
+   "min_money": 0,
+   "min_day": 0,
+   "min_rep": 0.0,
+   "want": "ssd:1",
+   "intro_pool": "sale_lines",
+   "goal": "Raftan %s al, elinde tutarken müşteriyle konuş [E]."
+  },
+  {
+   "id": "sale_psu",
+   "kind": "sale",
+   "job_kind": "sale",
+   "family": "psu",
+   "weight": 3,
+   "min_money": 0,
+   "min_day": 0,
+   "min_rep": 0.0,
+   "want": "psu:1",
+   "intro_pool": "sale_lines",
+   "goal": "Raftan %s al, elinde tutarken müşteriyle konuş [E]."
+  },
+  {
+   "id": "sale_gpu1",
+   "kind": "sale",
+   "job_kind": "sale",
+   "family": "gpu",
+   "weight": 1,
+   "min_money": 0,
+   "min_day": 0,
+   "min_rep": 0.0,
+   "want": "gpu:1",
+   "intro_pool": "sale_lines",
+   "goal": "Raftan %s al, elinde tutarken müşteriyle konuş [E]."
+  },
+  {
+   "id": "sale_gpu2",
+   "kind": "sale",
+   "job_kind": "sale",
+   "family": "gpu",
+   "weight": 1,
+   "min_money": 0,
+   "min_day": 0,
+   "min_rep": 0.0,
+   "want": "gpu:2",
+   "intro_pool": "sale_lines",
+   "goal": "Raftan %s al, elinde tutarken müşteriyle konuş [E]."
+  },
+  {
+   "id": "sale_cpu",
+   "kind": "sale",
+   "job_kind": "sale",
+   "family": "cpu",
+   "weight": 4,
+   "min_money": 0,
+   "min_day": 0,
+   "min_rep": 0.0,
+   "want": "cpu:1",
+   "intro_pool": "sale_lines",
+   "goal": "Raftan %s al, elinde tutarken müşteriyle konuş [E]."
+  },
+  {
+   "id": "device_laptop",
+   "kind": "device",
+   "job_kind": "laptop",
+   "family": "laptop",
+   "weight": 14,
+   "min_money": 0,
+   "min_day": 0,
+   "min_rep": 0.0,
+   "device": "laptop",
+   "specific_chance": 0.7,
+   "intro_pool": "vague_laptop",
+   "goal": "Laptopu çalıştır, ekranındaki hatayı oku. Arızalı parçayı bul ve değiştir."
+  },
+  {
+   "id": "device_phone",
+   "kind": "device",
+   "job_kind": "phone",
+   "family": "phone",
+   "weight": 11,
+   "min_money": 0,
+   "min_day": 0,
+   "min_rep": 0.0,
+   "device": "phone",
+   "specific_chance": 0.7,
+   "intro_pool": "vague_phone",
+   "goal": "Telefonu aç, belirtiye bak. Arızalı parçayı bul ve değiştir."
+  }
+ ]
+}

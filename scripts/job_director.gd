@@ -3,41 +3,39 @@ extends RefCounted
 ## Aynı iş art arda gelmez, aynı parça ailesi (gpu, ram...) en fazla 2 kez üst üste gelir.
 
 const HISTORY_LEN := 4
-const BUILD_MIN_MONEY := 300
 
-## id -> [ağırlık, aile]. Toplam 100; aile payı en çok ~%15.
-const TABLE := {
-	"repair_psu": [8, "psu"], "repair_cpu": [8, "cpu"], "repair_ram": [7, "ram"],
-	"repair_gpu": [7, "gpu"], "repair_ssd": [7, "ssd"],
-	"overheat_dust": [4, "cooling"], "overheat_paste": [4, "cooling"],
-	"upgrade_gpu": [5, "gpu"], "upgrade_ram": [5, "ram"], "build": [5, "build"],
-	"sale_ram1": [2, "ram"], "sale_ram2": [1, "ram"], "sale_ssd": [3, "ssd"], "sale_psu": [3, "psu"],
-	"sale_gpu1": [1, "gpu"], "sale_gpu2": [1, "gpu"], "sale_cpu": [4, "cpu"],
-	"device_laptop": [14, "laptop"], "device_phone": [11, "phone"],
-}
+## Tablo data/jobs.json'dan gelir (DB.jobs.templates()): ağırlık, aile, uygunluk (min_money/min_day/min_rep).
+## Toplam ağırlık 100 olacak şekilde ayarlı; aile payı en çok ~%15.
 
 var bag: Array = []
+var _day := 0
+var _rep := 0.0
 
 
 static func family_of(id: String) -> String:
-	return TABLE[id][1] if TABLE.has(id) else ""
+	var t = DB.jobs.template(id)
+	return t.family if t != null else ""
 
 
-static func _eligible(id: String, money: int) -> bool:
-	return id != "build" or money >= BUILD_MIN_MONEY
+## Uygunluk: para / gün / itibar eşikleri (şablondan).
+func _eligible(id: String, money: int) -> bool:
+	var t = DB.jobs.template(id)
+	return t != null and money >= t.min_money and _day >= t.min_day and _rep >= t.min_rep
 
 
 func _refill() -> void:
 	var fresh := []
-	for id in TABLE:
-		for i in TABLE[id][0]:
-			fresh.append(id)
+	for t in DB.jobs.templates():
+		for i in t.weight:
+			fresh.append(t.id)
 	fresh.shuffle()
 	bag.append_array(fresh)
 
 
 ## Sıradaki iş kimliğini seçer; history (son seçilenler, en yeni sonda) yerinde güncellenir.
-func next(money: int, history: Array) -> String:
+func next(money: int, history: Array, day := 0, rep := 0.0) -> String:
+	_day = day
+	_rep = rep
 	# uygun olmayanlar (para yetmeyen build) torbada birikmesin
 	bag = bag.filter(func(k): return _eligible(k, money))
 	if bag.is_empty():
@@ -60,7 +58,7 @@ func next(money: int, history: Array) -> String:
 		if pick != "":
 			break
 	if pick == "":  # kilitlenme olmasın: uygun herhangi biri
-		var ok := TABLE.keys().filter(func(k): return _eligible(k, money))
+		var ok := DB.jobs.templates().map(func(t): return t.id).filter(func(k): return _eligible(k, money))
 		var diff := ok.filter(func(k): return k != last)
 		pick = (diff if not diff.is_empty() else ok).pick_random()
 	history.append(pick)

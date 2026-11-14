@@ -80,6 +80,8 @@ func _ready() -> void:
 		add_child(load("res://dev/parts_shot.gd").new())
 	if "--jobdisttest" in OS.get_cmdline_user_args() and ResourceLoader.exists("res://dev/job_dist_test.gd"):
 		add_child(load("res://dev/job_dist_test.gd").new())
+	if "--jobdatatest" in OS.get_cmdline_user_args() and ResourceLoader.exists("res://dev/job_data_test.gd"):
+		add_child(load("res://dev/job_data_test.gd").new())
 	if "--holdtest" in OS.get_cmdline_user_args() and ResourceLoader.exists("res://dev/hold_test.gd"):
 		add_child(load("res://dev/hold_test.gd").new())
 	if "--holdshot" in OS.get_cmdline_user_args() and ResourceLoader.exists("res://dev/hold_shot.gd"):

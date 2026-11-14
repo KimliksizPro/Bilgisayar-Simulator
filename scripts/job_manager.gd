@@ -15,42 +15,6 @@ const DOOR := Vector3(0, 0, 3.6)
 const INSIDE := Vector3(0, 0, 2.5)
 const COUNTER := Vector3(-0.6, 0, 1.95)
 
-const NAMES := ["Ahmet Abi", "Ayşe Teyze", "Mehmet", "Zeynep", "Kerem", "Hasan Amca",
-	"Elif", "Burak", "Fatma Abla", "Emre", "Selin", "Mustafa Amca"]
-
-const REPAIR_LINES := {
-	"psu": ["Abi dün akşam bi patlama sesi geldi, şimdi düğmeye basınca hiçbir şey olmuyor.",
-		"Elektrikler gidip geldi, o günden beri bilgisayar hiç açılmıyor."],
-	"cpu": ["Fanlar dönüyor ama ekrana hiçbir şey gelmiyor, ses de çıkarmıyor.",
-		"Hız aşırtma yapayım dedim, bi koku geldi... şimdi açılmıyor."],
-	"ram": ["Açınca sürekli bip bip bip diye ötüyor abi, kafayı yedim.",
-		"Bilgisayar öterek açılmıyor, kardeşim bişey kurcaladı galiba."],
-	"gpu": ["Oyun oynarken ekran gitti, şimdi açınca bi uzun üç kısa bip sesi geliyor.",
-		"Ekrana görüntü gelmiyor, bilgisayar da garip garip ötüyor."],
-	"ssd": ["Açılıyor ama 'boot device' diye bi şey yazıyor, Windows gelmiyor.",
-		"Bilgisayar açılıyor ama işletim sistemi gelmiyor, siyah ekranda yazı var."],
-}
-const OVERHEAT_LINES := {
-	"overheat_dust": ["Oyun oynarken bilgisayar kendi kendine kapanıyor usta, fanlar da çok bağırıyor.",
-		"Fanlar jet gibi ötüyor abi, bir süre sonra da kapanıveriyor."],
-	"overheat_paste": ["Bilgisayar açılıyor ama biraz kullanınca kapanıyor usta. Kasa da sıcacık oluyor.",
-		"Yıllardır içine bakmadık abi, bir süredir kendi kendine kapanıp duruyor."],
-}
-const SALE_LINES := ["Usta bir %s lazım, var mı sende?", "Merhaba, %s alacaktım. Stokta var mı?",
-	"Oğlana %s alacağım, en iyisinden ver usta.", "Kendim takacağım abi, bir %s versene."]
-const BASE_PARTS := [["psu", "psu", 1], ["cpu", "cpu", 1], ["ram1", "ram", 1], ["gpu", "gpu", 1], ["ssd", "ssd", 1]]
-const SALE_IDS := ["sale_ram1", "sale_ram2", "sale_ssd", "sale_psu", "sale_gpu1", "sale_gpu2", "sale_cpu"]
-const SALE_WANTS := [["ram", 1], ["ram", 2], ["ssd", 1], ["psu", 1], ["gpu", 1], ["gpu", 2], ["cpu", 1]]
-const VAGUE_LINES := ["Bozuldu abi, bi bakıver.", "Ne olduğunu anlamadım, bir sabah açılmadı.",
-	"Oğlan bişey yaptı, çalışmıyor artık.", "Abi bu bilgisayar bozuk, acil lazım."]
-# Teslim reddedilince müşterinin belirtisi (teşhis koduna göre)
-const FAIL_LINES := {
-	"nopower": ["Usta düğmeye basıyorum, hiç ses yok, fanlar bile dönmüyor!", "Açmaya çalışıyorum abi, elektrik almıyor gibi, ses bile yok."],
-	"cpu": ["Fanlar dönüyor ama ekrana hiçbir şey gelmiyor, bip bip ötüyor.", "Dönüyor usta ama ekran boş, bi de garip sesler çıkarıyor."],
-	"ram": ["Uzun uzun bipliyor usta, açılmıyor.", "Açılmaya çalışıyor ama sürekli bip sesi veriyor abi."],
-	"gpu": ["Kasa çalışıyor ama monitör kapkara.", "Kasa açılıyor abi, ekrana görüntü hiç gelmiyor."],
-	"ssd": ["Açılıyor ama 'boot device not found' yazıyor abi.", "Windows'a girmiyor usta, siyah ekranda disk yok yazıyor."],
-}
 
 var world: Node3D
 var monitor
@@ -64,7 +28,6 @@ var job := {}
 # Sabır / süre ayarları
 const WAIT_PATIENCE := 60.0   # konuşulmayı bekleme sınırı (gerçek sn)
 const JOB_HOURS := 4.0        # iş süresi sınırı (oyun saati)
-const BUILD_HOURS := 7.0      # sıfırdan toplama için sınır
 
 var _gen := 0                 # gün/oturum sayacı: eski bekleyen çağrıları iptal eder
 var wait_t := 0.0
@@ -122,7 +85,7 @@ func _process(delta: float) -> void:
 
 
 func _job_limit() -> float:
-	var base := float(job.get("hours", BUILD_HOURS if job.get("kind", "") == "build" else JOB_HOURS))
+	var base := float(job.get("hours", JOB_HOURS))
 	return base * Game.patience_mult()
 
 
@@ -201,74 +164,100 @@ func _make_job() -> Dictionary:
 	# garanti dönüşü (muadil parça bozuldu) her şeyden önce gelir
 	var due := WARRANTY.take_due()
 	if not due.is_empty():
-		return WARRANTY.make_job(due, BASE_PARTS)
-	return _make_job_of(_director.next(Game.money, Game.job_history))
+		return WARRANTY.make_job(due, DB.jobs.base_parts())
+	return _make_job_of(_director.next(Game.money, Game.job_history, Game.day, Game.rep))
 
 
 ## Verilen iş kimliğinden iş üretir (geçmişe dokunmaz; testler de bunu kullanır).
-## broken: laptop/telefon için arızalı yuvayı sabitler.
+## broken: laptop/telefon için arızalı yuvayı sabitler. Şablon data/jobs.json'dan gelir.
 func _make_job_of(id: String, broken := "") -> Dictionary:
-	var j := {"name": NAMES.pick_random()}
-	if id.begins_with("device_"):
-		return DJ.make(j, id.substr(7), broken)
-	if id.begins_with("sale_"):
-		return _job_sale(j, SALE_WANTS[SALE_IDS.find(id)])
-	if id.begins_with("repair_"):
-		return _job_repair(j, id.substr(7))
-	match id:
-		"build": _job_build(j)
-		"upgrade_gpu": _job_upgrade_gpu(j)
-		"upgrade_ram": _job_upgrade_ram(j)
-		_: _overheat_job(j, BASE_PARTS, id)
-	return j
+	var t = DB.jobs.template(id)
+	var j := {"name": DB.jobs.text("names").pick_random()}
+	if t == null:
+		push_error("Bilinmeyen iş şablonu: " + id)
+		return j
+	match t.kind:
+		"device": return DJ.make(j, t.device, broken)
+		"sale": return _job_sale(j, t)
+		"repair": return _job_repair(j, t)
+		"overheat": return _job_overheat(j, t)
+	return _job_plain(j, t)  # upgrade / build
 
 
-func _job_sale(j: Dictionary, w: Array) -> Dictionary:
+## Şablondaki ücret formülü: parça bedeli x adet + sabit ek.
+func _template_pay(t) -> int:
+	var pay: int = t.pay_extra
+	if t.pay_part.size() == 2:
+		pay += PM.price(str(t.pay_part[0]), int(t.pay_part[1])) * t.pay_count
+	return pay
+
+
+## Müşteri cümlesi: sabit intro, yoksa arıza cümlesi (specific_chance) ya da şablonun metin havuzu.
+func _intro_of(t, fault) -> String:
+	if t.intro != "":
+		return t.intro
+	var vague: Array = DB.jobs.text(t.intro_pool)
+	if fault != null and not fault.customer_lines.is_empty() and (vague.is_empty() or randf() < t.specific_chance):
+		return fault.customer_lines.pick_random()
+	return vague.pick_random()
+
+
+func _job_sale(j: Dictionary, t) -> Dictionary:
 	# tezgahtan parça satışı
-	j.kind = "sale"
+	var w: Array = t.want_key()
+	var dname := PM.display_name(w[0], w[1])
+	j.kind = t.job_kind
 	j.want = w
-	j.intro = SALE_LINES.pick_random() % PM.display_name(w[0], w[1])
-	j.goal = "Raftan %s al, elinde tutarken müşteriyle konuş [E]." % PM.display_name(w[0], w[1])
+	j.intro = DB.jobs.text(t.intro_pool).pick_random() % dname
+	j.goal = t.goal % dname
 	j.pay = Game.retail_price(w[0], w[1])
 	j.parts = []
 	return j
 
 
-func _job_build(j: Dictionary) -> void:
-	j.kind = "build"
-	j.intro = "Sıfırdan bir bilgisayar topla abi. Kasa bende, parçaları sen al, toplayınca hakkını veririm."
-	j.goal = "Boş kasaya tüm parçaları tak ve çalıştır."
-	j.pay = 600
-	j.parts = []
+## Yükseltme ve sıfırdan toplama: sabit metin, formül ücret, isteğe bağlı teslim koşulu.
+func _job_plain(j: Dictionary, t) -> Dictionary:
+	j.kind = t.job_kind
+	j.intro = t.intro
+	j.goal = t.goal
+	j.pay = _template_pay(t)
+	j.parts = _with_broken(DB.jobs.base_parts(), "") if t.with_base_parts else []
+	if not t.target.is_empty():
+		j.target = t.target
+	if t.hours > 0.0:
+		j.hours = t.hours
+	return j
 
 
-func _job_upgrade_gpu(j: Dictionary) -> void:
-	j.kind = "upgrade_gpu"
-	j.intro = "Oyunlar çok kasıyor usta. Bana iyi bir ekran kartı tak, parasını veririm."
-	j.goal = "Oyuncu (RGB) ekran kartı tak."
-	j.pay = PM.price("gpu", 2) + 140
-	j.parts = _with_broken(BASE_PARTS, "")
-
-
-func _job_upgrade_ram(j: Dictionary) -> void:
-	j.kind = "upgrade_ram"
-	j.intro = "Chrome açınca bilgisayar donuyor. RAM'i 32 GB yap abi."
-	j.goal = "Toplam RAM'i 32 GB'a çıkar (2 x 16 GB)."
-	j.pay = PM.price("ram", 2) * 2 + 110
-	j.parts = _with_broken(BASE_PARTS, "")
-
-
-func _job_repair(j: Dictionary, broken: String) -> Dictionary:
-	j.kind = "repair"
-	j.broken = broken
-	j.intro = REPAIR_LINES[broken].pick_random() if randf() < 0.6 else VAGUE_LINES.pick_random()
-	j.goal = "Arızalı parçayı bul ve değiştir."
-	# ücret = parça bedeli + işçilik (işlemci/PSU teşhisi biraz daha pahalı)
-	var labor := randi_range(11, 16) * 10 if broken in ["cpu", "psu"] else randi_range(9, 14) * 10
-	j.pay = PM.price(broken, 1) + labor
-	var parts := _with_broken(BASE_PARTS, broken)
-	if randf() < 0.5:
+func _job_repair(j: Dictionary, t) -> Dictionary:
+	var f = DB.jobs.fault(t.fault)
+	j.kind = t.job_kind
+	j.broken = f.part
+	j.intro = _intro_of(t, f)
+	j.goal = t.goal
+	# ücret = parça bedeli + işçilik (arıza tanımından)
+	j.pay = PM.price(f.part, 1) + f.roll_labor()
+	var parts := _with_broken(DB.jobs.base_parts(), f.part)
+	if randf() < t.ram2_chance:
 		parts.append(["ram2", "ram", 1, false])
+	j.parts = parts
+	return j
+
+
+## Aşırı ısınma işi: kasa tozlu veya CPU macunu kurumuş (arıza tanımındaki dust/paste_dry).
+func _job_overheat(j: Dictionary, t) -> Dictionary:
+	var f = DB.jobs.fault(t.fault)
+	j.kind = t.job_kind
+	j.intro = _intro_of(t, f)
+	j.goal = t.goal
+	j.pay = f.roll_labor()
+	var parts := _with_broken(DB.jobs.base_parts(), "")
+	if f.paste_dry:
+		for i in parts.size():
+			if parts[i][0] == "cpu":
+				parts[i] = ["cpu", "cpu", 1, false, false]
+	if randf() < f.dust_chance:
+		parts.append(["dust", "", randf_range(f.dust.x, f.dust.y), false])
 	j.parts = parts
 	return j
 
@@ -329,36 +318,36 @@ func _problem() -> String:
 	if DJ.is_device(job):  # laptop / telefon kendi kontrolünü yapar
 		return pc.problem()
 	var code: String = pc.diagnose()
-	if code == "overheat":
-		return _overheat_problem()
 	if code != "ok":
-		var lines: Array = FAIL_LINES.get(code, [])
-		return lines.pick_random() if not lines.is_empty() else "Usta bu bilgisayar hâlâ düzgün çalışmıyor ki!"
-	match job.kind:
-		"upgrade_gpu":
-			var g = pc.part_in("gpu")
-			if g.tier < 2:
-				return "Abi bu aynı kart, oyunlar yine kasacak."
-		"upgrade_ram":
-			if pc.total_ram() < 32:
-				return "Usta RAM hâlâ %d GB, 32 olacaktı." % pc.total_ram()
+		var f = _fault_of(code)
+		var lines: Array = f.fail_lines if f != null else []
+		return lines.pick_random() if not lines.is_empty() else DB.jobs.text("fail_default")[0]
+	var tg: Dictionary = job.get("target", {})
+	if tg.has("min_tier"):
+		var g = pc.part_in(str(tg.part))
+		if g.tier < int(tg.min_tier):
+			return str(tg.fail)
+	if tg.has("ram_gb"):
+		if pc.total_ram() < int(tg.ram_gb):
+			return str(tg.fail) % pc.total_ram()
 	if pc.panel_open:
 		return "Kapağı kapatmadan mı vereceksin usta?"
 	return ""
+
+
+## Teşhis koduna uyan arıza tanımı; aşırı ısınmada toz mu macun mu olduğuna bakılır.
+func _fault_of(code: String):
+	if code == "overheat":
+		return DB.jobs.fault("overheat_dust" if pc.dust > 0.5 else "overheat_paste")
+	return DB.jobs.fault_by_code(code)
 
 
 ## Teslim reddedilince oyuncuya HUD'da teknik ipucu (müşteri cümlesinden ayrı).
 func _problem_hint() -> String:
 	if DJ.is_device(job) or pc == null:
 		return ""
-	match pc.diagnose():
-		"nopower": return "İpucu: Güç gelmiyor — PSU'yu kontrol et."
-		"cpu": return "İpucu: İşlemci sorunlu olabilir — CPU'yu kontrol et."
-		"ram": return "İpucu: RAM hatalı ya da takılı değil — RAM'leri kontrol et."
-		"gpu": return "İpucu: Ekran kartı arızalı olabilir — GPU'yu kontrol et."
-		"ssd": return "İpucu: Açılış diski bulunamıyor — SSD'yi kontrol et."
-		"overheat": return "İpucu: Aşırı ısınma — kasa tozunu temizle ya da CPU macununu yenile."
-	return ""
+	var f = _fault_of(pc.diagnose())
+	return f.hint if f != null else ""
 
 
 func _try_deliver() -> void:
@@ -421,29 +410,6 @@ func _finish_warranty() -> void:
 	c.walk([INSIDE, DOOR, SPAWN], func(): c.queue_free())
 	if g == _gen:
 		_next_customer(_arrival_delay())
-
-
-## Aşırı ısınma işi: kasa tozlu (overheat_dust) veya CPU macunu kurumuş (overheat_paste).
-func _overheat_job(j: Dictionary, base: Array, kind: String) -> void:
-	j.kind = kind
-	j.intro = OVERHEAT_LINES[kind].pick_random()
-	j.pay = randi_range(14, 24) * 10
-	var parts := _with_broken(base, "")
-	if kind == "overheat_dust":
-		j.goal = "Bilgisayar aşırı ısınıp kapanıyor. Nedenini bul ve gider."
-		parts.append(["dust", "", randf_range(0.75, 1.0), false])
-	else:
-		j.goal = "Bilgisayar aşırı ısınıp kapanıyor. Nedenini bul ve gider."
-		parts[1] = ["cpu", "cpu", 1, false, false]
-		if randf() < 0.3:  # biraz toz da olsun ama sorun macun
-			parts.append(["dust", "", randf_range(0.1, 0.3), false])
-	j.parts = parts
-
-
-func _overheat_problem() -> String:
-	if pc.dust > 0.5:
-		return "Usta kasanın içi hâlâ toz içinde, yine ısınıp kapanacak!"
-	return "Usta işlemcinin macunu kurumuş, yine aşırı ısınıp kapanacak!"
 
 
 ## Parça satışı: oyuncu doğru parçayı elinde tutarak konuşursa satılır.

@@ -15,7 +15,20 @@ const PM := preload("res://scripts/part_models.gd")
 const FADER := preload("res://scripts/fader.gd")
 const MUSIC := preload("res://scripts/music.gd")
 const UM := preload("res://scripts/used_market.gd")
-const DEV_ARGS := ["--propshot", "--shot", "--uishot", "--perf", "--partshot", "--looptest", "--jobdisttest", "--holdtest", "--holdshot", "--savetest"]
+# geliştirici bayrakları (her biri ayrı satırda: paralel dallarda çakışmasın)
+const DEV_ARGS := [
+	"--propshot",
+	"--shot",
+	"--uishot",
+	"--perf",
+	"--partshot",
+	"--looptest",
+	"--jobdisttest",
+	"--jobdatatest",
+	"--holdtest",
+	"--holdshot",
+	"--savetest",
+]
 
 # --- Ayarlanabilir sabitler ---
 const OPEN_HOUR := 9.0
