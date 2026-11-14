@@ -51,6 +51,36 @@ Amaç: yeni parça/arıza/iş eklemek = bir `.tres` dosyası eklemek.
 | 1.5 | Raf / tezgâh / personel rota noktaları `Marker3D` olsun (`staff.gd:13-24` sabit koordinatları kalksın) | M |
 | 1.6 | Başsız test betikleri: JobDirector dağılımı, uyumluluk kuralları, kayıt-yükleme gidiş-dönüşü | M |
 
+## Faz 1.5 — Tezgâh modu ve çoklu iş (oynanışın kalbi) ⭐
+
+Şu an tamir "uzaktan bakıp E'ye basarak" yapılıyor. PC Building Simulator'da asıl oyun tezgâhta, kasanın etrafında
+geçiyor. Bu faz oyunu "prototip"ten "oynanabilir oyun"a taşıyan en önemli adım.
+
+**Tezgâh modu**
+
+| # | İş | Boyut |
+| --- | --- | --- |
+| 1.5.1 | Tezgâha `E` → kamera yumuşakça tezgâh görünümüne geçer, fare serbest kalır; `Esc`/`Tab` ile çıkış | M |
+| 1.5.2 | Kasanın etrafında **yörünge kamera**: sağ tık sürükle döndür, tekerlek yakınlaştır, kasayı yan yatır / çevir | M |
+| 1.5.3 | Fareyle parçaya tıkla → söküm; parça **tezgâh tepsisine** iner. Tepsiden sürükle → yuvaya bırak; uyumlu yuvalar yeşil, uyumsuzlar kırmızı yanar (hayalet önizleme) | L |
+| 1.5.4 | Söküm sırası: yan kapak vidaları → kapak → GPU braketi vidası → GPU kilidi → GPU (Faz 3.5 tornavida ile) | M |
+| 1.5.5 | Parçanın üstüne gelince küçük bilgi kartı: ad, durum, spec, (teşhis aleti varsa) sağlık | S |
+| 1.5.6 | Tezgâh yan paneli: iş fişi (müşteri ne istedi), yapılacaklar listesi, tepside duran parçalar | M |
+| 1.5.7 | Laptop ve telefon için de aynı mod (yakın plan, alt kapak vidaları, ters çevirme) | M |
+| 1.5.8 | Birinci şahıs modda da tamir yapılabilsin ama tezgâh modu varsayılan ve rahat yol olsun | S |
+
+**Çoklu iş**
+
+| # | İş | Boyut |
+| --- | --- | --- |
+| 1.5.9 | Kasalar **taşınabilir nesne** olsun: müşteri tezgâha bırakır, oyuncu alıp tezgâha / rafa koyar | M |
+| 1.5.10 | Her kasaya **iş fişi** yapışık (fiş no, müşteri, teslim günü); fişe bakınca iş detayı | S |
+| 1.5.11 | **Bekleyen işler rafı**: gelen ve bitmiş PC'ler burada durur; "hazır" olanlar yeşil etiket | M |
+| 1.5.12 | Aynı anda 3-5 aktif iş; müşteri PC'yi bırakıp gider, **ertesi gün(ler) almaya gelir** (Faz 6.1 ile birlikte) | L |
+| 1.5.13 | `job_manager.gd` tek `pc` / tek `customer` değişkeninden **iş listesine** geçsin (şu an mimari tek işe kilitli) | L |
+| 1.5.14 | Teslim: müşteri tezgâha gelir, fiş numarasını söyler, raftan doğru kasayı verirsin; yanlış kasa = rezalet 😄 | S |
+| 1.5.15 | HUD'da aktif işler listesi (fiş no, kalan süre, durum); servis fişi tek iş yerine liste olsun | M |
+
 ## Faz 2 — Gerçek parça çeşitliliği ve uyumluluk
 
 Hayali markalarla (lisans derdi yok; PCBS1 de bütçe parçalarda hayali marka kullanıyor), gerçek dünya kurallarıyla.
@@ -151,6 +181,37 @@ Monitöre `E` ile bakınca kamera ekrana yaklaşır, fare serbest kalır.
 | 8.4 | Ses: bip kodları, fan sesi (tozlu fan farklı ses), tornavida | S |
 | 8.5 | Kayıt güvenliği: yedek kayıt, bozuk kayıttan kurtarma (PCBS2'de kayıt kaybı en büyük güven kırıcı) | S |
 
+## Ekstra oynanış fikirleri
+
+Araştırmadan ve tür bilgisinden çıkan, oyunu "bir tur daha" dedirtecek fikirler. Yanlarında hangi faza girdikleri yazıyor.
+
+**Müşteriyle ilişki**
+- **Ek arıza onayı** (Faz 6): söktün, anakart da gitmiş → müşteriyi ara: "Abi anakart da yanmış, 1.500 TL daha tutar, yapayım mı?" Onaylar, reddeder ya da pazarlık eder. Çok gerçekçi ve her işe karar katıyor.
+- **Ek satış (upsell)** (Faz 6): "Hazır açmışken SSD'ye geçelim mi, 10 kat hızlanır" → kabul ederse ekstra kâr, ısrar edersen itibar düşer.
+- **Veri yedeği** (Faz 3/5): formattan önce müşterinin verisini yedeklemezsen ve "düğün fotoğraflarım nerede?!" → büyük itibar kaybı. Yedekleme diski bir alet olsun.
+- **Geri dönen arıza** (Faz 6): yarım yamalak tamir (ucuz muadil PSU, macun sürmeden) → müşteri 2-3 gün sonra kızgın geri gelir. Mevcut garanti sistemi bunun temeli.
+- **Şüpheli müşteriler** (Faz 6): "garantiden" diye kendi bozduğu parçayı getiren, çalıntı olabilecek laptop satmak isteyen, şifresini unuttuğu telefonu açtırmak isteyen müşteri → ahlaki seçimler, polis/itibar sonucu.
+- **Müşteri telefonla durum sorar** (Faz 5/6): masadaki telefon çalar, "abi benimki ne oldu?"; geç kalan işlerde baskı.
+- **Kurumsal sözleşmeler** (Faz 7): mahalledeki internet kafe, okul, muhasebe bürosu → haftalık bakım anlaşması, düzenli gelir, toplu iş (5 PC birden).
+
+**Ekonomi ve dünya**
+- **Piyasa olayları** (Faz 7): sabah gazetesi / haber uygulaması: "Kripto patladı, ekran kartı fiyatları %40 arttı", "çip krizi", "okullar açılıyor → öğrenci laptop işleri artar", "bayram öncesi telefon ekranı kırılan çok". Mevcut piyasa çarpanı bunun temeli.
+- **Elektronik hurda kutusu** (Faz 4/7): hurdacıdan kilo ile kasa al, içinden çıkan sağlam parçaları test et, yenileyip sat.
+- **Yenilenmiş PC vitrini** (Faz 7.4): kendi topladığın PC'lere fiyat etiketi koy, vitrinde sat; fiyat çok yüksekse satılmaz.
+- **Benchmark hedefli toplama işleri** (Faz 6): "15.000 TL bütçe, şu oyunda 60 FPS istiyorum" → bütçe ve performans bulmacası.
+- **Zaman hızlandırma** (Faz 6): kargo / iş beklerken "dükkânı kapat ve uyu" ya da saati 2x hızlandır.
+
+**Atölye ve aletler**
+- **Lehim istasyonu** (Faz 3/7): şişmiş kondansatör değişimi, şarj soketi lehimi — basit bir mini oyun (zamanlama / sıcaklık).
+- **Overclock ve sıcaklık testi** (Faz 5.7): müşteri "biraz hızlandır" der, stres testinde çökmeden ne kadar zorlayabilirsin.
+- **Dükkân temizliği ve düzeni** (Faz 7): toz, dağınık parçalar, çöp → müşteri memnuniyetini etkiler; temizlikçi personel.
+- **Dükkân dekorasyonu** (Faz 7): poster, bitki, RGB şerit, koltuk → itibar/müşteri sabrı bonusu (PCBS2'de çok sevilen kısım).
+
+**Motivasyon**
+- **Başarımlar ve istatistikler** (Faz 7.6): "100 PSU değiştirdin", "hiç geri dönmeyen 30 iş".
+- **Hikâye dalı / ana hedef** (Faz 7.6): örneğin dükkânı devraldığın amcanın borcunu ödemek, mahallenin bir numaralı bilgisayarcısı olmak, rakip zincir mağazayla rekabet.
+- **Fotoğraf modu** (Faz 8): topladığın PC'nin fotoğrafını çek, dükkân panosuna as.
+
 ## Faz 9 — Sonra: Sokak / mahalle
 
 Mahalle, komşu esnaf, hurdacı, kargo şubesi, dükkân dışı aktiviteler. Ayrıca planlanacak.
@@ -161,11 +222,12 @@ Mahalle, komşu esnaf, hurdacı, kargo şubesi, dükkân dışı aktiviteler. Ay
 
 1. **Faz 0** — hemen (tekrar eden işler, elde tutma, build hatası)
 2. **Faz 1** — altyapı; bundan sonra içerik eklemek ucuzlar
-3. **Faz 2 + 3** — parça çeşitliliği ve arıza derinliği (oyunun kalbi)
-4. **Faz 4** — depo
-5. **Faz 5** — TamirOS
-6. **Faz 6 + 7** — müşteri/sipariş/ilerleme
-7. **Faz 8**, sonra **Faz 9** sokak
+3. **Faz 1.5** — tezgâh modu + çoklu iş (oyunu oynanabilir yapan adım)
+4. **Faz 2 + 3** — parça çeşitliliği ve arıza derinliği (oyunun kalbi)
+5. **Faz 4** — depo
+6. **Faz 5** — TamirOS
+7. **Faz 6 + 7** — müşteri/sipariş/ilerleme
+8. **Faz 8**, sonra **Faz 9** sokak
 
 ## Kaynaklar (araştırmadan seçme)
 
