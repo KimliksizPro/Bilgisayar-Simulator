@@ -99,6 +99,7 @@ func _exit_tree() -> void:
 
 func _on_bench_changed(d) -> void:
 	if state != "off":
+		_report_exit("tezgâhtaki cihaz değişti")
 		exit(true)
 	_release_tray()
 	_bind(d if is_instance_valid(d) else null)
@@ -397,7 +398,9 @@ func _process(delta: float) -> void:
 	if state == "off":
 		return
 	# cihaz tezgâhtan gitti ya da gün bitti: nazikçe çık
-	if not is_instance_valid(device) or Game.bench_device != device or Game.phase != "day" or Game.ui_modal:
+	var why := _force_exit_reason()
+	if why != "":
+		_report_exit(why)
 		exit(true)
 		return
 	var k := 1.0 - exp(-14.0 * delta)
@@ -1072,3 +1075,22 @@ func _rebuild_side(tools: Array) -> void:
 		pb.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	_side.reset_size()
 	_side.call_deferred("reset_size")  # otomatik satır kaydırmalı etiketler yerleşince yeniden boyutla
+
+
+## Tezgâh modunu zorla kapatan durum (boş = devam). Kendiliğinden kapanma şikâyetinin teşhisi için ayrı tutuldu.
+func _force_exit_reason() -> String:
+	if not is_instance_valid(device):
+		return "cihaz yok oldu"
+	if Game.bench_device != device:
+		return "tezgâhtaki cihaz değişti"
+	if Game.phase != "day":
+		return "gün bitti (%s)" % Game.phase
+	if Game.ui_modal:
+		return "bir menü açıldı"
+	return ""
+
+
+## Kendiliğinden kapanmayı oyuncuya ve konsola bildir (hata ayıklama için).
+func _report_exit(why: String) -> void:
+	push_warning("Tezgâh modu kapandı: " + why)
+	Game.msg("Tezgâh modu kapandı: " + why, Color(1.0, 0.75, 0.4))

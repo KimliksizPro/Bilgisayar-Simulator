@@ -84,6 +84,9 @@ func interact(player) -> void:
 
 func install_into(s) -> void:
 	slot = s
+	# takılı parça cihazla birlikte hareket etmeli: kinematik dondurmada fizik motoru eski
+	# dünya konumunu geri yazıp parçayı geride bırakıyordu (taşırken havada kalma hatası)
+	freeze_mode = RigidBody3D.FREEZE_MODE_STATIC
 	freeze = true
 	collision_layer = 2
 	collision_mask = 0
