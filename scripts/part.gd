@@ -4,6 +4,18 @@ extends RigidBody3D
 const PM := preload("res://scripts/part_models.gd")
 const MU := preload("res://scripts/mesh_util.gd")
 
+# tür -> [dönüş (derece), kaydırma]; bilinmeyen türler varsayılanı kullanır
+const DEFAULT_POSE := [Vector3(15, -35, 0), Vector3.ZERO]
+const HOLD_POSE := {
+	"gpu": [Vector3(10, -78, 0), Vector3(-0.02, -0.02, -0.09)],
+	"psu": [Vector3(20, -40, 0), Vector3(0.0, -0.05, -0.04)],
+	"cpu": [Vector3(25, -80, 0), Vector3(-0.02, 0.0, 0.05)],
+	"ram": [Vector3(15, -60, -20), Vector3(0.0, 0.0, 0.07)],
+	"ssd": [Vector3(40, -30, 0), Vector3(0.0, 0.0, 0.05)],
+	"lap_scr": [Vector3(50, -25, 0), Vector3(-0.03, -0.03, -0.06)],
+	"lap_bat": [Vector3(45, -30, 0), Vector3(-0.02, -0.02, -0.03)],
+}
+
 var part_type := ""
 var tier := 1
 var broken := false
@@ -46,7 +58,12 @@ func hold_center() -> Vector3:
 
 
 func hold_euler() -> Vector3:
-	return Vector3(15, -35, 0)
+	return HOLD_POSE.get(part_type, DEFAULT_POSE)[0]
+
+
+## Elde tutuş kaydırması: büyük parçalar uzağa/aşağıya, küçükler yakına.
+func hold_offset() -> Vector3:
+	return HOLD_POSE.get(part_type, DEFAULT_POSE)[1]
 
 
 ## Bazı bozuk parçalarda küçük yanık izi: ipucu ama her bozukta yok.
