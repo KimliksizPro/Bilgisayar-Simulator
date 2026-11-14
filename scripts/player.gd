@@ -4,6 +4,8 @@ extends CharacterBody3D
 const REACH := 2.2
 const VM_LAYER := 1 << 19  # 20. görsel katman: elde tutulan eşya (viewmodel)
 
+const SAFE_POS := Vector3(0.9, 0.1, -0.9)  # dükkân içi güvenli nokta (main.gd başlangıç konumu)
+
 var cam: Camera3D
 var hold: Node3D
 var held = null
@@ -149,6 +151,9 @@ func _physics_process(delta: float) -> void:
 	velocity.x = move_toward(velocity.x, dir.x * speed, 30.0 * delta)
 	velocity.z = move_toward(velocity.z, dir.z * speed, 30.0 * delta)
 	move_and_slide()
+	if global_position.y < -3.0:  # haritadan düştüyse dükkânın içine geri al
+		global_position = SAFE_POS
+		velocity = Vector3.ZERO
 	_update_target()
 
 
