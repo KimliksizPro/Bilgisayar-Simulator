@@ -78,6 +78,10 @@ func _ready() -> void:
 		add_child(load("res://dev/props_shot.gd").new())
 	if "--partshot" in OS.get_cmdline_user_args() and ResourceLoader.exists("res://dev/parts_shot.gd"):
 		add_child(load("res://dev/parts_shot.gd").new())
+	if "--holdtest" in OS.get_cmdline_user_args() and ResourceLoader.exists("res://dev/hold_test.gd"):
+		add_child(load("res://dev/hold_test.gd").new())
+	if "--holdshot" in OS.get_cmdline_user_args() and ResourceLoader.exists("res://dev/hold_shot.gd"):
+		add_child(load("res://dev/hold_shot.gd").new())
 	if "--looptest" in OS.get_cmdline_user_args() and ResourceLoader.exists("res://dev/loop_test.gd"):
 		Engine.time_scale = 4.0
 		add_child(load("res://dev/loop_test.gd").new())

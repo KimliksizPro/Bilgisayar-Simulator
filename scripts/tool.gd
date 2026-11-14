@@ -30,6 +30,7 @@ func setup(type: String):
 	MU.add_box_shape(self, size, _center)
 	mass = 0.3
 	continuous_cd = true
+	freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
 	collision_layer = 2
 	collision_mask = 1
 	return self
@@ -46,6 +47,11 @@ func hold_center() -> Vector3:
 
 func hold_euler() -> Vector3:
 	return _euler
+
+
+## Elde tutuş kaydırması (kamera altı "hold" düğümüne göre).
+func hold_offset() -> Vector3:
+	return Vector3(0, 0.0, 0.05) if tool_type == "paste" else Vector3(0.0, -0.02, 0.0)
 
 
 func get_hint(player) -> String:
