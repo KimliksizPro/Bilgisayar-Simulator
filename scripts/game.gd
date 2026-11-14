@@ -9,6 +9,7 @@ signal day_ended(summary: Dictionary)
 signal game_over(summary: Dictionary)
 signal stock_changed
 signal orders_changed
+signal bench_changed(device)  # tezgâhtaki cihaz değişti (null = boş)
 
 const SFX := preload("res://scripts/sfx.gd")
 const PM := preload("res://scripts/part_models.gd")
@@ -57,6 +58,9 @@ var money := START_MONEY
 var jobs_done := 0
 var hud = null
 var player = null
+## Tezgâhta üzerinde çalışılan cihaz (PC kasası / laptop / telefon) ya da null.
+## Tezgâh modu ve çoklu iş sistemi arasındaki ortak sözleşme: cihazı tezgâha koyan set_bench_device çağırır.
+var bench_device = null
 var sfx = null
 var fader = null
 var dev_mode := false         # dev araçları (--shot vb.) menüsüz doğrudan oyuna girer
@@ -857,3 +861,10 @@ func _load_staff(d: Dictionary) -> void:
 			"wage": int(e.get("wage", 60)), "auto": bool(e.get("auto", true))})
 	staff_next_id = int(d.get("staff_next_id", staff.size() + 1))
 	roll_staff_candidates()
+
+
+func set_bench_device(d) -> void:
+	if bench_device == d:
+		return
+	bench_device = d
+	bench_changed.emit(d)

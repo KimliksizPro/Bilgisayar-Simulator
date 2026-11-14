@@ -38,18 +38,18 @@ düzenlemek demek).
 | 0.5 ✅ | **Kayıt hataları**: ikinci el `sold` bayraklarını kaydet; saati geri yükle (veya gün ortası kaydı kaldır ama net söyle) | S | `game.gd:559,627`, `used_market.gd` |
 | 0.6 ✅ | Başarısız teslimde **neden** başarısız olduğunu söyle (Computer Repair Shop'un en çok eleştirilen kusuru) | S | |
 
-## Faz 1 — Veri altyapısı (her şeyin temeli)
+## Faz 1 — Veri altyapısı (her şeyin temeli) ✅ büyük ölçüde tamam
 
 Amaç: yeni parça/arıza/iş eklemek = bir `.tres` dosyası eklemek.
 
 | # | İş | Boyut |
 | --- | --- | --- |
-| 1.1 | `PartDef` Resource: `id, kategori, marka, model, tier, taban_fiyat, specs{}, compat{soket, ram_tipi, tdp, watt, uzunluk...}, model_builder_id, tutma_ofseti` | M |
-| 1.2 | `FaultDef` Resource: `id, cihaz_türleri, etkilenen_kategori, belirtiler (bip deseni, ekran durumu, LED), müşteri_cümleleri[], zorluk, ağırlık, min_gün/min_itibar, ücret_formülü` | M |
-| 1.3 | `JobTemplate` Resource: tamir, yükseltme, sıfırdan toplama, satış, veri kurtarma, temizlik, kurulum; kısıtlar + ödüller | M |
-| 1.4 | `game.gd`'yi böl: `Economy`, `Inventory`, `Orders`, `SaveSystem` (sürümlü şema + migration), `Day/Reputation`, `Staff` — `Game` ince bir cephe kalsın | L |
-| 1.5 | Raf / tezgâh / personel rota noktaları `Marker3D` olsun (`staff.gd:13-24` sabit koordinatları kalksın) | M |
-| 1.6 | Başsız test betikleri: JobDirector dağılımı, uyumluluk kuralları, kayıt-yükleme gidiş-dönüşü | M |
+| 1.1 ✅ | `PartDef` Resource: `id, kategori, marka, model, tier, taban_fiyat, specs{}, compat{soket, ram_tipi, tdp, watt, uzunluk...}, model_builder_id, tutma_ofseti` | M |
+| 1.2 ✅ | `FaultDef` Resource: `id, cihaz_türleri, etkilenen_kategori, belirtiler (bip deseni, ekran durumu, LED), müşteri_cümleleri[], zorluk, ağırlık, min_gün/min_itibar, ücret_formülü` | M |
+| 1.3 ✅ | `JobTemplate` Resource: tamir, yükseltme, sıfırdan toplama, satış, veri kurtarma, temizlik, kurulum; kısıtlar + ödüller | M |
+| 1.4 🟡 | (Kayıt sürümü/yedek yapıldı; servis bölme ileride, ilgili sistem elden geçerken) `game.gd`'yi böl: `Economy`, `Inventory`, `Orders`, `SaveSystem` (sürümlü şema + migration), `Day/Reputation`, `Staff` — `Game` ince bir cephe kalsın | L |
+| 1.5 🟡 | (Raf konumları artık veriden; personel rotaları kısmen sabit) Raf / tezgâh / personel rota noktaları `Marker3D` olsun (`staff.gd:13-24` sabit koordinatları kalksın) | M |
+| 1.6 ✅ | Başsız test betikleri: JobDirector dağılımı, uyumluluk kuralları, kayıt-yükleme gidiş-dönüşü | M |
 
 ## Faz 1.5 — Tezgâh modu ve çoklu iş (oynanışın kalbi) ⭐
 

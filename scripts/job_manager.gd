@@ -53,6 +53,7 @@ func begin_day() -> void:
 		pc.queue_free()
 	customer = null
 	pc = null
+	Game.set_bench_device(null)
 	_next_customer(2.0)
 
 
@@ -104,6 +105,7 @@ func _leave_angry(line: String, rep_loss: float) -> void:
 	if is_instance_valid(pc):
 		_dispose_pc(pc, 0.3)
 		pc = null
+		Game.set_bench_device(null)
 	var g := _gen
 	await get_tree().create_timer(1.5).timeout
 	if is_instance_valid(c):
@@ -300,6 +302,7 @@ func _accept() -> void:
 	pc = DJ.new_device(job) if DJ.is_device(job) else PC.new()
 	pc.transform = DJ.spot(pc, pc_spot)
 	world.add_child(pc)
+	Game.set_bench_device(pc)
 	pc.monitor = monitor
 	pc.fill(job.parts)
 	state = "working"
@@ -382,6 +385,7 @@ func _try_deliver() -> void:
 	hud.set_job("İş tamamlandı!", "")
 	var old_pc = pc
 	pc = null
+	Game.set_bench_device(null)
 	_dispose_pc(old_pc, 0.5)
 	var g := _gen
 	var c = customer
@@ -402,6 +406,7 @@ func _finish_warranty() -> void:
 	hud.set_job("Garanti işi tamamlandı!", "")
 	var old_pc = pc
 	pc = null
+	Game.set_bench_device(null)
 	_dispose_pc(old_pc, 0.5)
 	var g := _gen
 	var c = customer
