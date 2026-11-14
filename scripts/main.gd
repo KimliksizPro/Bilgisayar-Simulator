@@ -87,6 +87,8 @@ func _ready() -> void:
 	if "--looptest" in OS.get_cmdline_user_args() and ResourceLoader.exists("res://dev/loop_test.gd"):
 		Engine.time_scale = 4.0
 		add_child(load("res://dev/loop_test.gd").new())
+	if "--savetest" in OS.get_cmdline_user_args() and ResourceLoader.exists("res://dev/save_test.gd"):
+		add_child(load("res://dev/save_test.gd").new())
 
 
 ## Ana menü: akşamüstü, sokağın karşısından dükkânın vitrinine bakan, yavaşça süzülen kamera.
