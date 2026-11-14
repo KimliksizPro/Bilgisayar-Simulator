@@ -1,49 +1,22 @@
 extends RefCounted
-## Laptop ve telefon parçalarının adları, fiyatları ve prosedürel modelleri.
+## Laptop ve telefon parçalarının prosedürel modelleri.
 ## part_models.gd bu dosyaya yönlendirir. Modeller düz yatar: kalınlık Y ekseninde, merkez orijinde,
 ## ekranlarda görüntü yüzü +Y, kablolu/konnektörlü kenar +Z tarafındadır.
 
 const MU := preload("res://scripts/mesh_util.gd")
 
-const TYPES := ["lap_ram", "lap_ssd", "lap_bat", "lap_scr", "tel_bat", "tel_scr", "tel_port"]
-
-const NAMES := {
-	"lap_ram": "Laptop RAM 8 GB (SO-DIMM)",
-	"lap_ssd": "M.2 NVMe SSD 512 GB",
-	"lap_bat": "Laptop Bataryası",
-	"lap_scr": "Laptop Ekranı 15.6\"",
-	"tel_bat": "Telefon Bataryası",
-	"tel_scr": "Telefon Ekranı (OLED)",
-	"tel_port": "Şarj Soketi (USB-C)",
-}
-
-const PRICES := {
-	"lap_ram": 45, "lap_ssd": 60, "lap_bat": 70, "lap_scr": 110,
-	"tel_bat": 30, "tel_scr": 90, "tel_port": 15,
-}
-
 static var _crack_tex: Texture2D
 
 
-static func has(type: String) -> bool:
-	return NAMES.has(type)
-
-
-static func display_name(type: String, _tier: int) -> String:
-	return NAMES.get(type, type)
-
-
-static func price(type: String, _tier: int) -> int:
-	return int(PRICES.get(type, 0))
-
-
-static func build(out: Dictionary, type: String, _tier: int) -> void:
-	match type:
-		"lap_ram": _lap_ram(out.node)
-		"lap_ssd": _lap_ssd(out.node)
-		"lap_bat": _lap_bat(out.node)
-		"lap_scr": _lap_scr(out.node)
-		"tel_bat": _tel_bat(out.node)
+## Model oluşturucu: builder = parça türü; etiketler model parametrelerinden (m) gelir.
+## Ad, fiyat ve tür bilgisi artık data/parts.json'da (PM.display_name / PM.price).
+static func build(out: Dictionary, builder: String, m: Dictionary) -> void:
+	match builder:
+		"lap_ram": _lap_ram(out.node, m)
+		"lap_ssd": _lap_ssd(out.node, m)
+		"lap_bat": _lap_bat(out.node, m)
+		"lap_scr": _lap_scr(out.node, m)
+		"tel_bat": _tel_bat(out.node, m)
 		"tel_scr": _tel_scr(out.node)
 		"tel_port": _tel_port(out.node)
 
@@ -62,7 +35,7 @@ static func _text(n: Node3D, txt: String, pos: Vector3, size: int, color: Color,
 
 # ---------------------------------------------------------------- LAPTOP RAM (SO-DIMM)
 
-static func _lap_ram(n: Node3D) -> void:
+static func _lap_ram(n: Node3D, m: Dictionary) -> void:
 	MU.box(n, Vector3(0.0675, 0.0012, 0.03), Vector3.ZERO, MU.tex_mat(MU.pcb_texture(Color(0.05, 0.25, 0.12)), Vector3(1, 1, 1), 0.5))
 	# altın kontaklar (çentikli, -Z kenarı)
 	MU.box(n, Vector3(0.036, 0.0014, 0.003), Vector3(-0.012, 0, -0.0135), _gold())
@@ -72,7 +45,7 @@ static func _lap_ram(n: Node3D) -> void:
 		MU.box(n, Vector3(0.011, 0.0012, 0.009), Vector3(-0.024 + i * 0.016, 0.0011, -0.002), _chip())
 		MU.box(n, Vector3(0.011, 0.0012, 0.009), Vector3(-0.024 + i * 0.016, -0.0011, -0.002), _chip())
 	MU.box(n, Vector3(0.05, 0.0003, 0.007), Vector3(0, 0.0007, 0.0095), MU.mat(Color(0.93, 0.93, 0.9), 0, 0.6))
-	_text(n, "8GB DDR4 SO-DIMM", Vector3(0, 0.0009, 0.0095), 22, Color(0.1, 0.1, 0.1), 0.00016)
+	_text(n, m.get("label", "8GB DDR4 SO-DIMM"), Vector3(0, 0.0009, 0.0095), 22, Color(0.1, 0.1, 0.1), 0.00016)
 	# yan kilit çentikleri
 	for x in [-0.0338, 0.0338]:
 		MU.box(n, Vector3(0.0012, 0.0013, 0.004), Vector3(x, 0, 0.004), MU.mat(Color(0.6, 0.6, 0.6), 0.6, 0.4))
@@ -80,7 +53,7 @@ static func _lap_ram(n: Node3D) -> void:
 
 # ---------------------------------------------------------------- M.2 SSD
 
-static func _lap_ssd(n: Node3D) -> void:
+static func _lap_ssd(n: Node3D, m: Dictionary) -> void:
 	MU.box(n, Vector3(0.08, 0.0012, 0.022), Vector3.ZERO, MU.tex_mat(MU.pcb_texture(Color(0.05, 0.05, 0.06)), Vector3(1, 1, 1), 0.5))
 	# M-key altın konnektör (-X ucu) + vida yarımı (+X ucu)
 	MU.box(n, Vector3(0.004, 0.0014, 0.017), Vector3(-0.038, 0, 0.0015), _gold())
@@ -92,12 +65,12 @@ static func _lap_ssd(n: Node3D) -> void:
 		MU.rbox(n, Vector3(0.016, 0.0014, 0.014), Vector3(x, 0.0012, 0), _chip(), 0.0005)
 	# etiket
 	MU.box(n, Vector3(0.055, 0.0003, 0.018), Vector3(0.006, 0.0021, 0), MU.mat(Color(0.12, 0.35, 0.8), 0, 0.45))
-	_text(n, "BİLGİ NVMe\n512 GB", Vector3(0.006, 0.0024, 0), 26, Color.WHITE, 0.00017)
+	_text(n, m.get("label", "BİLGİ NVMe\n512 GB"), Vector3(0.006, 0.0024, 0), 26, Color.WHITE, 0.00017)
 
 
 # ---------------------------------------------------------------- LAPTOP BATARYASI
 
-static func _lap_bat(n: Node3D) -> void:
+static func _lap_bat(n: Node3D, m: Dictionary) -> void:
 	var wrap := MU.mat(Color(0.1, 0.1, 0.11), 0.2, 0.45)
 	MU.rbox(n, Vector3(0.22, 0.0075, 0.07), Vector3.ZERO, wrap, 0.002)
 	# üç yassı hücre (hafif kabartma)
@@ -107,7 +80,7 @@ static func _lap_bat(n: Node3D) -> void:
 	# etiket
 	MU.box(n, Vector3(0.11, 0.0004, 0.04), Vector3(0.0, 0.0046, 0.0), MU.mat(Color(0.93, 0.93, 0.9), 0, 0.6))
 	MU.box(n, Vector3(0.11, 0.00045, 0.008), Vector3(0.0, 0.0047, -0.016), MU.mat(Color(0.85, 0.15, 0.12), 0, 0.5))
-	_text(n, "Li-ion 11.4V  56Wh", Vector3(0, 0.0052, -0.016), 26, Color.WHITE, 0.00018)
+	_text(n, m.get("label", "Li-ion 11.4V  56Wh"), Vector3(0, 0.0052, -0.016), 26, Color.WHITE, 0.00018)
 	_text(n, "UYARI: Delmeyin, ateşe atmayın!\nŞişerse kullanmayın.", Vector3(0, 0.0052, 0.006), 22, Color(0.15, 0.15, 0.15), 0.00017)
 	# kablo + konnektör (+Z kenarı)
 	var red := MU.mat(Color(0.75, 0.1, 0.1), 0, 0.6)
@@ -119,23 +92,23 @@ static func _lap_bat(n: Node3D) -> void:
 
 # ---------------------------------------------------------------- LAPTOP EKRANI
 
-static func _lap_scr(n: Node3D) -> void:
+static func _lap_scr(n: Node3D, m: Dictionary) -> void:
 	# arka metal kasa + ön cam (görüntü yüzü +Y)
 	MU.rbox(n, Vector3(0.31, 0.0025, 0.19), Vector3(0, -0.0008, 0), MU.mat(Color(0.6, 0.62, 0.65), 0.85, 0.35), 0.0015)
 	MU.rbox(n, Vector3(0.306, 0.0015, 0.186), Vector3(0, 0.0012, 0), MU.mat(Color(0.015, 0.015, 0.02), 0.0, 0.3), 0.001)
 	# görüntü konnektörü (eDP) şeridi: alt kenar (+Z)
 	MU.box(n, Vector3(0.03, 0.0005, 0.012), Vector3(0.06, -0.0021, 0.085), MU.mat(Color(0.85, 0.5, 0.1), 0, 0.5))
 	MU.box(n, Vector3(0.012, 0.0012, 0.006), Vector3(0.06, -0.0026, 0.091), MU.mat(Color(0.1, 0.1, 0.1)))
-	_text(n, "15.6\" FHD IPS  eDP 30pin", Vector3(-0.05, -0.0022, 0.0), 40, Color(0.12, 0.12, 0.12), 0.0003, Vector3(90, 0, 0))
+	_text(n, m.get("label", "15.6\" FHD IPS  eDP 30pin"), Vector3(-0.05, -0.0022, 0.0), 40, Color(0.12, 0.12, 0.12), 0.0003, Vector3(90, 0, 0))
 	MU.box(n, Vector3(0.12, 0.0003, 0.03), Vector3(-0.05, -0.0021, 0.0), MU.mat(Color(0.93, 0.93, 0.9), 0, 0.6))
 
 
 # ---------------------------------------------------------------- TELEFON BATARYASI
 
-static func _tel_bat(n: Node3D) -> void:
+static func _tel_bat(n: Node3D, m: Dictionary) -> void:
 	MU.rbox(n, Vector3(0.05, 0.0038, 0.08), Vector3.ZERO, MU.mat(Color(0.12, 0.12, 0.13), 0.4, 0.35), 0.0015)
 	MU.box(n, Vector3(0.044, 0.0004, 0.05), Vector3(0, 0.002, -0.006), MU.mat(Color(0.93, 0.93, 0.9), 0, 0.6))
-	_text(n, "Li-ion\n4500 mAh\n3.85V", Vector3(0, 0.0023, -0.006), 26, Color(0.12, 0.12, 0.12), 0.00019)
+	_text(n, m.get("label", "Li-ion\n4500 mAh\n3.85V"), Vector3(0, 0.0023, -0.006), 26, Color(0.12, 0.12, 0.12), 0.00019)
 	# esnek konnektör (+Z üst ucu)
 	MU.box(n, Vector3(0.008, 0.0004, 0.012), Vector3(0.012, 0.0015, 0.044), MU.mat(Color(0.85, 0.5, 0.1), 0, 0.5))
 	MU.rbox(n, Vector3(0.01, 0.0015, 0.005), Vector3(0.012, 0.0018, 0.05), MU.mat(Color(0.08, 0.08, 0.09)), 0.0004)

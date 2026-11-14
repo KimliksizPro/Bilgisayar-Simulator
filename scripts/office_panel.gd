@@ -540,7 +540,7 @@ func _build_staff(p: Control) -> void:
 	brand.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	top.add_child(brand)
 	K.label(brand, "Personel  ·  Çırak ve Usta İlanı", 20, T.INFO, "SignLabel")
-	K.label(brand, "Maaşlar gün sonunda kasadan ödenir. En fazla %d çalışan. Teknisyene işi vermek için ona bakıp E'ye bas." % Game.STAFF_MAX, 15, T.MUTED, "MutedLabel")
+	K.label(brand, "Maaşlar gün sonunda kasadan ödenir. En fazla %d çalışan. Teknisyene raftaki işi vermek için ona bakıp E'ye bas." % Game.STAFF_MAX, 15, T.MUTED, "MutedLabel")
 	var lc := K.lcd(top, "", 24, Vector2(12, 0))
 	lc[0].size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	_wage_l = lc[1]
@@ -574,11 +574,11 @@ func _refresh_staff() -> void:
 				var err: String = mgr.assign(id) if mgr else "iş yok"
 				if err != "":
 					Game.sfx.error()
-					Game.msg({"iş yok": "Masada teknisyene verilecek iş yok.", "meşgul": "%s şu an meşgul." % d.name,
+					Game.msg({"iş yok": "Rafta teknisyene verilecek iş yok.", "meşgul": "%s şu an meşgul." % d.name,
 						"başkası yapıyor": "Bu işi zaten başka biri yapıyor."}.get(err, "Stokta gerekli parça yok!"), Color(1, 0.6, 0.4))
 				refresh(), "", 16, Vector2(100, 42))
 			ab.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-			ab.disabled = mgr == null or mgr.jobs.state != "working"
+			ab.disabled = mgr == null or mgr.jobs.tech_candidates().is_empty()
 			var ob := K.button(row, "", func():
 				d.auto = not bool(d.get("auto", true))
 				refresh(), "SegButton", 15, Vector2(122, 42))

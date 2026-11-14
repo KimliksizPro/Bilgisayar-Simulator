@@ -1,0 +1,439 @@
+{
+ "faults": [
+  {
+   "id": "psu_dead",
+   "device": "pc",
+   "part": "psu",
+   "diag_code": "nopower",
+   "kind": "broken",
+   "symptoms": {
+    "led": "",
+    "beep": [],
+    "screen": "none",
+    "msg": "Hiçbir tepki yok... Fanlar bile dönmüyor.",
+    "msg_color": [
+     1,
+     0.6,
+     0.4
+    ]
+   },
+   "customer_lines": [
+    "Abi dün akşam bi patlama sesi geldi, şimdi düğmeye basınca hiçbir şey olmuyor.",
+    "Elektrikler gidip geldi, o günden beri bilgisayar hiç açılmıyor."
+   ],
+   "fail_lines": [
+    "Usta düğmeye basıyorum, hiç ses yok, fanlar bile dönmüyor!",
+    "Açmaya çalışıyorum abi, elektrik almıyor gibi, ses bile yok."
+   ],
+   "hint": "İpucu: Güç gelmiyor — PSU'yu kontrol et.",
+   "difficulty": 1,
+   "labor": [
+    110,
+    160
+   ],
+   "min_day": 0,
+   "min_rep": 0.0
+  },
+  {
+   "id": "cpu_dead",
+   "device": "pc",
+   "part": "cpu",
+   "diag_code": "cpu",
+   "kind": "broken",
+   "symptoms": {
+    "led": "CPU",
+    "beep": [],
+    "screen": "no_signal",
+    "msg": "Fanlar dönüyor ama hiç bip sesi yok, ekran kapkara.",
+    "msg_color": [
+     1,
+     0.6,
+     0.4
+    ]
+   },
+   "customer_lines": [
+    "Fanlar dönüyor ama ekrana hiçbir şey gelmiyor, ses de çıkarmıyor.",
+    "Hız aşırtma yapayım dedim, bi koku geldi... şimdi açılmıyor."
+   ],
+   "fail_lines": [
+    "Fanlar dönüyor ama ekrana hiçbir şey gelmiyor, bip bip ötüyor.",
+    "Dönüyor usta ama ekran boş, bi de garip sesler çıkarıyor."
+   ],
+   "hint": "İpucu: İşlemci sorunlu olabilir — CPU'yu kontrol et.",
+   "difficulty": 1,
+   "labor": [
+    110,
+    160
+   ],
+   "min_day": 0,
+   "min_rep": 0.0
+  },
+  {
+   "id": "ram_dead",
+   "device": "pc",
+   "part": "ram",
+   "diag_code": "ram",
+   "kind": "broken",
+   "symptoms": {
+    "led": "DRAM",
+    "beep": [
+     0.12,
+     0.12,
+     0.12,
+     0.12,
+     0.12,
+     0.12,
+     0.12,
+     0.12
+    ],
+    "screen": "no_signal",
+    "msg": "Bip! Bip! Bip! Sürekli tekrar eden kısa bipler...",
+    "msg_color": [
+     1,
+     0.6,
+     0.4
+    ]
+   },
+   "customer_lines": [
+    "Açınca sürekli bip bip bip diye ötüyor abi, kafayı yedim.",
+    "Bilgisayar öterek açılmıyor, kardeşim bişey kurcaladı galiba."
+   ],
+   "fail_lines": [
+    "Uzun uzun bipliyor usta, açılmıyor.",
+    "Açılmaya çalışıyor ama sürekli bip sesi veriyor abi."
+   ],
+   "hint": "İpucu: RAM hatalı ya da takılı değil — RAM'leri kontrol et.",
+   "difficulty": 1,
+   "labor": [
+    90,
+    140
+   ],
+   "min_day": 0,
+   "min_rep": 0.0
+  },
+  {
+   "id": "gpu_dead",
+   "device": "pc",
+   "part": "gpu",
+   "diag_code": "gpu",
+   "kind": "broken",
+   "symptoms": {
+    "led": "VGA",
+    "beep": [
+     0.7,
+     0.13,
+     0.13,
+     0.13
+    ],
+    "screen": "no_signal",
+    "msg": "1 uzun 3 kısa bip! Ekrana görüntü gelmiyor.",
+    "msg_color": [
+     1,
+     0.6,
+     0.4
+    ]
+   },
+   "customer_lines": [
+    "Oyun oynarken ekran gitti, şimdi açınca bi uzun üç kısa bip sesi geliyor.",
+    "Ekrana görüntü gelmiyor, bilgisayar da garip garip ötüyor."
+   ],
+   "fail_lines": [
+    "Kasa çalışıyor ama monitör kapkara.",
+    "Kasa açılıyor abi, ekrana görüntü hiç gelmiyor."
+   ],
+   "hint": "İpucu: Ekran kartı arızalı olabilir — GPU'yu kontrol et.",
+   "difficulty": 1,
+   "labor": [
+    90,
+    140
+   ],
+   "min_day": 0,
+   "min_rep": 0.0
+  },
+  {
+   "id": "ssd_dead",
+   "device": "pc",
+   "part": "ssd",
+   "diag_code": "ssd",
+   "kind": "broken",
+   "symptoms": {
+    "led": "BOOT",
+    "beep": [
+     0.15
+    ],
+    "screen": "no_boot",
+    "msg": "Tek bip, BIOS açıldı ama 'boot device' bulunamadı.",
+    "msg_color": [
+     1,
+     0.8,
+     0.4
+    ]
+   },
+   "customer_lines": [
+    "Açılıyor ama 'boot device' diye bi şey yazıyor, Windows gelmiyor.",
+    "Bilgisayar açılıyor ama işletim sistemi gelmiyor, siyah ekranda yazı var."
+   ],
+   "fail_lines": [
+    "Açılıyor ama 'boot device not found' yazıyor abi.",
+    "Windows'a girmiyor usta, siyah ekranda disk yok yazıyor."
+   ],
+   "hint": "İpucu: Açılış diski bulunamıyor — SSD'yi kontrol et.",
+   "difficulty": 1,
+   "labor": [
+    90,
+    140
+   ],
+   "min_day": 0,
+   "min_rep": 0.0
+  },
+  {
+   "id": "overheat_dust",
+   "device": "pc",
+   "part": "",
+   "diag_code": "overheat",
+   "kind": "overheat",
+   "symptoms": {
+    "led": "",
+    "beep": [
+     0.15
+    ],
+    "screen": "boot",
+    "msg": "Tek kısa bip... Bilgisayar açıldı ama fanlar çok yüksek sesle dönüyor.",
+    "msg_color": [
+     1,
+     0.85,
+     0.5
+    ]
+   },
+   "customer_lines": [
+    "Oyun oynarken bilgisayar kendi kendine kapanıyor usta, fanlar da çok bağırıyor.",
+    "Fanlar jet gibi ötüyor abi, bir süre sonra da kapanıveriyor."
+   ],
+   "fail_lines": [
+    "Usta kasanın içi hâlâ toz içinde, yine ısınıp kapanacak!"
+   ],
+   "hint": "İpucu: Aşırı ısınma — kasa tozunu temizle ya da CPU macununu yenile.",
+   "difficulty": 1,
+   "labor": [
+    140,
+    240
+   ],
+   "min_day": 0,
+   "min_rep": 0.0,
+   "dust": [
+    0.75,
+    1.0
+   ],
+   "dust_chance": 1.0,
+   "paste_dry": false
+  },
+  {
+   "id": "overheat_paste",
+   "device": "pc",
+   "part": "",
+   "diag_code": "overheat",
+   "kind": "overheat",
+   "symptoms": {
+    "led": "",
+    "beep": [
+     0.15
+    ],
+    "screen": "boot",
+    "msg": "Tek kısa bip... Bilgisayar açıldı ama fanlar çok yüksek sesle dönüyor.",
+    "msg_color": [
+     1,
+     0.85,
+     0.5
+    ]
+   },
+   "customer_lines": [
+    "Bilgisayar açılıyor ama biraz kullanınca kapanıyor usta. Kasa da sıcacık oluyor.",
+    "Yıllardır içine bakmadık abi, bir süredir kendi kendine kapanıp duruyor."
+   ],
+   "fail_lines": [
+    "Usta işlemcinin macunu kurumuş, yine aşırı ısınıp kapanacak!"
+   ],
+   "hint": "İpucu: Aşırı ısınma — kasa tozunu temizle ya da CPU macununu yenile.",
+   "difficulty": 1,
+   "labor": [
+    140,
+    240
+   ],
+   "min_day": 0,
+   "min_rep": 0.0,
+   "dust": [
+    0.1,
+    0.3
+   ],
+   "dust_chance": 0.3,
+   "paste_dry": true
+  },
+  {
+   "id": "laptop_ram",
+   "device": "laptop",
+   "part": "lap_ram",
+   "diag_code": "ram",
+   "kind": "broken",
+   "symptoms": {},
+   "customer_lines": [
+    "Laptop durup durup donuyor, sonra mavi ekran verip kendini kapatıyor.",
+    "Excel'i açınca mavi ekran veriyor usta, patron beni yiyecek.",
+    "Ekranda üzgün surat çıkıyor abi, ':(' diye. Bilgisayar bana küsmüş."
+   ],
+   "fail_lines": [
+    "Usta bu laptop hâlâ donup mavi ekran veriyor!"
+   ],
+   "hint": "",
+   "difficulty": 1,
+   "labor": [
+    120,
+    200
+   ],
+   "min_day": 0,
+   "min_rep": 0.0
+  },
+  {
+   "id": "laptop_ssd",
+   "device": "laptop",
+   "part": "lap_ssd",
+   "diag_code": "ssd",
+   "kind": "broken",
+   "symptoms": {},
+   "customer_lines": [
+    "Açınca 'boot device' diye bir şey yazıyor, Windows gelmiyor. Tezim içinde usta!",
+    "Laptop masadan düştü, o günden beri siyah ekranda İngilizce bir yazı çıkıyor."
+   ],
+   "fail_lines": [
+    "Usta Windows hâlâ gelmiyor, 'boot device' diyor!"
+   ],
+   "hint": "",
+   "difficulty": 1,
+   "labor": [
+    120,
+    200
+   ],
+   "min_day": 0,
+   "min_rep": 0.0
+  },
+  {
+   "id": "laptop_bat",
+   "device": "laptop",
+   "part": "lap_bat",
+   "diag_code": "bat",
+   "kind": "broken",
+   "symptoms": {},
+   "customer_lines": [
+    "Usta laptop şarj tutmuyor, prizden çekince anında kapanıyor.",
+    "Laptopun altı kabardı abi, masada topaç gibi dönüyor. Normal mi bu?",
+    "Kablosuz bir dakika duramıyor usta, laptop değil masaüstü oldu."
+   ],
+   "fail_lines": [
+    "Usta pil hâlâ şarj olmuyor, kabloyu çekince kapanıyor!"
+   ],
+   "hint": "",
+   "difficulty": 1,
+   "labor": [
+    120,
+    200
+   ],
+   "min_day": 0,
+   "min_rep": 0.0
+  },
+  {
+   "id": "laptop_scr",
+   "device": "laptop",
+   "part": "lap_scr",
+   "diag_code": "scr",
+   "kind": "broken",
+   "symptoms": {},
+   "customer_lines": [
+    "Kedi klavyenin üstüne yatmış, kapağı kapatınca ekran paramparça oldu.",
+    "Çantada ezilmiş usta, ekran kırıldı, renkli renkli çizgiler var.",
+    "Oğlan oyunda kaybedince yumruğu ekrana vurmuş... Ne diyeyim."
+   ],
+   "fail_lines": [
+    "Usta ekran hâlâ kırık, hiçbir şey göremiyorum!"
+   ],
+   "hint": "",
+   "difficulty": 1,
+   "labor": [
+    120,
+    200
+   ],
+   "min_day": 0,
+   "min_rep": 0.0
+  },
+  {
+   "id": "phone_bat",
+   "device": "phone",
+   "part": "tel_bat",
+   "diag_code": "bat",
+   "kind": "broken",
+   "symptoms": {},
+   "customer_lines": [
+    "Telefon %100'den bir saatte sıfıra iniyor usta, arkası da kabardı sanki.",
+    "Şarjım yarım gün gitmiyor, bir de ekran yerinden kalkmış gibi duruyor.",
+    "Telefon açılıyor, pil simgesi kıpkırmızı olup hemen kapanıyor."
+   ],
+   "fail_lines": [
+    "Usta pil hâlâ bitik, telefon açılır açılmaz kapanıyor!"
+   ],
+   "hint": "",
+   "difficulty": 1,
+   "labor": [
+    80,
+    140
+   ],
+   "min_day": 0,
+   "min_rep": 0.0
+  },
+  {
+   "id": "phone_port",
+   "device": "phone",
+   "part": "tel_port",
+   "diag_code": "port",
+   "kind": "broken",
+   "symptoms": {},
+   "customer_lines": [
+    "Şarj kablosunu takınca şarj olmuyor, ancak kabloyu eğip bükünce bir an oluyor.",
+    "Telefon çayın içine düştü, o günden beri şarj olmuyor usta.",
+    "Üç tane kablo değiştirdim, hiçbiri şarj etmiyor. Kablo değil herhalde?"
+   ],
+   "fail_lines": [
+    "Usta bu hâlâ şarj olmuyor ki!"
+   ],
+   "hint": "",
+   "difficulty": 1,
+   "labor": [
+    80,
+    140
+   ],
+   "min_day": 0,
+   "min_rep": 0.0
+  },
+  {
+   "id": "phone_scr",
+   "device": "phone",
+   "part": "tel_scr",
+   "diag_code": "scr",
+   "kind": "broken",
+   "symptoms": {},
+   "customer_lines": [
+    "Telefon cebimden düştü, ekran örümcek ağı gibi oldu.",
+    "Torun yere atmış, ekran çatlak, dokunmatik de çalışmıyor.",
+    "Selfie çekerken elimden kaydı usta, ekran gitti, selfie de gitti."
+   ],
+   "fail_lines": [
+    "Usta ekran hâlâ paramparça!"
+   ],
+   "hint": "",
+   "difficulty": 1,
+   "labor": [
+    80,
+    140
+   ],
+   "min_day": 0,
+   "min_rep": 0.0
+  }
+ ]
+}

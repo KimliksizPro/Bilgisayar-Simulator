@@ -4,6 +4,8 @@ extends RigidBody3D
 const PM := preload("res://scripts/part_models.gd")
 const MU := preload("res://scripts/mesh_util.gd")
 
+# Elde tutuş pozları data/parts.json'da (tür: "hold", SKU ezmesi: "hold"); bkz. DB.parts.hold_pose
+
 var part_type := ""
 var tier := 1
 var broken := false
@@ -24,7 +26,7 @@ func setup(type: String, t := 1, is_broken := false):
 	add_child(built.node)
 	rotors = built.rotors
 	rgb_mats = built.rgb
-	var info: Dictionary = PM.INFO[type]
+	var info: Dictionary = PM.info(type)
 	MU.add_box_shape(self, info.size, info.center)
 	if broken and (type == "psu" or type == "gpu") and randf() < 0.35:
 		_burn_mark()
@@ -42,11 +44,16 @@ func is_tool() -> bool:
 
 ## Elde tutulurken merkez ve dönüş (player.pick_up kullanır).
 func hold_center() -> Vector3:
-	return PM.INFO[part_type].center
+	return PM.info(part_type).center
 
 
 func hold_euler() -> Vector3:
-	return Vector3(15, -35, 0)
+	return DB.parts.hold_pose(part_type, tier)[0]
+
+
+## Elde tutuş kaydırması: büyük parçalar uzağa/aşağıya, küçükler yakına.
+func hold_offset() -> Vector3:
+	return DB.parts.hold_pose(part_type, tier)[1]
 
 
 ## Bazı bozuk parçalarda küçük yanık izi: ipucu ama her bozukta yok.
@@ -64,14 +71,14 @@ func get_hint(player) -> String:
 	if slot:
 		return slot.get_hint(player)
 	if player.held == null:
-		return "Al: %s  [E]" % display_name
+		return "Elin dolu (cihaz taşıyorsun)" if Game.is_carrying() else "Al: %s  [E]" % display_name
 	return ""
 
 
 func interact(player) -> void:
 	if slot:
 		slot.interact(player)
-	elif player.held == null:
+	elif player.held == null and not Game.is_carrying():
 		player.pick_up(self)
 
 
@@ -95,6 +102,6 @@ func value() -> int:
 func make_cheap() -> void:
 	cheap = true
 	display_name = PM.display_name(part_type, tier) + " (muadil)"
-	var info: Dictionary = PM.INFO[part_type]
+	var info: Dictionary = PM.info(part_type)
 	var sz: Vector3 = info.size
 	MU.box(self, Vector3(sz.x * 0.25, 0.002, sz.z * 0.25), info.center + Vector3(0, sz.y * 0.5 + 0.001, 0), MU.mat(Color(1.0, 0.55, 0.1), 0, 0.6))

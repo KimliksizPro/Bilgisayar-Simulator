@@ -8,40 +8,17 @@ const PM := preload("res://scripts/part_models.gd")
 
 const CHANCE := 0.3   # tamir işlerinin yaklaşık bu kadarı laptop/telefon olur
 
-## yuva -> parça türü
-const LAPTOP_PARTS := {"ram": "lap_ram", "ssd": "lap_ssd", "bat": "lap_bat", "scr": "lap_scr"}
-const PHONE_PARTS := {"bat": "tel_bat", "port": "tel_port", "scr": "tel_scr"}
+## Cihazın yuva -> parça türü tablosu (arıza tanımlarından: diag_code = yuva, part = parça türü).
+static func slots(dev: String) -> Dictionary:
+	var table := {}
+	for f in DB.jobs.faults_for(dev):
+		table[f.diag_code] = f.part
+	return table
 
-const LAPTOP_LINES := {
-	"bat": ["Usta laptop şarj tutmuyor, prizden çekince anında kapanıyor.",
-		"Laptopun altı kabardı abi, masada topaç gibi dönüyor. Normal mi bu?",
-		"Kablosuz bir dakika duramıyor usta, laptop değil masaüstü oldu."],
-	"ssd": ["Açınca 'boot device' diye bir şey yazıyor, Windows gelmiyor. Tezim içinde usta!",
-		"Laptop masadan düştü, o günden beri siyah ekranda İngilizce bir yazı çıkıyor."],
-	"ram": ["Laptop durup durup donuyor, sonra mavi ekran verip kendini kapatıyor.",
-		"Excel'i açınca mavi ekran veriyor usta, patron beni yiyecek.",
-		"Ekranda üzgün surat çıkıyor abi, ':(' diye. Bilgisayar bana küsmüş."],
-	"scr": ["Kedi klavyenin üstüne yatmış, kapağı kapatınca ekran paramparça oldu.",
-		"Çantada ezilmiş usta, ekran kırıldı, renkli renkli çizgiler var.",
-		"Oğlan oyunda kaybedince yumruğu ekrana vurmuş... Ne diyeyim."],
-}
-const PHONE_LINES := {
-	"bat": ["Telefon %100'den bir saatte sıfıra iniyor usta, arkası da kabardı sanki.",
-		"Şarjım yarım gün gitmiyor, bir de ekran yerinden kalkmış gibi duruyor.",
-		"Telefon açılıyor, pil simgesi kıpkırmızı olup hemen kapanıyor."],
-	"port": ["Şarj kablosunu takınca şarj olmuyor, ancak kabloyu eğip bükünce bir an oluyor.",
-		"Telefon çayın içine düştü, o günden beri şarj olmuyor usta.",
-		"Üç tane kablo değiştirdim, hiçbiri şarj etmiyor. Kablo değil herhalde?"],
-	"scr": ["Telefon cebimden düştü, ekran örümcek ağı gibi oldu.",
-		"Torun yere atmış, ekran çatlak, dokunmatik de çalışmıyor.",
-		"Selfie çekerken elimden kaydı usta, ekran gitti, selfie de gitti."],
-}
-const VAGUE := {
-	"laptop": ["Laptop bozuldu usta, bi bakıver.", "Üniversite ödevim içinde, ne olur kurtar şu laptopu.",
-		"Bu laptop bir tuhaf usta, ne olduğunu sen anla."],
-	"phone": ["Telefon bozuldu usta, WhatsApp gruplarından kopmuşum.", "Annemin telefonu, bir tuhaf oldu, bi bakar mısın?",
-		"Telefon bozuk usta, bugün lazım."],
-}
+
+## Yuvadaki arıza tanımı (laptop/telefon).
+static func fault_of(dev: String, slot: String):
+	return DB.jobs.fault_by_code(slot, dev)
 
 
 static func is_device(job: Dictionary) -> bool:
@@ -49,19 +26,19 @@ static func is_device(job: Dictionary) -> bool:
 
 
 ## Laptop veya telefon tamir işi üretir (j: içinde "name" olan iş sözlüğü).
-static func make(j: Dictionary, device := "") -> Dictionary:
+static func make(j: Dictionary, device := "", force_broken := "") -> Dictionary:
 	var dev := device if device != "" else ("laptop" if randf() < 0.55 else "phone")
-	var table: Dictionary = LAPTOP_PARTS if dev == "laptop" else PHONE_PARTS
-	var lines: Dictionary = LAPTOP_LINES if dev == "laptop" else PHONE_LINES
-	var broken: String = table.keys().pick_random()
-	j.kind = dev
+	var t = DB.jobs.template("device_" + dev)
+	var table: Dictionary = slots(dev)
+	var broken: String = force_broken if table.has(force_broken) else table.keys().pick_random()
+	var f = fault_of(dev, broken)
+	var vague: Array = DB.jobs.text(t.intro_pool)
+	j.kind = t.job_kind
 	j.device = dev
 	j.broken = broken
-	j.intro = lines[broken].pick_random() if randf() < 0.7 else VAGUE[dev].pick_random()
-	j.goal = ("Laptopu çalıştır, ekranındaki hatayı oku. Arızalı parçayı bul ve değiştir." if dev == "laptop"
-		else "Telefonu aç, belirtiye bak. Arızalı parçayı bul ve değiştir.")
-	var labor := randi_range(12, 20) * 10 if dev == "laptop" else randi_range(8, 14) * 10
-	j.pay = PM.price(table[broken], 1) + labor
+	j.intro = f.customer_lines.pick_random() if randf() < t.specific_chance else vague.pick_random()
+	j.goal = t.goal
+	j.pay = PM.price(f.part, 1) + f.roll_labor()
 	var parts := []
 	for slot in table:
 		parts.append([slot, table[slot], 1, slot == broken])

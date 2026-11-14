@@ -4,10 +4,9 @@ extends Node
 func _ready() -> void:
 	var p = Game.player
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
-	var jobs = get_parent().get_children().filter(func(c): return c.has_method("_next_customer"))[0]
+	var jobs = Game.job_mgr
 	await get_tree().create_timer(9.0).timeout
-	if jobs.state == "waiting":
-		jobs._customer_talk(p)
+	if jobs.dev_bench_job(jobs._make_job_of("repair_gpu")) != null:
 		jobs.pc.toggle_panel()
 	var views := {"genel": [Vector3(2.8, 0, 1.0), 55, -12], "masa": [Vector3(0.45, 0, -1.85), 0, -45], "raf": [Vector3(-2.6, 0, -0.9), 90, -15]}
 	var meshes := get_tree().root.find_children("*", "MeshInstance3D", true, false).size()

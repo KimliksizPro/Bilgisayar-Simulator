@@ -1,239 +1,1067 @@
 extends Node
-## Müşteri akışı: müşteri gelir, derdini anlatır, bilgisayarı bırakır, tamir sonrası öder.
+## Müşteri ve iş akışı (çoklu iş): müşteri gelir, derdini anlatır; oyuncu işi kabul edince cihaz "Bekleyen İşler"
+## rafına konur, müşteri fiş alıp gider ve teslim gününde geri gelir. Cihaz rafta/tezgâhta taşınabilir; tamir
+## edilip rafa konunca (hata yoksa) "hazır" sayılır. Teslimde müşteri fiş numarasını söyler, oyuncu doğru cihazı
+## taşıyıp ona E'ye basar. Tezgâh satışı eskisi gibi anında olur.
+##
+## Veri: Game.jobs_active (kayıt listesi). Düğümler: devices {fiş -> cihaz}. Kuyruk: tezgâhta en çok 1, toplam 3 müşteri.
+##
+## Teslim zamanı (job_store.make_due): tamir/yükseltme/garanti = ertesi gün 10-18 arası; sıfırdan toplama = 2 gün;
+## ekspres (%20, 15:30'a kadar gelen tamir) = 3 oyun saati sonra, ücret x1.2.
+## Hazır kuralı: cihaz rafa konunca _problem_of "" ise otomatik "hazır" (yeşil ışık). Tezgâha alınınca durum sıfırlanır.
+## Gecikme kuralı: müşteri vakti gelince kuyruğa girer; cihaz hazır değilse sabrı (~60 sn) dolana kadar beklenir
+## (bu sürede teslim edilebilir). Sabır biterse ilkinde +1 gün verir (itibar -0.2); ikincisinde cihazı olduğu gibi alıp
+## gider (itibar -0.5, ücret yok).
 
 const PC := preload("res://scripts/pc_case.gd")
 const CUSTOMER := preload("res://scripts/customer.gd")
 const PM := preload("res://scripts/part_models.gd")
 const WARRANTY := preload("res://scripts/warranty.gd")
 const DJ := preload("res://scripts/device_jobs.gd")  # laptop / telefon işleri
+const DIRECTOR := preload("res://scripts/job_director.gd")  # iş seçici
+const ST := preload("res://scripts/job_store.gd")
+const RACK := preload("res://scripts/job_rack.gd")
+const CARRY := preload("res://scripts/job_carry.gd")
+const MU := preload("res://scripts/mesh_util.gd")
+
+var _director := DIRECTOR.new()
 
 const SPAWN := Vector3(-0.3, 0, 9.0)
 const DOOR := Vector3(0, 0, 3.6)
 const INSIDE := Vector3(0, 0, 2.5)
 const COUNTER := Vector3(-0.6, 0, 1.95)
+const LINE := [Vector3(-0.6, 0, 1.95), Vector3(-0.15, 0, 2.55), Vector3(0.3, 0, 3.1)]  # kuyruk yerleri (0 = tezgâh)
+const MAX_QUEUE := 3
 
-const NAMES := ["Ahmet Abi", "Ayşe Teyze", "Mehmet", "Zeynep", "Kerem", "Hasan Amca",
-	"Elif", "Burak", "Fatma Abla", "Emre", "Selin", "Mustafa Amca"]
-
-const REPAIR_LINES := {
-	"psu": ["Abi dün akşam bi patlama sesi geldi, şimdi düğmeye basınca hiçbir şey olmuyor.",
-		"Elektrikler gidip geldi, o günden beri bilgisayar hiç açılmıyor."],
-	"cpu": ["Fanlar dönüyor ama ekrana hiçbir şey gelmiyor, ses de çıkarmıyor.",
-		"Hız aşırtma yapayım dedim, bi koku geldi... şimdi açılmıyor."],
-	"ram": ["Açınca sürekli bip bip bip diye ötüyor abi, kafayı yedim.",
-		"Bilgisayar öterek açılmıyor, kardeşim bişey kurcaladı galiba."],
-	"gpu": ["Oyun oynarken ekran gitti, şimdi açınca bi uzun üç kısa bip sesi geliyor.",
-		"Ekrana görüntü gelmiyor, bilgisayar da garip garip ötüyor."],
-	"ssd": ["Açılıyor ama 'boot device' diye bi şey yazıyor, Windows gelmiyor.",
-		"Bilgisayar açılıyor ama işletim sistemi gelmiyor, siyah ekranda yazı var."],
-}
-const OVERHEAT_LINES := {
-	"overheat_dust": ["Oyun oynarken bilgisayar kendi kendine kapanıyor usta, fanlar da çok bağırıyor.",
-		"Fanlar jet gibi ötüyor abi, bir süre sonra da kapanıveriyor."],
-	"overheat_paste": ["Bilgisayar açılıyor ama biraz kullanınca kapanıyor usta. Kasa da sıcacık oluyor.",
-		"Yıllardır içine bakmadık abi, bir süredir kendi kendine kapanıp duruyor."],
-}
-const SALE_LINES := ["Usta bir %s lazım, var mı sende?", "Merhaba, %s alacaktım. Stokta var mı?",
-	"Oğlana %s alacağım, en iyisinden ver usta.", "Kendim takacağım abi, bir %s versene."]
-const SALE_WANTS := [["ram", 1], ["ram", 2], ["ssd", 1], ["psu", 1], ["gpu", 1], ["gpu", 2], ["cpu", 1]]
-const VAGUE_LINES := ["Bozuldu abi, bi bakıver.", "Ne olduğunu anlamadım, bir sabah açılmadı.",
-	"Oğlan bişey yaptı, çalışmıyor artık.", "Abi bu bilgisayar bozuk, acil lazım."]
+# Sabır ayarları
+const WAIT_PATIENCE := 60.0   # konuşulmayı bekleme sınırı (gerçek sn)
+const LATE_REP := 0.2         # sabır bitince ek gün verilirse itibar kaybı
+const TAKEN_REP := 0.5        # ikinci gecikmede cihazı alıp gitme itibar kaybı
 
 var world: Node3D
 var monitor
 var pc_spot: Transform3D
 var hud
-var state := "none"
+var rack: Node3D                       # bekleyen işler rafı (main atar)
+var carry := CARRY.new()               # taşınan cihaz
+
+var queue: Array = []                  # müşteri kuyruğu: {customer, job, mode, rec, wait_t, arrived, wrong}
+var devices := {}                      # fiş no -> cihaz düğümü
+var tags := {}                         # fiş no -> {root, stripe}
+var busy := {}                         # fiş no -> true (personel üzerinde çalışıyor)
+
+# baştaki müşteri görünümü (personel ve testler okur)
+var state := "none"                    # none / arriving / waiting / closed
 var customer = null
-var pc = null
 var job := {}
+var mode := ""                         # dropoff / sale / pickup
 
-# Sabır / süre ayarları
-const WAIT_PATIENCE := 60.0   # konuşulmayı bekleme sınırı (gerçek sn)
-const JOB_HOURS := 4.0        # iş süresi sınırı (oyun saati)
-const BUILD_HOURS := 7.0      # sıfırdan toplama için sınır
+# test ve araç kancaları
+var arrivals_enabled := true           # false: kendiliğinden yeni müşteri gelmez
+var force_jobs: Array = []             # doluysa sıradaki bırakma/satış müşterisi bu işlerden gelir
+var force_express := -1                # -1 rastgele, 0 hiç, 1 hep ekspres
 
-var _gen := 0                 # gün/oturum sayacı: eski bekleyen çağrıları iptal eder
-var wait_t := 0.0
-var work_hours := 0.0
-var fail_count := 0
-var _warned := false
+var pc: Object:                        # tezgâhtaki cihaz (eski adla)
+	get: return Game.bench_device
+
+var _gen := 0                          # gün/oturum sayacı: eski bekleyen çağrıları iptal eder
+var _arrival_t := 2.0
+var _due_t := 0.0
+var _vis_t := 0.0
 
 
 func start() -> void:
 	state = "none"
+	Game.job_mgr = self
+	carry.jobs = self
+	add_child(carry)
 	hud.set_job("Hoş geldin!", "Yeni oyun başlat ya da kaydı yükle.")
 	Game.day_started.connect(begin_day)
-	Game.day_ended.connect(func(_s): _gen += 1)
+	Game.day_ended.connect(_on_day_ended)
+	Game.jobs_loaded.connect(func(): if Game.phase == "day": _rebuild_all())
+	# tezgâh yeri: cihazı koymak için ince bir etkileşim alanı
+	var o := pc_spot.origin
+	MU.interactable(world, Vector3(0.8, 0.03, 0.6), Vector3(o.x, o.y - 0.004, o.z),
+		func(p): return bench_hint(p), func(p): bench_use(p))
 
 
-## Yeni gün: ortada kalan müşteri/bilgisayarı temizle, ilk müşteriyi çağır.
+## Yeni gün: kuyruğu temizle, raftaki işlerin cihazlarını kayıttan yeniden kur, ilk müşteriyi çağır.
 func begin_day() -> void:
 	_gen += 1
-	if is_instance_valid(customer):
-		customer.queue_free()
-	if is_instance_valid(pc):
-		pc.power_off()
-		pc.queue_free()
-	customer = null
-	pc = null
-	_next_customer(2.0)
+	_clear_queue()
+	_rebuild_all()
+	_arrival_t = 2.0
+	_due_t = 0.0
+	_sync_head()
+
+
+## Gün sonu: cihazların durumu kayda geçer, elde taşınan cihaz yerine konur.
+func _on_day_ended(_s) -> void:
+	_gen += 1
+	if carry.active():
+		return_carried()
+	sync_states()
 
 
 func _arrival_delay() -> float:
-	return randf_range(5.0, 9.0) * Game.arrival_mult()
+	var d := randf_range(14.0, 24.0) * Game.arrival_mult()
+	if Game.jobs_active.size() >= Game.max_active_jobs():
+		d *= 2.0  # raf doluyken daha seyrek gelir
+	return d
 
 
 func _process(delta: float) -> void:
 	if Game.phase != "day":
 		return
+	# yeni müşteri gelişi (bırakma ya da tezgâh satışı)
+	if arrivals_enabled and not Game.is_closed():
+		_arrival_t -= delta
+		if _arrival_t <= 0.0:
+			if queue.size() < MAX_QUEUE:
+				_spawn_arrival()
+				_arrival_t = _arrival_delay()
+			else:
+				_arrival_t = 1.0
+	# teslim günü gelen işlerin müşterileri
+	_due_t -= delta
+	if _due_t <= 0.0:
+		_due_t = 0.5
+		_check_due()
+	_vis_t -= delta
+	if _vis_t <= 0.0:
+		_vis_t = 0.5
+		_refresh_visuals()
 	if Game.running:
-		if state == "waiting":
-			wait_t += delta
-			var lim := WAIT_PATIENCE * Game.patience_mult() * (2.0 if job.get("kind", "") == "sale" else 1.0)
-			hud.set_patience(1.0 - wait_t / lim)
-			if wait_t >= lim:
-				_leave_angry("Çok bekledim usta, ben gidiyorum!", 0.4)
-		elif state == "working":
-			work_hours += delta * Game.HOURS_PER_SEC
-			var lim := _job_limit()
-			hud.set_patience(1.0 - work_hours / lim)
-			if not _warned and work_hours > lim * 0.75:
-				_warned = true
-				customer.say("Usta biraz acele et, işim var!", true)
-			if work_hours >= lim:
-				_leave_angry("Bu kadar uzar mı be usta! Bilgisayarımı alıyorum, gidiyorum!", 0.5)
-	# kapanış saati geldi ve müşteri kalmadı -> gün sonu
-	if Game.is_closed() and (state == "none" or state == "closed"):
+		_tick_patience(delta)
+	# kapanış saati geldi ve kuyruk boş -> gün sonu
+	if Game.is_closed() and queue.is_empty():
 		Game.end_day()
 
 
-func _job_limit() -> float:
-	var base := float(job.get("hours", BUILD_HOURS if job.get("kind", "") == "build" else JOB_HOURS))
-	return base * Game.patience_mult()
+# ---------------------------------------------------------------- kuyruk
+func _enqueue(m: String, j: Dictionary, rec: Dictionary) -> Dictionary:
+	var e := {"mode": m, "job": j, "rec": rec, "customer": null, "wait_t": 0.0, "arrived": false, "wrong": 0,
+		"was_ready": not rec.is_empty() and str(rec.status) == "ready"}
+	var c = CUSTOMER.new()
+	c.position = SPAWN
+	world.add_child(c)
+	c.build(func(p): return _hint(e, p), func(p): _talk(e, p), str(j.name))
+	c.inter.action_alt = func(p): _alt(e, p)
+	c.say("")
+	e.customer = c
+	queue.append(e)
+	_walk_to_slot(e)
+	_sync_head()
+	return e
 
 
-## Müşteri sabrı bitti: bilgisayarı alıp kızgın gider, itibar düşer.
-func _leave_angry(line: String, rep_loss: float) -> void:
-	state = "leaving"
-	var c = customer
-	c.say(line, true)
-	if job.get("warranty", false):
-		rep_loss += WARRANTY.REP_ANGRY_EXTRA  # garanti müşterisini kızdırmak daha pahalı
-	Game.change_rep(-rep_loss)
-	Game.sfx.error()
-	Game.msg("%s kızıp gitti! İtibar düştü." % job.name, Color(1, 0.5, 0.4))
-	hud.set_job("Müşteri gitti", "")
-	hud.set_patience(-1.0)
-	if is_instance_valid(pc):
-		_dispose_pc(pc, 0.3)
-		pc = null
+func _walk_to_slot(e: Dictionary) -> void:
+	var idx := queue.find(e)
+	if idx < 0:
+		return
+	e.arrived = false
+	var c = e.customer
+	var pts := [LINE[idx]]
+	if c.position.z > 3.3:
+		pts.push_front(DOOR)
+	c.walk(pts, func(): _arrived(e))
+
+
+func _arrived(e: Dictionary) -> void:
+	if not queue.has(e):
+		return
+	e.arrived = true
+	e.customer.face_angle = PI
+	if queue[0] == e:
+		_on_head_ready()
+	else:
+		_sync_head()
+
+
+## Müşteri tezgâha ulaştı (ya da öndeki gidince sıra ona geldi): derdini anlatır.
+func _on_head_ready() -> void:
+	_sync_head()
+	var e: Dictionary = queue[0]
+	var c = e.customer
+	e.wait_t = 0.0
+	match e.mode:
+		"sale":
+			c.say("Merhaba usta! " + str(e.job.intro))
+		"pickup":
+			c.say("Merhaba usta, #%d numaralı fişle geldim. Cihazım hazır mı?" % int(e.rec.ticket))
+		_:
+			c.say("Merhaba usta! " + str(e.job.intro))
+	Game.msg("Bir müşteri geldi!" if e.mode != "pickup" else "%s cihazını almaya geldi (#%d)." % [e.job.name, int(e.rec.ticket)], Color(0.6, 0.9, 1.0))
+	if e.mode == "pickup":
+		hud.tip("pickup", "Teslim: müşterinin fiş numarasına bak, rafta o numaralı cihazı bul (E ile al), müşteriye dönüp E'ye bas. Hazır değilse önce tamir et.")
+	else:
+		hud.tip("talk", "Müşteriyle konuşmak için ona bakıp E'ye bas. Geri çevirmek için F.")
+
+
+## Baştaki müşteri görünümünü (state/customer/job/mode) ve HUD kartını günceller.
+func _sync_head() -> void:
+	if queue.is_empty():
+		customer = null
+		job = {}
+		mode = ""
+		state = "closed" if Game.is_closed() else "none"
+		hud.set_job("Dükkân kapandı" if state == "closed" else "Müşteri bekleniyor...", "")
+		hud.set_patience(-1.0)
+		return
+	var e: Dictionary = queue[0]
+	customer = e.customer
+	job = e.job
+	mode = e.mode
+	state = "waiting" if e.arrived else "arriving"
+	if not e.arrived:
+		hud.set_job("%s geliyor..." % e.job.name, "")
+		hud.set_patience(-1.0)
+		return
+	match e.mode:
+		"sale":
+			var w: Array = e.job.want
+			hud.set_job("%s — %d TL" % [e.job.name, e.job.pay], e.job.goal + ("" if Game.stock_of(w[0], w[1]) > 0 else "\n\nStokta yok! ParçaNet'ten ekspres sipariş ver."))
+		"pickup":
+			hud.set_job("%s — %d TL" % [e.job.name, int(e.rec.pay)] if int(e.rec.pay) > 0 else "%s — GARANTİ" % e.job.name,
+				"Fiş #%d: rafta bu numaralı cihazı bul, getirip müşteriye E'ye bas." % int(e.rec.ticket), int(e.rec.ticket))
+		_:
+			hud.set_job("Yeni müşteri: %s" % e.job.name, "Kabul: E  ·  Geri çevir: F\nRaf: %d / %d dolu" % [Game.jobs_active.size(), Game.max_active_jobs()], Game.next_ticket)
+
+
+func _tick_patience(delta: float) -> void:
+	for e in queue.duplicate():
+		if not e.arrived:
+			continue
+		var head: bool = queue[0] == e
+		e.wait_t += delta * (1.0 if head else 0.5)
+		var lim := _patience_limit(e)
+		if head:
+			hud.set_patience(1.0 - e.wait_t / lim)
+		if e.wait_t >= lim:
+			_patience_out(e)
+
+
+func _patience_limit(e: Dictionary) -> float:
+	return WAIT_PATIENCE * Game.patience_mult() * (2.0 if e.mode == "sale" else (1.5 if e.mode == "pickup" else 1.0))
+
+
+func _clear_queue() -> void:
+	for e in queue:
+		if is_instance_valid(e.customer):
+			e.customer.queue_free()
+	queue.clear()
+
+
+## Müşteri sıradan çıkar, kapıdan gider; sıra ilerler.
+func _finish_entry(e: Dictionary, line := "", angry := false, wait := 1.2) -> void:
+	var c = e.customer
+	queue.erase(e)
+	if line != "" and is_instance_valid(c):
+		c.say(line, angry)
+	_advance_queue()
 	var g := _gen
-	await get_tree().create_timer(1.5).timeout
+	await get_tree().create_timer(wait).timeout
 	if is_instance_valid(c):
 		c.say("")
 		c.walk([INSIDE, DOOR, SPAWN], func(): c.queue_free())
-	if g == _gen:
-		_next_customer(_arrival_delay())
-
-
-func _dispose_pc(old_pc, wait: float) -> void:
-	var tw := create_tween()
-	tw.tween_interval(wait)
-	tw.tween_property(old_pc, "scale", Vector3.ONE * 0.01, 0.4)
-	tw.tween_callback(func():
-		old_pc.power_off()
-		old_pc.queue_free())
-
-
-func _next_customer(delay: float) -> void:
-	state = "none"
-	var g := _gen
-	hud.set_job("Müşteri bekleniyor...", "")
-	hud.set_patience(-1.0)
-	await get_tree().create_timer(delay).timeout
-	if g != _gen or Game.phase != "day":
+	if g != _gen:
 		return
+
+
+func _advance_queue() -> void:
+	for i in queue.size():
+		var e: Dictionary = queue[i]
+		if e.arrived and e.customer.position.distance_to(LINE[i]) < 0.1:
+			continue
+		_walk_to_slot(e)
+	_sync_head()
+	if not queue.is_empty() and queue[0].arrived:
+		_on_head_ready()
+
+
+## Teslim günü gelmiş işlerin müşterilerini kuyruğa alır.
+func _check_due() -> void:
 	if Game.is_closed():
-		state = "closed"
-		hud.set_job("Dükkân kapandı", "")
 		return
-	job = _make_job()
-	customer = CUSTOMER.new()
-	customer.position = SPAWN
-	world.add_child(customer)
-	customer.build(_customer_hint, _customer_talk)
-	customer.say("")
-	state = "arriving"
-	hud.set_job("%s geliyor..." % job.name, "")
-	customer.walk([DOOR, INSIDE, COUNTER], _on_arrived)
+	var now := Game.now_abs()
+	for rec in Game.jobs_active:
+		if queue.size() >= MAX_QUEUE:
+			return
+		if rec.called or now < float(rec.due_abs):
+			continue
+		rec.called = true
+		_enqueue("pickup", rec, rec)
 
 
-func _on_arrived() -> void:
-	customer.face_angle = PI
-	customer.say("Merhaba usta! " + job.intro)
-	state = "waiting"
-	wait_t = 0.0
-	if job.kind == "sale":
-		var w: Array = job.want
-		hud.set_job("%s — %d TL" % [job.name, job.pay], job.goal + ("" if Game.stock_of(w[0], w[1]) > 0 else "\n\nStokta yok! ParçaNet'ten ekspres sipariş ver."))
+## Testler/araçlar: bu işin müşterisini hemen çağırır.
+func call_pickup(rec: Dictionary) -> void:
+	if rec.called:
+		return
+	rec.called = true
+	_enqueue("pickup", rec, rec)
+
+
+func _spawn_arrival() -> void:
+	var j: Dictionary = force_jobs.pop_front() if not force_jobs.is_empty() else _make_job()
+	_enqueue("sale" if j.kind == "sale" else "dropoff", j, {})
+
+
+## Sabır bitti: bırakma/satış müşterisi kızıp gider; teslim müşterisine ek gün verilir ya da cihazı alıp gider.
+func _patience_out(e: Dictionary) -> void:
+	var c = e.customer
+	if e.mode == "pickup":
+		_pickup_overdue(e)
+		return
+	var rep_loss := 0.4
+	if e.job.get("warranty", false):
+		rep_loss += WARRANTY.REP_ANGRY_EXTRA  # garanti müşterisini kızdırmak daha pahalı
+	Game.change_rep(-rep_loss)
+	Game.sfx.error()
+	Game.msg("%s kızıp gitti! İtibar düştü." % e.job.name, Color(1, 0.5, 0.4))
+	_finish_entry(e, "Çok bekledim usta, ben gidiyorum!", true, 1.5)
+
+
+## Teslim müşterisi sabrını yitirdi (cihaz hazır değil ya da getirilmedi).
+func _pickup_overdue(e: Dictionary) -> void:
+	var rec: Dictionary = e.rec
+	Game.sfx.error()
+	if int(rec.ext) < 1:
+		rec.ext = int(rec.ext) + 1
+		rec.due_abs = float(rec.due_abs) + 24.0
+		rec.called = false
+		Game.change_rep(-LATE_REP)
+		Game.msg("#%d gecikti: müşteri bir gün daha verdi (itibar düştü)." % int(rec.ticket), Color(1, 0.7, 0.4))
+		_finish_entry(e, "Hazır değilse neden çağırdın usta! Bir gün daha veriyorum, yarın bu saatte gelirim.", true, 1.8)
+		Game.jobs_changed.emit()
+		return
+	var loss := TAKEN_REP + (WARRANTY.REP_ANGRY_EXTRA if rec.get("warranty", false) else 0.0)
+	Game.change_rep(-loss)
+	Game.msg("#%d: müşteri cihazını tamir edilmeden alıp gitti! İtibar düştü." % int(rec.ticket), Color(1, 0.5, 0.4))
+	_remove_record(rec, true)
+	_finish_entry(e, "Yeter artık! Cihazımı olduğu gibi alıyorum, başka yere götüreceğim!", true, 1.8)
+
+
+# ---------------------------------------------------------------- etkileşim (müşteri)
+func _hint(e: Dictionary, p) -> String:
+	if queue.is_empty() or queue[0] != e or not e.arrived:
+		return "Sırada bekliyor: %s" % e.job.name
+	match e.mode:
+		"sale":
+			var w: Array = e.job.want
+			if p.held and not p.held.is_tool() and p.held.part_type == w[0] and p.held.tier == w[1] and not p.held.broken:
+				return "Sat: %s — %d TL  [E]" % [PM.display_name(w[0], w[1]), e.job.pay]
+			return "%s ile konuş  [E]" % e.job.name
+		"pickup":
+			var rec: Dictionary = e.rec
+			if not carry.active():
+				return "#%d numaralı cihazı rafta bul, getir" % int(rec.ticket)
+			if carry.ticket() != int(rec.ticket):
+				return "Bu #%d, müşteri #%d istiyor" % [carry.ticket(), int(rec.ticket)]
+			return "%s  [E]" % DJ.deliver_hint(rec)
+	if Game.jobs_active.size() >= Game.max_active_jobs():
+		return "Raf dolu! Geri çevir: F  ·  %s" % e.job.name
+	return "%s: işi kabul et  [E]   ·   Geri çevir: F" % e.job.name
+
+
+## Baştaki müşteriye E (oyuncu ya da personel "p" olarak); testler ve araçlar da bunu çağırır.
+func _customer_talk(p) -> void:
+	if not queue.is_empty():
+		_talk(queue[0], p)
+
+
+func _talk(e: Dictionary, p) -> void:
+	if queue.is_empty() or queue[0] != e or not e.arrived:
+		return
+	match e.mode:
+		"sale": _try_sell(p)
+		"pickup": _try_handover(e, p)
+		_: _accept()
+
+
+func _alt(e: Dictionary, _p) -> void:
+	if queue.is_empty() or queue[0] != e or not e.arrived:
+		return
+	decline_head()
+
+
+## Baştaki bırakma müşterisini geri çevir. Raf doluysa itibar kaybı yok; değilse küçük kayıp.
+func decline_head() -> bool:
+	if queue.is_empty() or queue[0].mode == "pickup" or not queue[0].arrived:
+		return false
+	var e: Dictionary = queue[0]
+	var full: bool = Game.jobs_active.size() >= Game.max_active_jobs()
+	if e.mode == "dropoff" and not full:
+		Game.change_rep(-0.1)
+		_finish_entry(e, "Hay aksi... Peki usta, başka yere bakarım.", true)
+	elif e.mode == "dropoff":
+		_finish_entry(e, "Tamam usta, yarın uğrarım.")
+		Game.msg("Müşteriyi geri çevirdin (raf dolu, itibar kaybı yok).", Color(0.6, 0.9, 1.0))
 	else:
-		hud.set_job("Yeni müşteri: %s" % job.name, "Tezgahtaki müşteriyle konuş [E]")
-	Game.msg("Bir müşteri geldi!", Color(0.6, 0.9, 1.0))
-	hud.tip("talk", "Müşteriyle konuşmak için ona bakıp E'ye bas.")
+		_finish_entry(e, "Peki usta, kolay gelsin.")
+	return true
 
 
+# ---------------------------------------------------------------- bırakma (kabul)
+## Baştaki bırakma müşterisinin işini kabul eder: fiş kesilir, cihaz rafa konur, müşteri gider.
+func _accept() -> bool:
+	if queue.is_empty() or queue[0].mode != "dropoff" or not queue[0].arrived:
+		return false
+	var e: Dictionary = queue[0]
+	var rec := drop_off(e.job)
+	if rec.is_empty():
+		Game.msg("Raf dolu! Önce bir işi teslim et ya da müşteriyi geri çevir (F).", Color(1, 0.6, 0.4))
+		Game.sfx.error()
+		e.customer.say("Rafta yer yok mu usta? Peki...")
+		return false
+	var when := ST.when_phrase(float(rec.due_abs), Game.day)
+	var ex: String = "Bugün lazım usta, çok acil! " if rec.express else ""
+	_finish_entry(e, "%sTamamdır usta, fiş #%d. %s." % [ex, int(rec.ticket), when], false, 2.2)
+	Game.msg("Fiş #%d kesildi. Teslim: %s." % [int(rec.ticket), ST.due_label(float(rec.due_abs), Game.day)] + (" (EKSPRES +%20)" if rec.express else ""), Color(0.6, 0.9, 1.0))
+	hud.dismiss_tip("talk")
+	hud.tip("ticket", "İş rafa kondu. Sağ duvardaki Bekleyen İşler rafında cihazın fişine bakıp E'ye bas: cihazı alırsın. Masadaki mavi minderin üstüne koyup tamir et.")
+	return true
+
+
+## Bir işi kayda geçirir ve cihazını rafa koyar. Yer yoksa {}. (müşteri animasyonu çağıranın işi)
+func drop_off(j: Dictionary) -> Dictionary:
+	var slot := -1
+	if rack != null:
+		slot = rack.free_slot()
+	if Game.jobs_active.size() >= Game.max_active_jobs() or slot < 0:
+		return {}
+	var now := Game.now_abs()
+	var rec: Dictionary = j.duplicate(true)
+	rec.pay = Game.job_pay(int(j.pay))  # itibar ve sertifika etkisi
+	var due := ST.make_due(j, now, force_express)
+	rec.due_abs = float(due.due_abs)
+	rec.express = bool(due.express)
+	if rec.express:
+		rec.pay = roundi(int(rec.pay) * ST.EXPRESS_BONUS)
+	rec.ticket = Game.next_ticket
+	Game.next_ticket += 1
+	rec.accepted_abs = now
+	rec.status = "waiting_bench"
+	rec.location = "rack:%d" % slot
+	rec.ext = 0
+	rec.wrong = 0
+	rec.fail_count = 0
+	rec.called = false
+	rec.state = null
+	Game.jobs_active.append(rec)
+	var dev = _spawn_device(rec, true)
+	_pop(dev)
+	Game.jobs_changed.emit()
+	return rec
+
+
+## Kayıttan cihaz düğümünü kurar: bench ise tezgâha, değilse rafa (kayıtlı göz doluysa ilk boşa).
+func _spawn_device(rec: Dictionary, fresh := false):
+	var dev = DJ.new_device(rec) if DJ.is_device(rec) else PC.new()
+	dev.monitor = monitor
+	var t := int(rec.ticket)
+	var loc := str(rec.location)
+	var on_bench := loc == "bench" and Game.bench_device == null
+	if on_bench:
+		world.add_child(dev)
+		dev.transform = DJ.spot(dev, pc_spot)
+	else:
+		var i := -1
+		if loc.begins_with("rack:"):
+			i = int(loc.substr(5))
+			if i < 0 or i >= RACK.SLOTS or rack.occ[i] != 0:
+				i = -1
+		if i < 0:
+			i = rack.free_slot()
+		if i < 0:  # kapasite küçüldüyse son çare: herhangi boş göz
+			for k in RACK.SLOTS:
+				if rack.occ[k] == 0:
+					i = k
+					break
+		rack.put(i, dev, t)
+		rec.location = "rack:%d" % i
+	if rec.state is Dictionary:
+		ST.restore(dev, rec.state)
+	else:
+		dev.fill(rec.parts)
+	devices[t] = dev
+	tags[t] = ST.attach_tag(dev, rec, func(_p): return _tag_hint(rec), func(p): _tag_use(rec, p))
+	if on_bench:
+		rec.location = "bench"
+		rec.status = "on_bench"
+		Game.set_bench_device(dev)
+	else:
+		rec.location = str(rec.location)
+		ST.lock(dev, true)
+		if str(rec.status) == "on_bench":
+			rec.status = "waiting_bench"
+	return dev
+
+
+func _pop(dev) -> void:
+	if dev == null or not is_instance_valid(dev):
+		return
+	var s: Vector3 = dev.scale
+	dev.scale = Vector3.ONE * 0.05
+	var tw: Tween = dev.create_tween()
+	tw.tween_property(dev, "scale", s, 0.35).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	Game.sfx.click()
+
+
+## Kayıtlı bütün cihazları silip kayıttan yeniden kurar (gün başı, yükleme).
+func _rebuild_all() -> void:
+	if carry.active():
+		carry.release()
+	for t in devices:
+		var d = devices[t]
+		if is_instance_valid(d):
+			if d.get_parent():
+				d.get_parent().remove_child(d)
+			d.queue_free()
+	devices.clear()
+	tags.clear()
+	busy.clear()
+	Game.set_bench_device(null)
+	rack.occ.fill(0)
+	for rec in Game.jobs_active:
+		rec.called = false
+		_spawn_device(rec)
+	_refresh_visuals()
+	Game.jobs_changed.emit()
+
+
+## Cihaz düğümlerindeki durumu kayıtlara yazar (kayıt/gün sonu).
+func sync_states() -> void:
+	for rec in Game.jobs_active:
+		var d = devices.get(int(rec.ticket))
+		if d != null and is_instance_valid(d):
+			rec.state = ST.snapshot(d)
+
+
+## İş kaydını ve cihazını kaldırır (teslim/alıp gitme). shrink: küçülüp kaybolur.
+func _remove_record(rec: Dictionary, shrink := true, toward := Vector3.INF) -> void:
+	var t := int(rec.ticket)
+	var d = devices.get(t)
+	if carry.active() and carry.ticket() == t:
+		carry.release()
+	if Game.bench_device == d and d != null:
+		Game.set_bench_device(null)
+	rack.clear_slot(t)
+	devices.erase(t)
+	tags.erase(t)
+	busy.erase(t)
+	for i in Game.jobs_active.size():
+		if int(Game.jobs_active[i].ticket) == t:
+			Game.jobs_active.remove_at(i)
+			break
+	if d != null and is_instance_valid(d):
+		if d.powered:
+			d.power_off()
+		if d.get_parent() != world and d.get_parent() != rack:
+			d.reparent(world, true)  # elde taşınıyordu: müşteriye uzanıp küçülür
+		var tw := create_tween()
+		if toward != Vector3.INF:
+			tw.tween_property(d, "global_position", toward, 0.35).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		else:
+			tw.tween_interval(0.3)
+		if shrink:
+			tw.tween_property(d, "scale", Vector3.ONE * 0.01, 0.4)
+		tw.tween_callback(func():
+			if is_instance_valid(d):
+				d.queue_free())
+		ST.lock(d, true)
+	Game.jobs_changed.emit()
+
+
+# ---------------------------------------------------------------- taşıma
+func _tag_hint(rec: Dictionary) -> String:
+	var now := Game.now_abs()
+	var base := "Fiş #%d · %s · %s · %s" % [int(rec.ticket), rec.name, ST.due_label(float(rec.due_abs), Game.day), ST.status_text(rec, now)]
+	var t := int(rec.ticket)
+	if busy.has(t):
+		return base + " — personel çalışıyor"
+	if carry.active():
+		return base + (" (elin dolu)" if carry.ticket() != t else "")
+	return base + "  [E] Al"
+
+
+func _tag_use(rec: Dictionary, p) -> void:
+	pick_up_device(rec, p)
+
+
+## Cihazı rafdan/tezgâhtan alıp taşımaya başlar. Hata metni döner ("" = alındı).
+func pick_up_device(rec: Dictionary, p = null) -> String:
+	var t := int(rec.ticket)
+	if carry.active():
+		Game.msg("Elin dolu: önce taşıdığın cihazı bırak.", Color(1, 0.8, 0.4))
+		return "elin dolu"
+	if p != null and p.held != null:
+		Game.msg("Elin dolu: önce elindeki parçayı bırak.", Color(1, 0.8, 0.4))
+		return "elin dolu"
+	if busy.has(t):
+		Game.msg("Bu cihazda personel çalışıyor.", Color(1, 0.8, 0.4))
+		return "meşgul"
+	var dev = devices.get(t)
+	if dev == null or not is_instance_valid(dev) or str(rec.location) == "carry":
+		return "yok"
+	var from := str(rec.location)
+	if from == "bench":
+		Game.set_bench_device(null)
+	else:
+		rack.clear_slot(t)
+	rec.location = "carry"
+	carry.start(rec, dev, from)
+	Game.jobs_changed.emit()
+	hud.dismiss_tip("ticket")
+	if str(rec.status) != "ready":
+		hud.tip("bench", "Cihazı masadaki mavi minderin üstüne koymak için minderine bakıp E'ye bas. Tamirden sonra rafa geri koy: hazırsa yeşil yanar.")
+	return ""
+
+
+func rack_hint(i: int, _p) -> String:
+	if i >= Game.max_active_jobs():
+		return "Kilitli göz — iş kapasiten artınca açılır"
+	var t: int = rack.occ[i]
+	if t == 0:
+		if carry.active():
+			return "Rafa koy: #%d %s  [E]" % [carry.ticket(), carry.rec.name]
+		return "Boş göz %d" % (i + 1)
+	var r := Game.job_by_ticket(t)
+	return _tag_hint(r) if not r.is_empty() else ""
+
+
+func rack_use(i: int, p) -> void:
+	if i >= Game.max_active_jobs():
+		return
+	var t: int = rack.occ[i]
+	if carry.active():
+		if t == 0:
+			place_on_rack(i)
+		else:
+			Game.msg("Bu göz dolu.", Color(1, 0.8, 0.4))
+		return
+	if t != 0 and not Game.job_by_ticket(t).is_empty():
+		pick_up_device(Game.job_by_ticket(t), p)
+
+
+func bench_hint(_p) -> String:
+	if carry.active():
+		if Game.bench_device != null:
+			return "Tezgâh dolu: önce üstündekini rafa koy"
+		return "Tezgâha koy: #%d %s  [E]" % [carry.ticket(), carry.rec.name]
+	if Game.bench_device != null:
+		return ""
+	return "Tezgâh boş: rafın üzerindeki bir işi alıp buraya koy"
+
+
+func bench_use(_p) -> void:
+	if carry.active() and Game.bench_device == null:
+		place_on_bench()
+
+
+## Taşınan cihazı rafın i. gözüne koyar ve hazır olup olmadığına bakar.
+func place_on_rack(i: int) -> bool:
+	if not carry.active() or i < 0 or i >= Game.max_active_jobs() or rack.occ[i] != 0:
+		return false
+	var rec: Dictionary = carry.rec
+	var dev = carry.release()
+	rack.occupy(i, int(rec.ticket))
+	carry.settle(dev, rack, rack.slot_transform(i, dev))
+	rec.location = "rack:%d" % i
+	Game.sfx.pickup()
+	_check_ready(rec, true)
+	Game.jobs_changed.emit()
+	return true
+
+
+## Taşınan cihazı tezgâh yerine koyar (bir tezgâh yeri var; ileride çoğaltılabilir).
+func place_on_bench() -> bool:
+	if not carry.active() or Game.bench_device != null:
+		return false
+	var rec: Dictionary = carry.rec
+	var dev = carry.release()
+	carry.settle(dev, world, DJ.spot(dev, pc_spot))
+	ST.lock(dev, false)
+	Game.set_bench_device(dev)
+	rec.location = "bench"
+	rec.status = "on_bench"
+	Game.sfx.pickup()
+	if not rec.get("benched", false):
+		rec["benched"] = true
+		if DJ.is_device(rec):
+			DJ.on_accept(hud, rec)
+		else:
+			Game.msg("Bilgisayar masana kondu. Kapağı açıp incele!", Color(0.6, 0.9, 1.0))
+			hud.dismiss_tip("bench")
+			hud.tip("glass", "Kapağı açmak için bilgisayarın camına bakıp E'ye bas.")
+			hud.tip("leds", "Güç düğmesine bas; bip seslerini ve anakartın hata LED'lerini izle. Duvardaki Arıza Rehberi yardımcı olur.")
+	Game.jobs_changed.emit()
+	return true
+
+
+## G / sağ tık: cihazı geldiği yere (dolu değilse) geri koyar.
+func return_carried() -> void:
+	if not carry.active():
+		return
+	if carry.origin == "bench" and Game.bench_device == null:
+		place_on_bench()
+		return
+	var i := -1
+	if carry.origin.begins_with("rack:"):
+		i = int(carry.origin.substr(5))
+	if i < 0 or i >= Game.max_active_jobs() or rack.occ[i] != 0:
+		i = rack.free_slot()
+	if i >= 0:
+		place_on_rack(i)
+	elif Game.bench_device == null:
+		place_on_bench()
+
+
+## Cihaz rafa konduğunda: hata yoksa "hazır". verbose: oyuncuya sonucu bildir.
+func _check_ready(rec: Dictionary, verbose := false) -> bool:
+	var prob := _problem_of(rec)
+	if prob == "":
+		if str(rec.status) != "ready":
+			rec.status = "ready"
+			rec.ready_abs = Game.now_abs()
+			if verbose:
+				Game.msg("#%d hazır! Müşteri %s gelecek." % [int(rec.ticket), ST.due_label(float(rec.due_abs), Game.day)], Color(0.5, 1, 0.5))
+				Game.sfx.click()
+				hud.tip("ready", "Hazır işler rafta yeşil yanar. Müşteri teslim saatinde gelir; cihazı raftan alıp müşteriye E ile ver.")
+		return true
+	rec.status = "waiting_bench"
+	if verbose:
+		var hint := _problem_hint_of(rec)
+		Game.msg("#%d henüz hazır değil: %s" % [int(rec.ticket), hint if hint != "" else prob], Color(1.0, 0.8, 0.4))
+	return false
+
+
+# ---------------------------------------------------------------- teslim
+## Cihazın teslim kontrolü ("" = sorun yok): arıza, hedef (yükseltme), kapak açık.
+func _problem_of(rec: Dictionary) -> String:
+	var dev = devices.get(int(rec.ticket))
+	if dev == null or not is_instance_valid(dev):
+		return "Cihaz yok"
+	if DJ.is_device(rec):  # laptop / telefon kendi kontrolünü yapar
+		return dev.problem()
+	var code: String = dev.diagnose()
+	if code != "ok":
+		var f = _fault_of(dev, code)
+		var lines: Array = f.fail_lines if f != null else []
+		return lines.pick_random() if not lines.is_empty() else DB.jobs.text("fail_default")[0]
+	var tg: Dictionary = rec.get("target", {})
+	if tg.has("min_tier"):
+		var g = dev.part_in(str(tg.part))
+		if g == null or g.tier < int(tg.min_tier):
+			return str(tg.fail)
+	if tg.has("ram_gb"):
+		if dev.total_ram() < int(tg.ram_gb):
+			return str(tg.fail) % dev.total_ram()
+	if dev.panel_open:
+		return "Kapağı kapatmadan mı vereceksin usta?"
+	return ""
+
+
+## Teşhis koduna uyan arıza tanımı; aşırı ısınmada toz mu macun mu olduğuna bakılır.
+func _fault_of(dev, code: String):
+	if code == "overheat":
+		return DB.jobs.fault("overheat_dust" if dev.dust > 0.5 else "overheat_paste")
+	return DB.jobs.fault_by_code(code)
+
+
+## Teslim reddedilince oyuncuya HUD'da teknik ipucu (müşteri cümlesinden ayrı).
+func _problem_hint_of(rec: Dictionary) -> String:
+	var dev = devices.get(int(rec.ticket))
+	if DJ.is_device(rec) or dev == null or not is_instance_valid(dev):
+		return ""
+	var f = _fault_of(dev, dev.diagnose())
+	return f.hint if f != null else ""
+
+
+## Müşteriye E: taşınan cihazı teslim etmeye çalış.
+func _try_handover(e: Dictionary, _p) -> void:
+	var rec: Dictionary = e.rec
+	var c = e.customer
+	if not carry.active():
+		c.say("Fiş numaram #%d usta. Cihazımı getirsene!" % int(rec.ticket))
+		Game.msg("Rafta #%d numaralı cihazı bul, E ile alıp müşteriye getir." % int(rec.ticket), Color(1.0, 0.8, 0.4))
+		return
+	if carry.ticket() != int(rec.ticket):
+		e.wrong = int(e.wrong) + 1
+		c.say(_wrong_line(carry.rec, rec), true)
+		Game.sfx.error()
+		if int(e.wrong) <= 3:
+			Game.change_rep(-0.1)
+		Game.msg("Yanlış cihaz! #%d lazımdı, sen #%d getirdin." % [int(rec.ticket), carry.ticket()], Color(1, 0.6, 0.4))
+		return
+	var problem := _problem_of(rec)
+	if problem != "":
+		c.say(problem, true)
+		var hint := _problem_hint_of(rec)
+		if hint != "":
+			Game.msg(hint, Color(1.0, 0.8, 0.4))
+		Game.sfx.error()
+		rec.fail_count = int(rec.fail_count) + 1
+		if int(rec.fail_count) <= 3:
+			Game.change_rep(-0.05)
+		return
+	_complete(e)
+
+
+func _wrong_line(got: Dictionary, want: Dictionary) -> String:
+	var lines := [
+		"Usta bu benimki değil! Benimkinin üstünde #%d yazıyor!" % int(want.ticket),
+		"Bu %s benim değil, başkasının cihazını mı veriyorsun?!" % ("laptop" if str(got.get("device", "")) == "laptop" else ("telefon" if str(got.get("device", "")) == "phone" else "kasa")),
+		"Ya usta, fişe bakmadın mı? #%d diyorum!" % int(want.ticket),
+		"Bu %s'ın cihazı! Benimkini ver usta!" % str(got.name),
+	]
+	return lines.pick_random()
+
+
+## Başarılı teslim: ödeme, itibar, istatistik; cihaz müşteriyle gider.
+func _complete(e: Dictionary) -> void:
+	var rec: Dictionary = e.rec
+	var c = e.customer
+	var dev = devices.get(int(rec.ticket))
+	WARRANTY.on_delivered(dev, rec)  # muadil parça takıldıysa geri dönüş riski kaydedilir
+	# erken bitirme: hazır olduğu an, kabul ile teslim arasının ilk yarısındaysa "hızlı"
+	var ready_t: float = float(rec.get("ready_abs", Game.now_abs()))
+	var span: float = maxf(float(rec.due_abs) - float(rec.accepted_abs), 1.0)
+	var fast: bool = e.was_ready and (float(rec.due_abs) - ready_t) >= span * 0.5
+	# müşteri tezgâhta uzun beklediyse (sabrının %35'inden fazla) iş "zamanında" sayılmaz
+	var on_time: bool = e.was_ready or float(e.wait_t) < 0.35 * _patience_limit(e)
+	if rec.get("warranty", false):
+		var wf: bool = fast or on_time
+		Game.change_rep(WARRANTY.REP_FAST if wf else WARRANTY.REP_SLOW)
+		Game.cash_sound()
+		Game.msg("Garanti işi tamamlandı" + ("  (hızlı servis, itibar düzeldi)" if wf else "."), Color(0.6, 0.9, 1.0))
+		_remove_record(rec, true, c.global_position + Vector3(0, 1.0, 0.1))
+		_finish_entry(e, ["Tamam usta, bu sefer sağlam olsun!", "Sağ ol usta, garanti dediğin böyle olur."].pick_random())
+		return
+	Game.add_money(int(rec.pay))
+	Game.jobs_done += 1
+	Game.jobs_today += 1
+	Game.stats.total_jobs = int(Game.stats.total_jobs) + 1
+	Game.change_rep(0.25 if fast else (0.15 if on_time else 0.05))
+	Game.cash_sound()
+	hud.pop_money(int(rec.pay))
+	Game.msg("+%d TL kazandın!" % int(rec.pay) + ("  (hızlı servis, itibar arttı)" if fast else ""), Color(0.5, 1, 0.5))
+	_remove_record(rec, true, c.global_position + Vector3(0, 1.0, 0.1))
+	_finish_entry(e, ["Eline sağlık usta, sağ ol!", "Helal olsun, tıkır tıkır çalışıyor!",
+		"Çok teşekkürler, herkese seni önereceğim!"].pick_random())
+
+
+## Personel: raftaki hazır cihazı baştaki teslim müşterisine verir (taşıma animasyonsuz). Başarı true.
+func staff_handover() -> bool:
+	if queue.is_empty() or queue[0].mode != "pickup" or not queue[0].arrived:
+		return false
+	var e: Dictionary = queue[0]
+	var rec: Dictionary = e.rec
+	if str(rec.location) == "carry" or busy.has(int(rec.ticket)):
+		return false
+	if _problem_of(rec) != "":
+		return false
+	_complete(e)
+	return true
+
+
+## Teknisyenin işini bitirdiği cihazı kontrol edip "hazır" yapar (rafta).
+func staff_finished(rec: Dictionary) -> bool:
+	return _check_ready(rec, true)
+
+
+## Tezgâh satışı: oyuncu doğru parçayı elinde tutarak konuşursa satılır.
+func _try_sell(p) -> void:
+	if queue.is_empty() or queue[0].mode != "sale":
+		return
+	var e: Dictionary = queue[0]
+	var j: Dictionary = e.job
+	var w: Array = j.want
+	var dname := PM.display_name(w[0], w[1])
+	var h = p.held if p else null
+	if h == null or h.is_tool() or h.part_type != w[0] or h.tier != w[1] or h.broken:
+		if h != null and not h.is_tool() and h.part_type == w[0]:
+			e.customer.say("Yok usta, bu değil. Bana %s lazım." % dname, true)
+			Game.sfx.error()
+		elif Game.stock_of(w[0], w[1]) > 0:
+			e.customer.say("Raftan bir %s getiriver usta, bekliyorum." % dname)
+		else:
+			e.customer.say("Stokta yok mu? Getirtebilirsen beklerim ama çok değil usta.")
+		hud.tip("sale", "Parça satışı: raftan istenen parçayı al, elinde tutarken müşteriye E'ye bas.")
+		return
+	var part = p.release_held()
+	if part.cheap:
+		j.pay = roundi(int(j.pay) * Game.CHEAP_FACTOR)  # muadil parça daha ucuza satılır
+	part.queue_free()
+	Game.add_money(int(j.pay))
+	Game.sales_today += 1
+	Game.stats.total_sales = int(Game.stats.get("total_sales", 0)) + 1
+	Game.change_rep(0.08)
+	Game.cash_sound()
+	hud.pop_money(int(j.pay))
+	hud.dismiss_tip("sale")
+	Game.msg("%s satıldı: +%d TL" % [dname, j.pay], Color(0.5, 1, 0.5))
+	_finish_entry(e, ["Sağ ol usta, hayırlı işler!", "Tamamdır, eline sağlık!", "Tam aradığım buydu, teşekkürler!"].pick_random())
+
+
+# ---------------------------------------------------------------- görünüm
+## Raf ışıkları ve fiş şeritleri (kehribar / yeşil / kırmızı).
+func _refresh_visuals() -> void:
+	var recs := {}
+	for r in Game.jobs_active:
+		recs[int(r.ticket)] = r
+	var now := Game.now_abs()
+	rack.refresh(now, recs)
+	for t in tags:
+		if recs.has(t) and is_instance_valid(tags[t].root):
+			var c := ST.status_color(recs[t], now)
+			var sm: StandardMaterial3D = tags[t].stripe
+			sm.albedo_color = c
+			sm.emission_enabled = true
+			sm.emission = c
+
+
+# ---------------------------------------------------------------- araç / test yardımcıları
+## Bırakma + hemen tezgâha: işi kabul eder, cihazı doğrudan tezgâha koyar ve cihazı döndürür (taşıma animasyonsuz).
+func dev_bench_job(j: Dictionary):
+	var rec := drop_off(j)
+	if rec.is_empty():
+		return null
+	return dev_to_bench(rec)
+
+
+func dev_to_bench(rec: Dictionary):
+	if Game.bench_device != null:
+		return null
+	var dev = devices[int(rec.ticket)]
+	rack.clear_slot(int(rec.ticket))
+	dev.reparent(world, false)
+	dev.transform = DJ.spot(dev, pc_spot)
+	ST.lock(dev, false)
+	Game.set_bench_device(dev)
+	rec.location = "bench"
+	rec.status = "on_bench"
+	Game.jobs_changed.emit()
+	return dev
+
+
+## Tezgâhtaki işi "elde taşıma" yoluyla teslime hazırla (oyuncu E'ye basmış gibi).
+func dev_carry(rec: Dictionary, p = null) -> String:
+	return pick_up_device(rec, p)
+
+
+## Personelin üzerinde çalışmadığı, rafta bekleyen masaüstü işleri (teknisyen için).
+func tech_candidates() -> Array:
+	var out := []
+	for rec in Game.jobs_active:
+		if str(rec.status) != "waiting_bench" or not str(rec.location).begins_with("rack:") or busy.has(int(rec.ticket)):
+			continue
+		if DJ.is_device(rec):
+			continue
+		out.append(rec)
+	return out
+
+
+# ---------------------------------------------------------------- iş üretimi
+## Sıradaki işi seçici belirler (ağırlıklı torba + tekrar cezası).
 func _make_job() -> Dictionary:
-	var j := {"name": NAMES.pick_random()}
-	var roll := randf()
-	var base := [["psu", "psu", 1], ["cpu", "cpu", 1], ["ram1", "ram", 1], ["gpu", "gpu", 1], ["ssd", "ssd", 1]]
 	# garanti dönüşü (muadil parça bozuldu) her şeyden önce gelir
 	var due := WARRANTY.take_due()
 	if not due.is_empty():
-		return WARRANTY.make_job(due, base)
-	if roll < 0.85 and randf() < DJ.CHANCE:  # laptop / telefon tamiri
-		return DJ.make(j)
-	if roll >= 0.85:
-		# tezgahtan parça satışı
-		var w: Array = SALE_WANTS.pick_random()
-		j.kind = "sale"
-		j.want = w
-		j.intro = SALE_LINES.pick_random() % PM.display_name(w[0], w[1])
-		j.goal = "Raftan %s al, elinde tutarken müşteriyle konuş [E]." % PM.display_name(w[0], w[1])
-		j.pay = Game.retail_price(w[0], w[1])
-		j.parts = []
+		return WARRANTY.make_job(due, DB.jobs.base_parts())
+	return _make_job_of(_director.next(Game.money, Game.job_history, Game.day, Game.rep))
+
+
+## Verilen iş kimliğinden iş üretir (geçmişe dokunmaz; testler de bunu kullanır).
+## broken: laptop/telefon için arızalı yuvayı sabitler. Şablon data/jobs.json'dan gelir.
+func _make_job_of(id: String, broken := "") -> Dictionary:
+	var t = DB.jobs.template(id)
+	var j := {"name": DB.jobs.text("names").pick_random()}
+	if t == null:
+		push_error("Bilinmeyen iş şablonu: " + id)
 		return j
-	if roll < 0.15 and Game.money >= 300:
-		j.kind = "build"
-		j.intro = "Sıfırdan bir bilgisayar topla abi. Kasa bende, parçaları sen al, toplayınca hakkını veririm."
-		j.goal = "Boş kasaya tüm parçaları tak ve çalıştır."
-		j.pay = 600
-		j.parts = []
-	elif roll < 0.3:
-		j.kind = "upgrade_gpu"
-		j.intro = "Oyunlar çok kasıyor usta. Bana iyi bir ekran kartı tak, parasını veririm."
-		j.goal = "Oyuncu (RGB) ekran kartı tak."
-		j.pay = PM.price("gpu", 2) + 140
-		j.parts = _with_broken(base, "")
-	elif roll < 0.4:
-		_overheat_job(j, base, "overheat_dust" if randf() < 0.5 else "overheat_paste")
-	elif roll < 0.5:
-		j.kind = "upgrade_ram"
-		j.intro = "Chrome açınca bilgisayar donuyor. RAM'i 32 GB yap abi."
-		j.goal = "Toplam RAM'i 32 GB'a çıkar (2 x 16 GB)."
-		j.pay = PM.price("ram", 2) * 2 + 110
-		j.parts = _with_broken(base, "")
-	else:
-		var broken: String = ["psu", "cpu", "ram", "gpu", "ssd"].pick_random()
-		j.kind = "repair"
-		j.broken = broken
-		j.intro = REPAIR_LINES[broken].pick_random() if randf() < 0.6 else VAGUE_LINES.pick_random()
-		j.goal = "Arızalı parçayı bul ve değiştir."
-		j.pay = randi_range(15, 26) * 10
-		var parts := _with_broken(base, broken)
-		if randf() < 0.5:
-			parts.append(["ram2", "ram", 1, false])
-		j.parts = parts
+	match t.kind:
+		"device": return DJ.make(j, t.device, broken)
+		"sale": return _job_sale(j, t)
+		"repair": return _job_repair(j, t)
+		"overheat": return _job_overheat(j, t)
+	return _job_plain(j, t)  # upgrade / build
+
+
+## Şablondaki ücret formülü: parça bedeli x adet + sabit ek.
+func _template_pay(t) -> int:
+	var pay: int = t.pay_extra
+	if t.pay_part.size() == 2:
+		pay += PM.price(str(t.pay_part[0]), int(t.pay_part[1])) * t.pay_count
+	return pay
+
+
+## Müşteri cümlesi: sabit intro, yoksa arıza cümlesi (specific_chance) ya da şablonun metin havuzu.
+func _intro_of(t, fault) -> String:
+	if t.intro != "":
+		return t.intro
+	var vague: Array = DB.jobs.text(t.intro_pool)
+	if fault != null and not fault.customer_lines.is_empty() and (vague.is_empty() or randf() < t.specific_chance):
+		return fault.customer_lines.pick_random()
+	return vague.pick_random()
+
+
+func _job_sale(j: Dictionary, t) -> Dictionary:
+	# tezgahtan parça satışı
+	var w: Array = t.want_key()
+	var dname := PM.display_name(w[0], w[1])
+	j.kind = t.job_kind
+	j.want = w
+	j.intro = DB.jobs.text(t.intro_pool).pick_random() % dname
+	j.goal = t.goal % dname
+	j.pay = Game.retail_price(w[0], w[1])
+	j.parts = []
+	return j
+
+
+## Yükseltme ve sıfırdan toplama: sabit metin, formül ücret, isteğe bağlı teslim koşulu.
+func _job_plain(j: Dictionary, t) -> Dictionary:
+	j.kind = t.job_kind
+	j.intro = t.intro
+	j.goal = t.goal
+	j.pay = _template_pay(t)
+	j.parts = _with_broken(DB.jobs.base_parts(), "") if t.with_base_parts else []
+	if not t.target.is_empty():
+		j.target = t.target
+	if t.hours > 0.0:
+		j.hours = t.hours
+	return j
+
+
+func _job_repair(j: Dictionary, t) -> Dictionary:
+	var f = DB.jobs.fault(t.fault)
+	j.kind = t.job_kind
+	j.broken = f.part
+	j.intro = _intro_of(t, f)
+	j.goal = t.goal
+	# ücret = parça bedeli + işçilik (arıza tanımından)
+	j.pay = PM.price(f.part, 1) + f.roll_labor()
+	var parts := _with_broken(DB.jobs.base_parts(), f.part)
+	if randf() < t.ram2_chance:
+		parts.append(["ram2", "ram", 1, false])
+	j.parts = parts
+	return j
+
+
+## Aşırı ısınma işi: kasa tozlu veya CPU macunu kurumuş (arıza tanımındaki dust/paste_dry).
+func _job_overheat(j: Dictionary, t) -> Dictionary:
+	var f = DB.jobs.fault(t.fault)
+	j.kind = t.job_kind
+	j.intro = _intro_of(t, f)
+	j.goal = t.goal
+	j.pay = f.roll_labor()
+	var parts := _with_broken(DB.jobs.base_parts(), "")
+	if f.paste_dry:
+		for i in parts.size():
+			if parts[i][0] == "cpu":
+				parts[i] = ["cpu", "cpu", 1, false, false]
+	if randf() < f.dust_chance:
+		parts.append(["dust", "", randf_range(f.dust.x, f.dust.y), false])
+	j.parts = parts
 	return j
 
 
@@ -242,192 +1070,3 @@ func _with_broken(base: Array, broken: String) -> Array:
 	for b in base:
 		out.append([b[0], b[1], b[2], b[1] == broken])
 	return out
-
-
-func _customer_hint(p) -> String:
-	if job.get("kind", "") == "sale" and state == "waiting":
-		var w: Array = job.want
-		if p.held and not p.held.is_tool() and p.held.part_type == w[0] and p.held.tier == w[1] and not p.held.broken:
-			return "Sat: %s — %d TL  [E]" % [PM.display_name(w[0], w[1]), job.pay]
-		return "%s ile konuş  [E]" % job.name
-	match state:
-		"waiting": return "%s ile konuş  [E]" % job.name
-		"working": return DJ.deliver_hint(job)
-	return ""
-
-
-func _customer_talk(p) -> void:
-	if job.get("kind", "") == "sale" and state == "waiting":
-		_try_sell(p)
-		return
-	match state:
-		"waiting":
-			_accept()
-		"working":
-			_try_deliver()
-
-
-func _accept() -> void:
-	job.pay = Game.job_pay(int(job.pay))  # itibar ve sertifika etkisi
-	work_hours = 0.0
-	fail_count = 0
-	_warned = false
-	pc = DJ.new_device(job) if DJ.is_device(job) else PC.new()
-	pc.transform = DJ.spot(pc, pc_spot)
-	world.add_child(pc)
-	pc.monitor = monitor
-	pc.fill(job.parts)
-	state = "working"
-	customer.say("Tamamdır usta, ben burada bekliyorum. Ücreti %d TL." % job.pay)
-	hud.set_job("%s — %s" % [job.name, "GARANTİ (ücretsiz)" if job.get("warranty", false) else "%d TL" % job.pay], job.goal + "\n\nBitince müşteriyle konuş [E]")
-	if DJ.is_device(job):  # laptop / telefon: kendi ipuçları
-		DJ.on_accept(hud, job)
-		return
-	Game.msg("Bilgisayar masana kondu. Kapağı açıp incele!", Color(0.6, 0.9, 1.0))
-	hud.dismiss_tip("talk")
-	hud.tip("glass", "Kapağı açmak için bilgisayarın camına bakıp E'ye bas.")
-	hud.tip("leds", "Güç düğmesine bas; bip seslerini ve anakartın hata LED'lerini izle. Duvardaki Arıza Rehberi yardımcı olur.")
-
-
-func _problem() -> String:
-	if DJ.is_device(job):  # laptop / telefon kendi kontrolünü yapar
-		return pc.problem()
-	var code: String = pc.diagnose()
-	if code == "overheat":
-		return _overheat_problem()
-	if code != "ok":
-		return "Usta bu bilgisayar hâlâ düzgün çalışmıyor ki!"
-	match job.kind:
-		"upgrade_gpu":
-			var g = pc.part_in("gpu")
-			if g.tier < 2:
-				return "Abi bu aynı kart, oyunlar yine kasacak."
-		"upgrade_ram":
-			if pc.total_ram() < 32:
-				return "Usta RAM hâlâ %d GB, 32 olacaktı." % pc.total_ram()
-	if pc.panel_open:
-		return "Kapağı kapatmadan mı vereceksin usta?"
-	return ""
-
-
-func _try_deliver() -> void:
-	var problem := _problem()
-	if problem != "":
-		customer.say(problem, true)
-		Game.sfx.error()
-		fail_count += 1
-		if fail_count <= 3:
-			Game.change_rep(-0.05)
-		return
-	state = "leaving"
-	hud.set_patience(-1.0)
-	WARRANTY.on_delivered(pc, job)  # muadil parça takıldıysa geri dönüş riski kaydedilir
-	if job.get("warranty", false):
-		_finish_warranty()
-		return
-	Game.add_money(job.pay)
-	Game.jobs_done += 1
-	Game.jobs_today += 1
-	Game.stats.total_jobs = int(Game.stats.total_jobs) + 1
-	var fast := work_hours < _job_limit() * 0.4
-	Game.change_rep(0.25 if fast else 0.15)
-	Game.cash_sound()
-	hud.pop_money(int(job.pay))
-	customer.say(["Eline sağlık usta, sağ ol!", "Helal olsun, tıkır tıkır çalışıyor!",
-		"Çok teşekkürler, herkese seni önereceğim!"].pick_random())
-	Game.msg("+%d TL kazandın!" % job.pay + ("  (hızlı servis, itibar arttı)" if fast else ""), Color(0.5, 1, 0.5))
-	hud.set_job("İş tamamlandı!", "")
-	var old_pc = pc
-	pc = null
-	_dispose_pc(old_pc, 0.5)
-	var g := _gen
-	var c = customer
-	await get_tree().create_timer(1.2).timeout
-	c.say("")
-	c.walk([INSIDE, DOOR, SPAWN], func(): c.queue_free())
-	if g == _gen:
-		_next_customer(_arrival_delay())
-
-
-## Garanti işi teslimi: ücret yok, hızlıysa itibar düzelir.
-func _finish_warranty() -> void:
-	var fast := work_hours < _job_limit() * 0.5
-	Game.change_rep(WARRANTY.REP_FAST if fast else WARRANTY.REP_SLOW)
-	Game.cash_sound()
-	customer.say(["Tamam usta, bu sefer sağlam olsun!", "Sağ ol usta, garanti dediğin böyle olur."].pick_random())
-	Game.msg("Garanti işi tamamlandı" + ("  (hızlı servis, itibar düzeldi)" if fast else "."), Color(0.6, 0.9, 1.0))
-	hud.set_job("Garanti işi tamamlandı!", "")
-	var old_pc = pc
-	pc = null
-	_dispose_pc(old_pc, 0.5)
-	var g := _gen
-	var c = customer
-	await get_tree().create_timer(1.2).timeout
-	c.say("")
-	c.walk([INSIDE, DOOR, SPAWN], func(): c.queue_free())
-	if g == _gen:
-		_next_customer(_arrival_delay())
-
-
-## Aşırı ısınma işi: kasa tozlu (overheat_dust) veya CPU macunu kurumuş (overheat_paste).
-func _overheat_job(j: Dictionary, base: Array, kind: String) -> void:
-	j.kind = kind
-	j.intro = OVERHEAT_LINES[kind].pick_random()
-	j.pay = randi_range(14, 24) * 10
-	var parts := _with_broken(base, "")
-	if kind == "overheat_dust":
-		j.goal = "Bilgisayar aşırı ısınıp kapanıyor. Nedenini bul ve gider."
-		parts.append(["dust", "", randf_range(0.75, 1.0), false])
-	else:
-		j.goal = "Bilgisayar aşırı ısınıp kapanıyor. Nedenini bul ve gider."
-		parts[1] = ["cpu", "cpu", 1, false, false]
-		if randf() < 0.3:  # biraz toz da olsun ama sorun macun
-			parts.append(["dust", "", randf_range(0.1, 0.3), false])
-	j.parts = parts
-
-
-func _overheat_problem() -> String:
-	if pc.dust > 0.5:
-		return "Usta kasanın içi hâlâ toz içinde, yine ısınıp kapanacak!"
-	return "Usta işlemcinin macunu kurumuş, yine aşırı ısınıp kapanacak!"
-
-
-## Parça satışı: oyuncu doğru parçayı elinde tutarak konuşursa satılır.
-func _try_sell(p) -> void:
-	var w: Array = job.want
-	var dname := PM.display_name(w[0], w[1])
-	var h = p.held if p else null
-	if h == null or h.is_tool() or h.part_type != w[0] or h.tier != w[1] or h.broken:
-		if h != null and not h.is_tool() and h.part_type == w[0]:
-			customer.say("Yok usta, bu değil. Bana %s lazım." % dname, true)
-			Game.sfx.error()
-		elif Game.stock_of(w[0], w[1]) > 0:
-			customer.say("Raftan bir %s getiriver usta, bekliyorum." % dname)
-		else:
-			customer.say("Stokta yok mu? Getirtebilirsen beklerim ama çok değil usta.")
-		hud.tip("sale", "Parça satışı: raftan istenen parçayı al, elinde tutarken müşteriye E'ye bas.")
-		return
-	var part = p.release_held()
-	if part.cheap:
-		job.pay = roundi(int(job.pay) * Game.CHEAP_FACTOR)  # muadil parça daha ucuza satılır
-	part.queue_free()
-	state = "leaving"
-	hud.set_patience(-1.0)
-	Game.add_money(int(job.pay))
-	Game.sales_today += 1
-	Game.stats.total_sales = int(Game.stats.get("total_sales", 0)) + 1
-	Game.change_rep(0.08)
-	Game.cash_sound()
-	hud.pop_money(int(job.pay))
-	hud.dismiss_tip("sale")
-	customer.say(["Sağ ol usta, hayırlı işler!", "Tamamdır, eline sağlık!", "Tam aradığım buydu, teşekkürler!"].pick_random())
-	Game.msg("%s satıldı: +%d TL" % [dname, job.pay], Color(0.5, 1, 0.5))
-	hud.set_job("Satış tamamlandı!", "")
-	var g := _gen
-	var c = customer
-	await get_tree().create_timer(1.2).timeout
-	if is_instance_valid(c):
-		c.say("")
-		c.walk([INSIDE, DOOR, SPAWN], func(): c.queue_free())
-	if g == _gen:
-		_next_customer(_arrival_delay())

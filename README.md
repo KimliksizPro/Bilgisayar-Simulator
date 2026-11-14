@@ -25,6 +25,27 @@ yüzeylerde gerçek PBR dokular ve gökyüzü için gerçek bir şehir HDRI'si k
 | F2 | Grafik kalitesi: Düşük → Orta → Yüksek (oyun kasarsa düşür) |
 | F3 | FPS ve draw call sayacı |
 | H | Öğretici ipucunu gizle |
+| Tab | **Tezgâh modu**: tezgâhtaki cihaza yakından bak (aç / kapat) |
+
+### Tezgâh modu
+
+Tezgâhta bir cihaz (kasa, laptop, telefon) varken `Tab` ile kamera cihazın etrafındaki yörünge kameraya geçer; fare serbest kalır
+ama zaman akmaya devam eder. Birinci şahıs tamir (E ile bak-tak-sök) aynen çalışır; tezgâh modu rahat yoldur.
+
+| Girdi | İş |
+| --- | --- |
+| Sağ tık + sürükle | Cihazın etrafında döndür (Y ters çevirme ve hassasiyet ayarlarına uyar) |
+| Tekerlek | Yakınlaştır / uzaklaş |
+| WASD / orta tık sürükle | Kamerayı hafifçe kaydır |
+| Q / E | 90° döndür |
+| Sol tık | Cam kapağı aç-kapat, güç düğmesine bas, takılı parçayı söküp **tepsiye** koy, tepsideki parçayı seç, seçili parçayı yuvaya tak, seçili aleti uygula |
+| Sağ tık (sürüklemeden) | Seçili parça / aleti bırak |
+| Esc veya Tab | Tezgâh modundan çık |
+
+Sökülen parçalar cihazın önündeki parça tepsisine dizilir. Tepsideki parçayı (3B ya da yan panelden) seçince imleci izleyen bir
+hayalete dönüşür; uyumlu boş yuvalar yeşil, uyumsuzlar kırmızı yanar. Moda girerken elindeki parça tepsiye konur
+(alet ise çıkınca eline geri verilir). Masadaki termal macun ve basınçlı hava yan panelden seçilip hedefe tıklanır.
+Cihaz tezgâhtan giderse mod kapanır ve tepsideki parçalar masaya bırakılır.
 
 ## Menüler ve arayüz
 
@@ -41,7 +62,8 @@ altlarında sarı-siyah ikaz şeridi; sürgüler mikser fader'ı, anahtarlar LED
   arka plan bulanıklaşır, oyun gerçekten durur. *Devam Et, Ayarlar, Nasıl Oynanır, Ana Menüye Dön* (önce kaydeder),
   *Oyundan Çık*. Pencere odağı kaybolunca oyun kendiliğinden duraklar.
 - **HUD:** sol üstte **yazar kasa** (yeşil LCD'de para, gün ve saat; LED gün çubuğu; itibar yıldızları);
-  sağ üstte mandallı **servis fişi** (fiş numarası, tükenmez kalemle müşteri adı, lastik mühürle ücret, sabır çubuğu);
+  sağ üstte mandallı **tezgâh fişi** (tezgâhtaki müşteri: fiş numarası, tükenmez kalemle ad, lastik mühürle ücret, sabır çubuğu)
+  ve altında **Açık İşler** listesi (fiş no, müşteri, kısa iş, teslim "Yarın 14:00", durum BEKLİYOR / HAZIR / GECİKTİ / TEZGÂHTA / ELDE; tezgâhtaki iş vurgulanır);
   hedefe bakınca vizör köşeleri kapanan nişangah ve bej `E` tuşlu etkileşim ipucu; solda LED'li bildirimler;
   ödemede yükselen "+TL"; öğretici ipuçları bantla yapıştırılmış **sarı not kâğıdında**.
 - **Gün sonu:** yazar kasa fişi gibi **Z Raporu** (tırtıklı kâğıt, gelir/gider/kira/net, itibar, yarınki kira).
@@ -84,11 +106,13 @@ MSAA kapalı, gölgeler hafifletilmiş.
 - **Personel sekmesi (laptop):** her sabah 3 aday başvurur (Türkçe isim, rol, 1–5 yıldız beceri, huy, günlük maaş).
   En fazla **2 çalışan** alınır; "Çıkar" ile işten çıkarılır. Maaşlar gün sonunda ödenir ve Z raporunda
   **Maaşlar** satırında görünür. Çalışanlar kayıtla saklanır.
-- **Tezgahtar** (kırmızı önlük): bekleyen müşteriyi kendisi karşılar (sabrı bitmeden işi kabul eder), parça
-  isteyen müşteriye raftan getirip satar (stokta yoksa haber verir), boşta kalınca kapıdaki kolileri açar.
-- **Teknisyen** (mavi önlük): masadaki işi stoktaki parçalarla kendisi yapar (arızalı parça, yükseltme, toz,
-  termal macun, sıfırdan toplama), sonra müşteriye teslim eder; ücret sana gelir. İşi ona bakıp E ile ya da
-  sekmedeki **İşi Ver** ile verirsin; "Kendi alır" açıksa masaya konan işi kendiliğinden alır. Süre ve hata
+- **Tezgahtar** (kırmızı önlük): tezgâhtaki müşteriyi kendisi karşılar (bırakılan işi kabul edip fiş keser; raf
+  doluysa kibarca geri çevirir), parça isteyen müşteriye raftan getirip satar (stokta yoksa haber verir),
+  teslime gelen müşteriye **hazır** işin cihazını rafdan getirip verir, boşta kalınca kapıdaki kolileri açar.
+- **Teknisyen** (mavi önlük): **Bekleyen İşler rafındaki** masaüstü işlerini yerinde, stoktaki parçalarla kendisi
+  yapar (arızalı parça, yükseltme, toz, termal macun, sıfırdan toplama) ve işi "hazır" yapar; ücret teslimde sana
+  gelir. Laptop/telefon ve tezgâhtaki (senin üzerinde çalıştığın) işe karışmaz. İşi ona bakıp E ile ya da
+  sekmedeki **İşi Ver** ile verirsin; "Kendi alır" açıksa rafa konan işi kendiliğinden alır. Süre ve hata
   olasılığı beceriye/huya bağlıdır; hata yaparsa bir parça yanar ve itibar düşer. Parça yoksa "stok yok" der.
 - Huylar: Titiz, Hızlı ama dalgın, Güler yüzlü (itibar +), Hevesli çaylak (ucuz), Eski toprak, Biraz uykucu.
 - Kod: `scripts/staff.gd` (yönetici, davranışlar), `scripts/employee.gd` (önlüklü model), `scripts/staff_data.gd`
@@ -96,12 +120,29 @@ MSAA kapalı, gölgeler hafifletilmiş.
 
 ## Oynanış
 
-- **Müşteri** tezgaha gelir. Onunla konuşunca bilgisayarı masana bırakır.
+- **Müşteri** tezgaha gelir (sıra bekleyen en çok 3 müşteri). Derdini dinle: **E** ile işi kabul et ya da **F** ile
+  geri çevir. Kabul edince cihaz sağ duvardaki **Bekleyen İşler rafına** konur, müşteri **fiş numarasını** alıp
+  teslim gününü söyler ("Yarın öğlen uğrarım") ve gider. Parça satışı müşterisi (tezgâh satışı) eskisi gibi anında olur.
+- **İş kapasitesi:** aynı anda en çok **3 açık iş** (raf 6 gözlüdür, kalanı kilitli; `Game.max_active_jobs()`).
+  Raf doluyken gelen müşteriyi **F** ile geri çevirirsin (itibar kaybı yok).
+- **Cihaz taşıma:** rafta/tezgâhta cihazın üstündeki **fişe** (ya da rafın gözüne) bakıp **E**: kasayı/laptopu/telefonu
+  elinde taşırsın (G ya da sağ tık: geldiği yere geri koyar; taşırken parça/alet alınamaz). Tezgâh yerine (masadaki
+  mavi minder) ya da rafın boş gözüne bakıp **E** ile bırakırsın. Sadece tezgâhtaki cihazı açıp tamir edersin.
 - **Cam kapağı** aç, **güç düğmesine** bas ve belirtileri izle (bip sesleri, ekran).
 - Duvardaki **Arıza Rehberi** hangi belirtinin hangi parçayı gösterdiğini söyler.
 - Anakarttaki **hata LED'leri** (CPU / DRAM / VGA / BOOT) açılışta sorunlu parçayı gösterir.
 - Arızalı parçayı sök, **raftan** yenisini satın al, tak.
-- Kapağı kapat, müşteriyle konuş ve paranı al.
+- Kapağı kapat, cihazı **rafa koy**: sorun kalmadıysa fiş şeridi ve raf ışığı **yeşil** yanar (HAZIR); hâlâ arıza
+  varsa uyarı alırsın. Işıklar: kehribar = bekliyor, yeşil = hazır, kırmızı = teslim saati geçti.
+- **Teslim:** müşteri fişte yazan saatte geri gelir (HUD'da "Yarın 14:00"). Fiş numarasını söyler; sen **o numaralı**
+  cihazı rafta bulup (E ile al) müşteriye dönüp **E**'ye basarsın. Yanlış cihaz = komik şikâyet ve küçük itibar kaybı;
+  arızalıysa müşteri itiraz eder; doğruysa paranı alırsın. Zamanında (rafta hazır) teslim itibarı artırır, erken
+  bitirmek (teslim süresinin ilk yarısında hazır) daha çok.
+- **Teslim zamanı:** tamir/yükseltme/garanti ertesi gün 10:00–18:00 arası; sıfırdan toplama 2 gün sonra; %20 ihtimalle
+  **ekspres** müşteri (15:30'a kadar gelen tamir) "bugün lazım" der: 3 oyun saati sonra, ücret +%20.
+- **Gecikme:** müşteri vakti gelince cihaz hazır değilse tezgâhta bekler (sabır ~60 sn; bu sürede tamir edip verebilirsin).
+  Sabrı biterse ilkinde **bir gün daha** verir (itibar −0.2), ikincisinde cihazını **olduğu gibi alıp gider** (itibar −0.5, ücret yok).
+  Açık işler gün sonunda ve gece boyunca rafta kalır; Z raporunda "Rafta açık iş" satırı vardır.
 - Eski parçaları **hurda kutusuna** at (sağlam parçalar hurdacıya satılır).
 
 ## Gün döngüsü, itibar ve dükkân
@@ -113,14 +154,16 @@ MSAA kapalı, gölgeler hafifletilmiş.
   **iflas** edersin ve yeni oyun başlar.
 - **İtibar (0–5 yıldız):** başarılı teslim artırır (hızlıysa daha çok), hatalı teslim denemeleri ve
   kızıp giden müşteriler düşürür. İtibar iş ücretini (±%20) ve müşteri gelme sıklığını etkiler.
-- **Sabır:** müşteriyle ~60 sn konuşmazsan ya da iş ~4 oyun saatinden uzun sürerse kızıp gider
-  (bilgisayarını da götürür). İş panelindeki çubuk kalan sabrı gösterir.
+- **Sabır:** tezgâhta ~60 sn ilgilenmezsen müşteri kızıp gider (sırada bekleyenin sabrı yarı hızda tükenir).
+  Tezgâh fişindeki çubuk kalan sabrı gösterir.
 - **Geliştirmeler:** tezgahtaki laptopla aç (E) → Geliştirmeler. Reklam Tabelası (müşteri daha sık gelir),
   Toptan Anlaşma (ParçaNet %15 indirim), Kurye Anlaşması (kargo yarı sürede, ücretsiz),
   Kahve Makinesi (sabır +%50), Usta Sertifikası (ücret +%15).
   Satın alınanlar dükkânda görünür.
-- **Kayıt:** gün sonunda ve oyundan çıkarken otomatik kaydedilir (`user://save.json`). Başlangıç
-  ekranında **Devam Et** ile kayıtlı günün 09:00'ından devam edersin, **Yeni Oyun** sıfırlar.
+- **Kayıt:** gün sonunda ve oyundan çıkarken otomatik kaydedilir (`user://save.json`, sürüm 3). Başlangıç
+  ekranında **Devam Et** ile kayıtlı günün 09:00'ından devam edersin, **Yeni Oyun** sıfırlar. Açık işler
+  (fiş no, teslim zamanı, durum) ve cihazlarının parça durumu (takılı parçalar, arızalar, toz, macun, muadil) kayda girer;
+  yüklenince cihazlar rafa / tezgâha geri konur. Eski (v2) kayıtlar açık iş olmadan yüklenir.
 
 - **Muadil parça:** ParçaNet'te her ürün Orijinal ya da Muadil (%40 ucuz) alınabilir. Raftan orijinal **E**,
   muadil **F** ile alınır. Muadil parça turuncu etiketlidir, hurdada/tezgahta %60 değerindedir.
@@ -146,7 +189,10 @@ scripts/part_models.gd  Parça modelleri, isimler, fiyatlar
 scripts/slot.gd         Kasa içindeki parça yuvaları
 scripts/monitor.gd      Monitör (BIOS / masaüstü ekranı)
 scripts/customer.gd     Müşteri modeli ve yürüme
-scripts/job_manager.gd  Müşteri/iş akışı
+scripts/job_manager.gd  Müşteri kuyruğu, bırakma/teslim akışı, iş kayıtları (Game.jobs_active)
+scripts/job_rack.gd     Bekleyen İşler rafı (6 göz, numara, durum ışığı)
+scripts/job_carry.gd    Cihaz taşıma (kameraya takılı kasa/laptop/telefon)
+scripts/job_store.gd    Teslim zamanı, kayıt normalleştirme, cihaz durumu kaydet/yükle, fiş etiketi
 scripts/hud.gd          HUD, gün sonu / iflas ekranları, öğretici ipuçları
 scripts/office_panel.gd Laptop: ParçaNet siparişi, Kargo Takip, Geliştirmeler, Dükkân istatistikleri
 scripts/delivery.gd     Kurye ve kargo kolileri
@@ -163,24 +209,37 @@ scripts/ui_kit.gd       Arayüz yardımcıları (düğme, tuş kapağı, modal, 
 scripts/music.gd        Kodla üretilen fon müziği
 assets/fonts/           Exo 2, Bungee, VT323, Caveat yazı tipleri + OFL_*.txt lisansları
 assets/ui/theme.res     Proje varsayılan teması (`dev/make_theme.gd` ile yeniden üretilir)
-scripts/mesh_util.gd    Prosedürel model ve doku yardımcıları
+scripts/mesh_util.gd    Prosedürel model ve doku yardımcıları (yuvarlak kutu, levha, torna, tuş kapakları, 2D→doku pişirme)
+scripts/props.gd        Detaylı eşyalar: klavye, fare, laptop, telefon, monitör, masa lambası, kupa, yazar kasa, CRT
 scripts/sfx.gd          Kodla üretilen sesler (SFX kanalı)
 assets/                 Dokular ve HDRI (Poly Haven, CC0)
 dev/                    Geliştirici araçları (ekran görüntüsü, otomatik test)
 ```
 
-Otomatik test (tamir döngüsü + gün/itibar/kayıt/iflas): `godot --headless -- --looptest`
+Otomatik test (tamir döngüsü + gün/itibar/kayıt/iflas): `godot --headless -- --looptest`  
+Çoklu iş testi (bırakma, kapasite, taşıma, kayıt/yükleme, teslim, gecikme): `godot --headless -- --multijobtest`  
+Bekleyen işler rafı / taşıma / HUD listesi görüntüleri: `godot --rendering-driver opengl3 -- --jobshot` (`shot_jobs_*.png`)  
 Arayüz görüntüleri: `godot -- --uishot` (oyun içi), `godot -- --menushot` (ana menü); menü akışı testi: `godot --headless -- --flowtest`  
 Dev argümanları (`--shot`, `--uishot`, `--perf`, `--partshot`, `--looptest`) ana menüyü atlayıp doğrudan oyuna girer.  
-Performans ölçümü: `godot -- --perf`  ·  Parça vitrini görseli: `godot -- --partshot`
+Performans ölçümü: `godot -- --perf`  ·  Parça vitrini görseli: `godot -- --partshot`  
+Eşya/müşteri yakın çekimleri: `godot -- --propshot` (isteğe bağlı `--only=keyboard,laptop,faces`)
 
 ## Grafik
 
 - **Yüksek kalite:** SDFGI (dolaylı ışık), SSIL, SSR yansımaları, hacimsel sis (ışık huzmeleri).
 - **Orta kalite:** SSAO + SSR. **Düşük kalite:** hepsi kapalı, zayıf ekran kartlarında akıcı çalışır.
-- Optimizasyon: sabit nesneler malzemeye göre tek mesh'te birleştirilir (`MU.merge_static`),
-  sadece 3 ışık gölge düşürür, monitör ekranı sadece değişince yeniden çizilir.
-- Tonlama: AgX. Kenarlar yuvarlatılmış özel mesh'ler (`MU.rbox`) ile yapılıyor.
+- Optimizasyon: sabit nesneler malzemeye göre tek mesh'te birleştirilir (`MU.merge_static`) ve boşalan
+  düğümler silinir (sahnede ~1100 yerine ~95 MeshInstance kalır); dönen fanlar ve müşteri kol/bacakları da
+  kendi içinde birleştirilir. Sadece 3 ışık gölge düşürür, 3D yazılar gölge geçişlerine girmez,
+  monitör ekranı sadece değişince yeniden çizilir.
+- Klavye tuşları gerçek eğimli kapaklardır ve harfleri basılıdır (Türkçe Q düzeni); bütün tuşlar tek mesh +
+  tek malzemeyle çizilir. Harfler, laptop/telefon/yazar kasa ekranları bir kez 2D olarak çizilip mipmap'li
+  dokuya "pişirilir" (`MU.bake_2d`), ardından SubViewport silinir: sürekli maliyeti yoktur.
+- Şekiller: köşeleri yuvarlatılmış kutular (`MU.rbox`), telefon/laptop gibi pahlı levhalar (`MU.slab`),
+  kupa/lamba/kutu gibi yuvarlak nesneler için torna profilleri (`MU.lathe`).
+- Müşteriler adlarına göre görünür: "Teyze" gri topuzlu, "Amca" bıyıklı/kel olabilir, kadınlar uzun saçlı;
+  kıyafet (tişört / gömlek / kapüşonlu), gözlük, sakal ve renkler rastgeledir.
+- Tonlama: AgX.
 
 ## Lisanslar
 

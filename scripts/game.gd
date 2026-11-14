@@ -9,13 +9,35 @@ signal day_ended(summary: Dictionary)
 signal game_over(summary: Dictionary)
 signal stock_changed
 signal orders_changed
+signal bench_changed(device)  # tezgâhtaki cihaz değişti (null = boş)
+signal jobs_changed           # aktif iş listesi değişti (yeni iş, durum, teslim)
+signal jobs_loaded            # kayıttan iş listesi yüklendi (cihazlar yeniden kurulur)
 
 const SFX := preload("res://scripts/sfx.gd")
 const PM := preload("res://scripts/part_models.gd")
 const FADER := preload("res://scripts/fader.gd")
 const MUSIC := preload("res://scripts/music.gd")
 const UM := preload("res://scripts/used_market.gd")
-const DEV_ARGS := ["--shot", "--uishot", "--perf", "--partshot", "--looptest"]
+const JOB_STORE := preload("res://scripts/job_store.gd")
+# geliştirici bayrakları (her biri ayrı satırda: paralel dallarda çakışmasın)
+const DEV_ARGS := [
+	"--propshot",
+	"--shot",
+	"--uishot",
+	"--perf",
+	"--partshot",
+	"--looptest",
+	"--jobdisttest",
+	"--jobdatatest",
+	"--holdtest",
+	"--holdshot",
+	"--savetest",
+	"--datatest",
+	"--benchtest",
+	"--benchshot",
+	"--multijobtest",
+	"--jobshot",
+]
 
 # --- Ayarlanabilir sabitler ---
 const OPEN_HOUR := 9.0
@@ -29,6 +51,7 @@ const RENT_RAISE_EVERY := 3               # kaç günde bir kira seviyesi artar
 const START_REP := 3.0
 const BANKRUPT_DAYS := 2                  # üst üste kaç gün eksi bakiye = iflas
 const SAVE_PATH := "user://save.json"
+const SAVE_VERSION := 3                   # kayıt şeması sürümü (eski kayıtlar _migrate ile çevrilir)
 
 const UPGRADE_LIST := [
 	{"id": "sign", "name": "Reklam Tabelası", "price": 400, "desc": "Müşteriler daha sık gelir."},
@@ -42,6 +65,18 @@ var money := START_MONEY
 var jobs_done := 0
 var hud = null
 var player = null
+## Tezgâhta üzerinde çalışılan cihaz (PC kasası / laptop / telefon) ya da null.
+## Tezgâh modu ve çoklu iş sistemi arasındaki ortak sözleşme: cihazı tezgâha koyan set_bench_device çağırır.
+var bench_device = null
+var bench_active := false     # tezgâh modu (yörünge kamera) açık: fare serbest ama zaman akar
+## Çoklu iş: müşterinin bırakıp gittiği, henüz teslim edilmemiş işler (bkz. job_manager.gd, job_store.gd).
+## Kayıt: {ticket, name, kind, device, parts, pay, due_abs, express, status, location, state, ...}
+var jobs_active: Array = []
+var next_ticket := 101            # sıradaki fiş numarası
+var job_slot_bonus := 0           # ileride geliştirmelerle artacak ek raf gözü
+var job_mgr = null                # sahnedeki iş yöneticisi (scripts/job_manager.gd)
+const BASE_JOB_SLOTS := 3         # başlangıçta aynı anda en fazla bu kadar açık iş
+const MAX_JOB_SLOTS := 6          # rafın göz sayısı (üst sınır)
 var sfx = null
 var fader = null
 var dev_mode := false         # dev araçları (--shot vb.) menüsüz doğrudan oyuna girer
@@ -62,15 +97,14 @@ var jobs_today := 0
 var rep_day_start := START_REP
 
 # --- stok ve sipariş (ParçaNet) ---
-## Satılan ürünler: [tür, seviye]. Stok anahtarı "tür:seviye".
-const CATALOG := [["cpu", 1], ["ram", 1], ["ram", 2], ["gpu", 1], ["gpu", 2], ["psu", 1], ["ssd", 1],
-	# --- laptop / telefon parçaları ---
-	["lap_ram", 1], ["lap_ssd", 1], ["lap_bat", 1], ["lap_scr", 1], ["tel_bat", 1], ["tel_scr", 1], ["tel_port", 1],
-]
-const START_STOCK := {"cpu:1": 1, "ram:1": 2, "gpu:1": 1, "psu:1": 1, "ssd:1": 1,
-	# --- laptop / telefon parçaları ---
-	"lap_ram:1": 1, "lap_ssd:1": 1, "lap_bat:1": 1, "lap_scr:1": 1, "tel_bat:1": 1, "tel_scr:1": 1, "tel_port:1": 1,
-}
+## Satılan ürünler: [tür, seviye]. Stok anahtarı "tür:seviye" (= parçanın SKU'su).
+## Veri data/parts.json'dan gelir (DB.parts); eski adlar uyumluluk için korunur.
+var CATALOG: Array:
+	get: return DB.parts.catalog_pairs()
+var START_STOCK: Dictionary:
+	get: return DB.parts.start_stock()
+## Raftaki ürünlerin dünya konumu: {sku: Vector3}. Raf kurulurken main.gd doldurur; personel buradan okur.
+var shelf_pos := {}
 const SHIP_STD_HOURS := 2.0
 const SHIP_EXP_HOURS := 0.5
 const SHIP_STD_FEE := 15
@@ -82,6 +116,7 @@ const RETAIL_MARKUP := 1.35       # tezgahtan parça satışında kâr marjı
 var stock := {}
 var orders: Array = []            # {id, items: {sku: adet}, eta: mutlak saat, express, cost, state}
 var next_order_id := 1
+var job_history: Array = []       # iş seçicinin son seçtikleri (tekrar cezası için, kayda girer)
 var market := 1.0                 # günlük piyasa çarpanı (kur)
 var market_prev := 1.0
 var shipping_today := 0
@@ -100,12 +135,14 @@ var take_was_dud := false         # son take_stock() arızalı parça verdi mi
 var warranty_list: Array = []     # bekleyen garanti dönüşleri: {due, name, type, tier}
 var warranty_chance := WARRANTY_CHANCE
 var used_listings: Array = []     # bugünün ikinci el ilanları
+var _loaded_used_sold: Array = [] # kayıttan gelen satılmış ilan id'leri (günlük üretimde bir kez uygulanır)
 var utility_today := 0
 
 var started := false          # oyuncu Yeni Oyun / Devam Et seçti mi
 var phase := "menu"           # menu / day / summary / over
 var running := false          # HUD ayarlar: fare yakalı ve oyun akıyor
 var save_path := SAVE_PATH
+var _loaded_from_backup := false  # son okuma ana dosya yerine yedekten mi yapıldı
 
 
 func _ready() -> void:
@@ -128,6 +165,18 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	if phase == "day" and running and clock < CLOSE_HOUR:
 		clock = minf(CLOSE_HOUR, clock + delta * HOURS_PER_SEC)
+
+
+## Aynı anda tutulabilecek açık iş sayısı (rafın açık göz sayısı).
+func max_active_jobs() -> int:
+	return mini(BASE_JOB_SLOTS + job_slot_bonus, MAX_JOB_SLOTS)
+
+
+func job_by_ticket(ticket: int) -> Dictionary:
+	for r in jobs_active:
+		if int(r.ticket) == ticket:
+			return r
+	return {}
 
 
 func is_closed() -> bool:
@@ -382,17 +431,27 @@ func _reset_economy() -> void:
 	stock_dud = {}
 	warranty_list = []
 	used_listings = []
+	_loaded_used_sold = []
 
 
 func _save_economy(d: Dictionary) -> void:
 	d.stock_cheap = stock_cheap
 	d.stock_dud = stock_dud
 	d.warranty = warranty_list
+	# satılmış ikinci el ilanları (gün sonu özeti kaydıysa yarın taze ilan gelir)
+	var sold_ids := []
+	if phase != "summary":
+		for l in used_listings:
+			if l.sold:
+				sold_ids.append(int(l.id))
+	d.used_sold = sold_ids
 
 
 func _load_economy(d: Dictionary) -> void:
 	_reset_economy()
 	used_listings = UM.generate(day)  # ilanlar günün tohumundan yeniden üretilir
+	for id in d.get("used_sold", []):
+		_loaded_used_sold.append(int(id))
 	for k in d.get("stock_cheap", {}):
 		stock_cheap[str(k)] = int(d.stock_cheap[k])
 	for k in d.get("stock_dud", {}):
@@ -464,6 +523,9 @@ func new_game() -> void:
 	_reset_economy()
 	orders = []
 	next_order_id = 1
+	job_history = []
+	jobs_active = []
+	next_ticket = 101
 	market = 1.0
 	market_prev = 1.0
 	_reset_staff()  # PERSONEL
@@ -483,15 +545,25 @@ func start_day() -> void:
 	shipping_today = 0
 	sales_today = 0
 	jobs_today = 0
-	used_listings = UM.generate(day)
+	_make_listings()
 	rep_day_start = rep
 	phase = "day"
 	day_started.emit()
 
 
+## Günün ilanlarını üretir; kayıttan gelen satılmış ilanlar işaretlenir (yalnızca bir kez).
+func _make_listings() -> void:
+	used_listings = UM.generate(day)
+	for l in used_listings:
+		if int(l.id) in _loaded_used_sold:
+			l.sold = true
+	_loaded_used_sold = []
+
+
 func next_day() -> void:
 	day += 1
 	_roll_market()
+	_loaded_used_sold = []  # yeni güne eski kayıttaki satış işaretleri taşınmaz
 	start_day()
 
 
@@ -505,7 +577,7 @@ func end_day() -> void:
 	var wg := _pay_wages()  # PERSONEL: maaşlar
 	money_changed.emit(money)
 	var s := {"day": day, "income": income_today, "parts": parts_today, "rent": r, "shipping": shipping_today, "utility": bill,
-		"warranty_pending": warranty_list.size(),
+		"warranty_pending": warranty_list.size(), "open_jobs": jobs_active.size(),
 		"sales": sales_today, "net": income_today - parts_today - shipping_today - r - bill, "rep_delta": rep - rep_day_start, "rep": rep,
 		"money": money, "jobs": jobs_today, "warn": false}
 	s.wages = wg; s.net -= wg  # PERSONEL
@@ -515,8 +587,7 @@ func end_day() -> void:
 	s.next_rent = rent()
 	if debt_days >= BANKRUPT_DAYS:
 		phase = "over"
-		if FileAccess.file_exists(save_path):
-			DirAccess.remove_absolute(save_path)
+		_delete_save_files()  # iflasta yedek de silinir: geri getirilemesin
 		game_over.emit(s)
 		return
 	s.warn = debt_days > 0
@@ -526,16 +597,108 @@ func end_day() -> void:
 
 
 # --- Kayıt ---
+## Geçerli bir kayıt (ana dosya ya da yedek) var mı.
 func has_save() -> bool:
-	return FileAccess.file_exists(save_path)
+	return not _parse_save_file(save_path).is_empty() or not _parse_save_file(_bak_path()).is_empty()
+
+
+func _bak_path() -> String:
+	return save_path + ".bak"
+
+
+func _tmp_path() -> String:
+	return save_path + ".tmp"
+
+
+## Tek bir kayıt dosyasını okur ve JSON sözlüğü olarak döndürür; bozuk/yoksa {}.
+func _parse_save_file(path: String) -> Dictionary:
+	if not FileAccess.file_exists(path):
+		return {}
+	var parsed = JSON.parse_string(FileAccess.get_file_as_string(path))
+	if typeof(parsed) != TYPE_DICTIONARY:
+		return {}
+	return parsed
+
+
+## Kaydı okur; ana dosya bozuksa yedeğe bakar. Yedekten okunduysa _loaded_from_backup true olur.
+func _read_save() -> Dictionary:
+	_loaded_from_backup = false
+	var d := _parse_save_file(save_path)
+	if d.is_empty():
+		d = _parse_save_file(_bak_path())
+		if not d.is_empty():
+			_loaded_from_backup = true
+			push_warning("Kayıt dosyası bozuk, yedekten okunuyor: " + _bak_path())
+	return d
+
+
+## Kayıt dosyalarını (ana, yedek, geçici) siler.
+func _delete_save_files() -> void:
+	for p in [save_path, _bak_path(), _tmp_path()]:
+		if FileAccess.file_exists(p):
+			DirAccess.remove_absolute(p)
+
+
+## Eski sürüm kayıtlarını güncel şemaya adım adım çevirir.
+## Yeni sürüm eklenince her dönüşüm "if from_version < N:" bloğu olarak buraya yazılır.
+func _migrate(d: Dictionary, from_version: int) -> Dictionary:
+	if from_version < 2:
+		pass  # v1 -> v2: şema aynı, yalnızca "version" alanı eklendi; dönüşüm gerekmez
+	if from_version < 3:
+		# v2 -> v3: çoklu iş. Eski kayıtlarda bırakılmış iş yoktu: boş liste, fiş numarası baştan.
+		d["jobs"] = []
+		d["next_ticket"] = 101
+	return d
+
+
+## Kayıt sözlüğünü geçici dosyaya yazar, doğrular, eski kaydı yedekler ve yerine koyar.
+## Başarısızlıkta eski kayıt korunur. Dönüş: başarılıysa true.
+func _write_save_atomic(d: Dictionary) -> bool:
+	var tmp := _tmp_path()
+	var bak := _bak_path()
+	var f := FileAccess.open(tmp, FileAccess.WRITE)
+	if f == null:
+		push_error("Kayıt yazılamadı, geçici dosya açılamadı: %s" % error_string(FileAccess.get_open_error()))
+		return false
+	f.store_string(JSON.stringify(d))
+	var werr := f.get_error()
+	f.close()
+	if werr != OK or _parse_save_file(tmp).is_empty():
+		push_error("Kayıt yazılamadı, geçici dosya bozuk (hata: %s)" % error_string(werr))
+		DirAccess.remove_absolute(tmp)
+		return false
+	var had_old := FileAccess.file_exists(save_path)
+	if had_old:
+		# yalnızca geçerli ana dosya yedeklenir; bozuk dosya iyi yedeğin üstüne yazılmasın
+		if not _parse_save_file(save_path).is_empty():
+			if FileAccess.file_exists(bak):
+				DirAccess.remove_absolute(bak)
+			var cerr := DirAccess.copy_absolute(save_path, bak)
+			if cerr != OK:
+				push_error("Kayıt yedeklenemedi: %s" % error_string(cerr))
+				DirAccess.remove_absolute(tmp)
+				return false
+		# Windows'ta üstüne yeniden adlandırma başarısız olabildiği için önce ana dosya silinir
+		var derr := DirAccess.remove_absolute(save_path)
+		if derr != OK:
+			push_error("Eski kayıt silinemedi: %s" % error_string(derr))
+			DirAccess.remove_absolute(tmp)
+			return false
+	var rerr := DirAccess.rename_absolute(tmp, save_path)
+	if rerr != OK:
+		push_error("Kayıt dosyası yerine konamadı: %s" % error_string(rerr))
+		if had_old and FileAccess.file_exists(bak):
+			# eski kaydı geri getir: oyuncu kaydını kaybetmesin
+			DirAccess.copy_absolute(bak, save_path)
+		DirAccess.remove_absolute(tmp)
+		return false
+	return true
 
 
 ## Kayıt dosyasının özeti (ana menüde göstermek için); kayıt yoksa boş sözlük.
 func peek_save() -> Dictionary:
-	if not has_save():
-		return {}
-	var parsed = JSON.parse_string(FileAccess.get_file_as_string(save_path))
-	if typeof(parsed) != TYPE_DICTIONARY:
+	var parsed := _read_save()
+	if parsed.is_empty():
 		return {}
 	return {"day": int(parsed.get("day", 1)), "money": int(parsed.get("money", 0)), "rep": float(parsed.get("rep", 3.0))}
 
@@ -556,9 +719,9 @@ func return_to_menu() -> void:
 
 
 func save_game() -> void:
-	var d := {"day": day, "clock": clock, "money": money, "rep": rep, "upgrades": upgrades.keys(),
+	var d := {"version": SAVE_VERSION, "day": day, "clock": clock, "money": money, "rep": rep, "upgrades": upgrades.keys(),
 		"jobs_done": jobs_done, "rent_level": rent_level, "debt_days": debt_days, "stats": stats,
-		"stock": stock, "market": market, "market_prev": market_prev, "next_order_id": next_order_id}
+		"stock": stock, "market": market, "market_prev": market_prev, "next_order_id": next_order_id, "job_history": job_history}
 	# kapıdaki/yoldaki kargolar kayıtta "yolda" sayılır; kurye yeniden getirir
 	var ol := []
 	for o in orders:
@@ -571,19 +734,24 @@ func save_game() -> void:
 		d.clock = OPEN_HOUR
 		d.market = market
 	_save_staff(d)  # PERSONEL
-	var f := FileAccess.open(save_path, FileAccess.WRITE)
-	if f:
-		f.store_string(JSON.stringify(d))
+	_save_jobs(d)
+	if not _write_save_atomic(d):
+		msg("Kayıt yazılamadı! Disk dolu ya da yazma izni yok olabilir.", Color(1, 0.5, 0.4))
 
 
 func load_game() -> bool:
 	if not has_save():
 		return false
-	var txt := FileAccess.get_file_as_string(save_path)
-	var parsed = JSON.parse_string(txt)
-	if typeof(parsed) != TYPE_DICTIONARY:
+	var d := _read_save()
+	if d.is_empty():
 		return false
-	var d: Dictionary = parsed
+	var ver := int(d.get("version", 1))  # sürüm alanı yoksa ilk sürüm kabul edilir
+	if ver > SAVE_VERSION:
+		push_warning("Kayıt sürümü (%d) bu oyunun sürümünden (%d) yeni; kayıt yüklenmedi." % [ver, SAVE_VERSION])
+		return false
+	if _loaded_from_backup:
+		msg("Kayıt dosyası bozuktu, yedekten yüklendi.", Color(1, 0.8, 0.4))
+	d = _migrate(d, ver)
 	day = int(d.get("day", 1))
 	money = int(d.get("money", START_MONEY))
 	rep = clampf(float(d.get("rep", START_REP)), 0.0, 5.0)
@@ -603,6 +771,9 @@ func load_game() -> bool:
 	market = float(d.get("market", 1.0))
 	market_prev = float(d.get("market_prev", market))
 	next_order_id = int(d.get("next_order_id", 1))
+	job_history = []
+	for h in d.get("job_history", []):
+		job_history.append(str(h))
 	_load_economy(d)
 	orders = []
 	for o in d.get("orders", []):
@@ -612,6 +783,7 @@ func load_game() -> bool:
 		orders.append({"id": int(o.id), "items": items, "eta": float(o.eta), "express": bool(o.get("express", false)),
 			"cost": int(o.get("cost", 0)), "state": "transit"})
 	_load_staff(d)  # PERSONEL
+	_load_jobs(d)
 	return true
 
 
@@ -723,3 +895,36 @@ func _load_staff(d: Dictionary) -> void:
 			"wage": int(e.get("wage", 60)), "auto": bool(e.get("auto", true))})
 	staff_next_id = int(d.get("staff_next_id", staff.size() + 1))
 	roll_staff_candidates()
+
+
+# ================================================================ ÇOKLU İŞ (kayıt)
+## Açık işleri kayda yazar. Cihazların parça durumu önce düğümlerden okunur (job_manager.sync_states).
+func _save_jobs(d: Dictionary) -> void:
+	if job_mgr:
+		job_mgr.sync_states()
+	d.jobs = jobs_active
+	d.next_ticket = next_ticket
+
+
+func _load_jobs(d: Dictionary) -> void:
+	jobs_active = []
+	for r in d.get("jobs", []):
+		if r is Dictionary:
+			jobs_active.append(JOB_STORE.normalize(r))
+	next_ticket = int(d.get("next_ticket", 101))
+	for r in jobs_active:
+		next_ticket = maxi(next_ticket, int(r.ticket) + 1)
+	jobs_loaded.emit()
+	jobs_changed.emit()
+
+
+## Oyuncu şu an bir cihaz (kasa/laptop/telefon) taşıyor mu? Taşırken parça/alet alınamaz.
+func is_carrying() -> bool:
+	return job_mgr != null and job_mgr.carry.active()
+
+
+func set_bench_device(d) -> void:
+	if bench_device == d:
+		return
+	bench_device = d
+	bench_changed.emit(d)
