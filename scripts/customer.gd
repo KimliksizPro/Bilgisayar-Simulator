@@ -4,6 +4,7 @@ extends Node3D
 const MU := preload("res://scripts/mesh_util.gd")
 
 var speech: Label3D
+var inter = null              # etkileşim kutusu (alt eylem F: job_manager atar)
 var waypoints: Array = []
 var on_arrive: Callable
 var speed := 1.3
@@ -150,7 +151,7 @@ func build(hint_fn: Callable, action: Callable, who := "", uniform := Color(0, 0
 	for limb in legs + arms:
 		MU.merge_static(limb)
 	MU.merge_static(self)
-	MU.interactable(self, Vector3(0.55, 1.8, 0.45), Vector3(0, 0.9, 0), hint_fn, action)
+	inter = MU.interactable(self, Vector3(0.55, 1.8, 0.45), Vector3(0, 0.9, 0), hint_fn, action)
 	speech = Label3D.new()
 	speech.position = Vector3(0, 2.08, 0)
 	speech.billboard = BaseMaterial3D.BILLBOARD_ENABLED

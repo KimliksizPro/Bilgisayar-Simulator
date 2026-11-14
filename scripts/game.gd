@@ -10,12 +10,15 @@ signal game_over(summary: Dictionary)
 signal stock_changed
 signal orders_changed
 signal bench_changed(device)  # tezgâhtaki cihaz değişti (null = boş)
+signal jobs_changed           # aktif iş listesi değişti (yeni iş, durum, teslim)
+signal jobs_loaded            # kayıttan iş listesi yüklendi (cihazlar yeniden kurulur)
 
 const SFX := preload("res://scripts/sfx.gd")
 const PM := preload("res://scripts/part_models.gd")
 const FADER := preload("res://scripts/fader.gd")
 const MUSIC := preload("res://scripts/music.gd")
 const UM := preload("res://scripts/used_market.gd")
+const JOB_STORE := preload("res://scripts/job_store.gd")
 # geliştirici bayrakları (her biri ayrı satırda: paralel dallarda çakışmasın)
 const DEV_ARGS := [
 	"--propshot",
@@ -32,6 +35,8 @@ const DEV_ARGS := [
 	"--datatest",
 	"--benchtest",
 	"--benchshot",
+	"--multijobtest",
+	"--jobshot",
 ]
 
 # --- Ayarlanabilir sabitler ---
@@ -46,7 +51,7 @@ const RENT_RAISE_EVERY := 3               # kaç günde bir kira seviyesi artar
 const START_REP := 3.0
 const BANKRUPT_DAYS := 2                  # üst üste kaç gün eksi bakiye = iflas
 const SAVE_PATH := "user://save.json"
-const SAVE_VERSION := 2                   # kayıt şeması sürümü (eski kayıtlar _migrate ile çevrilir)
+const SAVE_VERSION := 3                   # kayıt şeması sürümü (eski kayıtlar _migrate ile çevrilir)
 
 const UPGRADE_LIST := [
 	{"id": "sign", "name": "Reklam Tabelası", "price": 400, "desc": "Müşteriler daha sık gelir."},
@@ -64,6 +69,14 @@ var player = null
 ## Tezgâh modu ve çoklu iş sistemi arasındaki ortak sözleşme: cihazı tezgâha koyan set_bench_device çağırır.
 var bench_device = null
 var bench_active := false     # tezgâh modu (yörünge kamera) açık: fare serbest ama zaman akar
+## Çoklu iş: müşterinin bırakıp gittiği, henüz teslim edilmemiş işler (bkz. job_manager.gd, job_store.gd).
+## Kayıt: {ticket, name, kind, device, parts, pay, due_abs, express, status, location, state, ...}
+var jobs_active: Array = []
+var next_ticket := 101            # sıradaki fiş numarası
+var job_slot_bonus := 0           # ileride geliştirmelerle artacak ek raf gözü
+var job_mgr = null                # sahnedeki iş yöneticisi (scripts/job_manager.gd)
+const BASE_JOB_SLOTS := 3         # başlangıçta aynı anda en fazla bu kadar açık iş
+const MAX_JOB_SLOTS := 6          # rafın göz sayısı (üst sınır)
 var sfx = null
 var fader = null
 var dev_mode := false         # dev araçları (--shot vb.) menüsüz doğrudan oyuna girer
@@ -152,6 +165,18 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	if phase == "day" and running and clock < CLOSE_HOUR:
 		clock = minf(CLOSE_HOUR, clock + delta * HOURS_PER_SEC)
+
+
+## Aynı anda tutulabilecek açık iş sayısı (rafın açık göz sayısı).
+func max_active_jobs() -> int:
+	return mini(BASE_JOB_SLOTS + job_slot_bonus, MAX_JOB_SLOTS)
+
+
+func job_by_ticket(ticket: int) -> Dictionary:
+	for r in jobs_active:
+		if int(r.ticket) == ticket:
+			return r
+	return {}
 
 
 func is_closed() -> bool:
@@ -499,6 +524,8 @@ func new_game() -> void:
 	orders = []
 	next_order_id = 1
 	job_history = []
+	jobs_active = []
+	next_ticket = 101
 	market = 1.0
 	market_prev = 1.0
 	_reset_staff()  # PERSONEL
@@ -550,7 +577,7 @@ func end_day() -> void:
 	var wg := _pay_wages()  # PERSONEL: maaşlar
 	money_changed.emit(money)
 	var s := {"day": day, "income": income_today, "parts": parts_today, "rent": r, "shipping": shipping_today, "utility": bill,
-		"warranty_pending": warranty_list.size(),
+		"warranty_pending": warranty_list.size(), "open_jobs": jobs_active.size(),
 		"sales": sales_today, "net": income_today - parts_today - shipping_today - r - bill, "rep_delta": rep - rep_day_start, "rep": rep,
 		"money": money, "jobs": jobs_today, "warn": false}
 	s.wages = wg; s.net -= wg  # PERSONEL
@@ -617,8 +644,10 @@ func _delete_save_files() -> void:
 func _migrate(d: Dictionary, from_version: int) -> Dictionary:
 	if from_version < 2:
 		pass  # v1 -> v2: şema aynı, yalnızca "version" alanı eklendi; dönüşüm gerekmez
-	# if from_version < 3:
-	# 	d["yeni_alan"] = varsayılan
+	if from_version < 3:
+		# v2 -> v3: çoklu iş. Eski kayıtlarda bırakılmış iş yoktu: boş liste, fiş numarası baştan.
+		d["jobs"] = []
+		d["next_ticket"] = 101
 	return d
 
 
@@ -705,6 +734,7 @@ func save_game() -> void:
 		d.clock = OPEN_HOUR
 		d.market = market
 	_save_staff(d)  # PERSONEL
+	_save_jobs(d)
 	if not _write_save_atomic(d):
 		msg("Kayıt yazılamadı! Disk dolu ya da yazma izni yok olabilir.", Color(1, 0.5, 0.4))
 
@@ -753,6 +783,7 @@ func load_game() -> bool:
 		orders.append({"id": int(o.id), "items": items, "eta": float(o.eta), "express": bool(o.get("express", false)),
 			"cost": int(o.get("cost", 0)), "state": "transit"})
 	_load_staff(d)  # PERSONEL
+	_load_jobs(d)
 	return true
 
 
@@ -864,6 +895,32 @@ func _load_staff(d: Dictionary) -> void:
 			"wage": int(e.get("wage", 60)), "auto": bool(e.get("auto", true))})
 	staff_next_id = int(d.get("staff_next_id", staff.size() + 1))
 	roll_staff_candidates()
+
+
+# ================================================================ ÇOKLU İŞ (kayıt)
+## Açık işleri kayda yazar. Cihazların parça durumu önce düğümlerden okunur (job_manager.sync_states).
+func _save_jobs(d: Dictionary) -> void:
+	if job_mgr:
+		job_mgr.sync_states()
+	d.jobs = jobs_active
+	d.next_ticket = next_ticket
+
+
+func _load_jobs(d: Dictionary) -> void:
+	jobs_active = []
+	for r in d.get("jobs", []):
+		if r is Dictionary:
+			jobs_active.append(JOB_STORE.normalize(r))
+	next_ticket = int(d.get("next_ticket", 101))
+	for r in jobs_active:
+		next_ticket = maxi(next_ticket, int(r.ticket) + 1)
+	jobs_loaded.emit()
+	jobs_changed.emit()
+
+
+## Oyuncu şu an bir cihaz (kasa/laptop/telefon) taşıyor mu? Taşırken parça/alet alınamaz.
+func is_carrying() -> bool:
+	return job_mgr != null and job_mgr.carry.active()
 
 
 func set_bench_device(d) -> void:

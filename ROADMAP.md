@@ -73,13 +73,13 @@ geçiyor. Bu faz oyunu "prototip"ten "oynanabilir oyun"a taşıyan en önemli ad
 
 | # | İş | Boyut |
 | --- | --- | --- |
-| 1.5.9 | Kasalar **taşınabilir nesne** olsun: müşteri tezgâha bırakır, oyuncu alıp tezgâha / rafa koyar | M |
-| 1.5.10 | Her kasaya **iş fişi** yapışık (fiş no, müşteri, teslim günü); fişe bakınca iş detayı | S |
-| 1.5.11 | **Bekleyen işler rafı**: gelen ve bitmiş PC'ler burada durur; "hazır" olanlar yeşil etiket | M |
-| 1.5.12 | Aynı anda 3-5 aktif iş; müşteri PC'yi bırakıp gider, **ertesi gün(ler) almaya gelir** (Faz 6.1 ile birlikte) | L |
-| 1.5.13 | `job_manager.gd` tek `pc` / tek `customer` değişkeninden **iş listesine** geçsin (şu an mimari tek işe kilitli) | L |
-| 1.5.14 | Teslim: müşteri tezgâha gelir, fiş numarasını söyler, raftan doğru kasayı verirsin; yanlış kasa = rezalet 😄 | S |
-| 1.5.15 | HUD'da aktif işler listesi (fiş no, kalan süre, durum); servis fişi tek iş yerine liste olsun | M |
+| 1.5.9 ✅ | Kasalar **taşınabilir nesne** olsun: müşteri tezgâha bırakır, oyuncu alıp tezgâha / rafa koyar — **yapıldı** (cihaz fişinden/rafın gözünden E ile alınır, tezgâh yerine/rafa E ile konur; `job_carry.gd`) | M |
+| 1.5.10 ✅ | Her kasaya **iş fişi** yapışık (fiş no, müşteri, teslim günü); fişe bakınca iş detayı — **yapıldı** (cihaza yapışan fiş etiketi `job_store.gd`; bakınca fiş no, müşteri, teslim, durum) | S |
+| 1.5.11 ✅ | **Bekleyen işler rafı**: gelen ve bitmiş PC'ler burada durur; "hazır" olanlar yeşil etiket — **yapıldı** (`job_rack.gd`: 6 göz, numara + durum ışığı (kehribar/yeşil/kırmızı)) | M |
+| 1.5.12 ✅ | Aynı anda 3-5 aktif iş; müşteri PC'yi bırakıp gider, **ertesi gün(ler) almaya gelir** (Faz 6.1 ile birlikte) — **yapıldı** (başlangıçta 3 iş (`Game.max_active_jobs()`), müşteri bırakıp gider, teslim gününde gelir) | L |
+| 1.5.13 ✅ | `job_manager.gd` tek `pc` / tek `customer` değişkeninden **iş listesine** geçsin (şu an mimari tek işe kilitli) — **yapıldı** (iş listesi `Game.jobs_active`, kuyruk `job_manager.queue`) | L |
+| 1.5.14 ✅ | Teslim: müşteri tezgâha gelir, fiş numarasını söyler, raftan doğru kasayı verirsin; yanlış kasa = rezalet 😄 — **yapıldı** (yanlış cihaz = şikâyet + itibar −0.1) | S |
+| 1.5.15 ✅ | HUD'da aktif işler listesi (fiş no, kalan süre, durum); servis fişi tek iş yerine liste olsun — **yapıldı** (HUD'da Açık İşler listesi) | M |
 
 ## Faz 2 — Gerçek parça çeşitliliği ve uyumluluk
 
@@ -150,7 +150,7 @@ Monitöre `E` ile bakınca kamera ekrana yaklaşır, fare serbest kalır.
 
 | # | İş | Boyut |
 | --- | --- | --- |
-| 6.1 | **Kuyruk** ve aynı anda birden fazla iş: müşteri PC'yi bırakır, fiş alır, **sonraki gün(ler)** almaya gelir | L |
+| 6.1 ✅ | **Kuyruk** ve aynı anda birden fazla iş: müşteri PC'yi bırakır, fiş alır, **sonraki gün(ler)** almaya gelir — **yapıldı** (aynı akış; ekspres/2 günlük toplama, gecikme kuralı README'de) | L |
 | 6.2 | İş takvimi: teslim tarihleri gün bazında, HUD'da ve OS'te takvim | M |
 | 6.3 | **Kısmi bilgi**: müşteri belirtiyi söyler, sebebi değil; ama zorunlu şartlar (bütçe, "oyun oynayacağım") net yazılsın — "gizli kontrol listesi" şikâyetinden kaçın | S |
 | 6.4 | Müşteri tipleri: aceleci, cimri, teknik bilen, yaşlı amca, oyuncu çocuk, esnaf; sabır, pazarlık, bahşiş farkı | M |

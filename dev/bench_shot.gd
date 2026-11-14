@@ -19,19 +19,15 @@ func _screen_of(node: Node3D, off := Vector3.ZERO) -> Vector2:
 func _ready() -> void:
 	main = get_parent()
 	bench = main.bench
-	var jobs = main.get_children().filter(func(c): return c.has_method("_next_customer"))[0]
+	var jobs = Game.job_mgr
+	jobs.arrivals_enabled = false
 	var p = Game.player
 	await get_tree().create_timer(1.0).timeout
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	Game.new_game()
 	p.global_position = Vector3(0.9, 0, -1.4)
 	p.rotation_degrees.y = 0
-	while jobs.state != "waiting":
-		Game.clock = minf(Game.clock, 15.0)
-		await get_tree().create_timer(0.2).timeout
-	jobs.job = jobs._make_job_of("repair_ram")
-	jobs._customer_talk(p)
-	var pc = jobs.pc
+	var pc = jobs.dev_bench_job(jobs._make_job_of("repair_ram"))
 	main._buy(p, "ram", 1)
 	await get_tree().create_timer(0.3).timeout
 	bench.enter()
@@ -81,13 +77,7 @@ func _ready() -> void:
 	# 10) laptop: ters çevrilmiş, alt kapak açık
 	pc.visible = false
 	Game.set_bench_device(null)
-	var lj: Dictionary = jobs._make_job_of("device_laptop", "bat")
-	var lap = load("res://scripts/laptop_device.gd").new()
-	lap.transform = load("res://scripts/device_jobs.gd").spot(lap, jobs.pc_spot)
-	main.add_child(lap)
-	lap.monitor = jobs.monitor
-	lap.fill(lj.parts)
-	Game.set_bench_device(lap)
+	var lap = jobs.dev_bench_job(jobs._make_job_of("device_laptop", "bat"))
 	await get_tree().create_timer(0.3).timeout
 	bench.enter()
 	await get_tree().create_timer(0.7).timeout

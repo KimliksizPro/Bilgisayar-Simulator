@@ -6,7 +6,7 @@ const DJ := preload("res://scripts/device_jobs.gd")
 
 static func run(shot) -> void:
 	var main = shot.get_parent()
-	var jobs = main.get_children().filter(func(c): return c.has_method("_next_customer"))[0]
+	var jobs = Game.job_mgr
 	var p = Game.player
 	Game.save_path = "user://test_save_dev.json"
 	Settings.tips_seen = []
@@ -14,7 +14,7 @@ static func run(shot) -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	Game.new_game()
 	await shot.get_tree().create_timer(0.3).timeout
-	jobs._gen += 1  # müşteri gelmesin
+	jobs.arrivals_enabled = false  # müşteri gelmesin
 	p.cam.fov = 40.0  # yakın çekim
 	var lap = _device(main, jobs, "laptop", "scr")
 	await shot._shot(p, Vector3(0.45, 0, -1.8), 0, -42, "dev_laptop_cracked", 0.8)

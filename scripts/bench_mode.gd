@@ -103,7 +103,7 @@ func _on_bench_changed(d) -> void:
 	_release_tray()
 	_bind(d if is_instance_valid(d) else null)
 	if device != null and Game.hud:
-		Game.hud.tip("bench", "Tezgâh modu: [Tab] tuşuna basıp cihazı yakından incele; parçaları fareyle sök, tepsiden sürükleyip tak.")
+		Game.hud.tip("bench_tab", "Tezgâh modu: [Tab] tuşuna basıp cihazı yakından incele; parçaları fareyle sök, tepsiden sürükleyip tak.")
 
 
 func _bind(d) -> void:
@@ -256,7 +256,7 @@ func enter() -> bool:
 		return false
 	var d = Game.bench_device
 	var p = Game.player
-	if not is_instance_valid(d) or p == null or not Game.started or Game.phase != "day" or Game.ui_modal:
+	if not is_instance_valid(d) or p == null or not Game.started or Game.phase != "day" or Game.ui_modal or Game.is_carrying():
 		return false
 	if device != d:
 		_bind(d)
@@ -283,6 +283,8 @@ func enter() -> bool:
 	p.hint = ""
 	if Game.hud and Game.hud.crosshair:
 		Game.hud.crosshair.visible = false
+	if Game.hud and Game.hud.corner_hint:
+		Game.hud.corner_hint.visible = false
 	_ui_root.visible = true
 	_sig = ""
 	Game.sfx.click()
@@ -326,6 +328,8 @@ func _finish_exit(capture: bool) -> void:
 	_stash_tool = null
 	if Game.hud and Game.hud.crosshair:
 		Game.hud.crosshair.visible = true
+	if Game.hud and Game.hud.corner_hint:
+		Game.hud.corner_hint.visible = true
 	if capture and Game.started:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
@@ -440,7 +444,7 @@ func _input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.is_action_pressed("bench"):
 			if state == "off":
-				if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and not Game.ui_modal and Game.bench_device != null:
+				if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and not Game.ui_modal and Game.bench_device != null and not Game.is_carrying():
 					if enter():
 						get_viewport().set_input_as_handled()
 			elif state == "on":
@@ -939,6 +943,22 @@ func _device_title() -> String:
 	return "Bilgisayar" if kind == "pc" else str(device.device_name)
 
 
+## Cihazın iş kaydı (Game.jobs_active); job_manager.devices fiş -> cihaz eşlemesinden bulunur.
+func _job_rec() -> Dictionary:
+	var jm = Game.job_mgr
+	if jm == null or device == null:
+		return {}
+	for rec in Game.jobs_active:
+		if jm.devices.get(int(rec.ticket)) == device:
+			return rec
+	return {}
+
+
+## Cihaz teslim kontrolünü geçiyor mu (kayıt varsa)?
+func _looks_fixed(rec: Dictionary) -> bool:
+	return not rec.is_empty() and Game.job_mgr._problem_of(rec) == ""
+
+
 func _job_dict() -> Dictionary:
 	var j = device.get_meta("job") if device.has_meta("job") else device.get("job")
 	return j if j is Dictionary else {}
@@ -977,7 +997,8 @@ func _refresh_side(force: bool) -> void:
 	var tn := []
 	for t in tools:
 		tn.append(t.tool_type)
-	var sig := str([ids, selected.get_instance_id() if selected else 0, tool.tool_type if tool else "", tn,
+	var rec := _job_rec()
+	var sig := str([_looks_fixed(rec), str(rec.get("status", "")), ids, selected.get_instance_id() if selected else 0, tool.tool_type if tool else "", tn,
 		device.panel_open, device.powered, _ever_open, _ever_power, _ever_removed, _ever_installed, str(_job_dict().get("name", ""))])
 	if sig == _sig and not force:
 		return
@@ -991,8 +1012,20 @@ func _rebuild_side(tools: Array) -> void:
 		c.queue_free()
 	var vb := _side_vb
 	K.label(vb, _device_title().to_upper(), 22, T.ACCENT, "TitleLabel")
+	var rec := _job_rec()
 	var job := _job_dict()
-	if not job.is_empty():
+	if not rec.is_empty():
+		const ST := preload("res://scripts/job_store.gd")
+		K.label(vb, "Fiş #%d · %s" % [int(rec.ticket), str(rec.name)], 16, T.TEXT, "BoldLabel")
+		var l1 := K.label(vb, ST.short_goal(rec), 14, T.MUTED)
+		l1.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		l1.custom_minimum_size = Vector2(250, 0)
+		K.label(vb, "Teslim: %s · %s" % [ST.due_label(float(rec.due_abs), Game.day), ST.status_text(rec, Game.now_abs())], 14, T.ACCENT)
+		if _looks_fixed(rec):
+			var ok := K.label(vb, "Tamir tamam gibi — rafa koy", 15, T.GOOD, "BoldLabel")
+			ok.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			ok.custom_minimum_size = Vector2(250, 0)
+	elif not job.is_empty():
 		K.label(vb, str(job.get("name", "")), 16, T.TEXT, "BoldLabel")
 		var intro := str(job.get("intro", job.get("goal", "")))
 		if intro != "":

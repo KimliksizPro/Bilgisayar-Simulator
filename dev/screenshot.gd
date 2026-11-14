@@ -10,11 +10,11 @@ func _ready() -> void:
 	await get_tree().create_timer(1.0).timeout
 	var p = Game.player
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
-	jobs = main.get_children().filter(func(c): return c.has_method("_next_customer"))[0]
+	jobs = Game.job_mgr
 	await _shot(p, Vector3(2.8, 0, 1.0), 55, -12, "overview")
 	await get_tree().create_timer(7.0).timeout
 	await _shot(p, Vector3(-0.3, 0, 0.4), 180, -5, "customer")
-	jobs._customer_talk(p)
+	jobs.dev_bench_job(jobs._make_job_of("repair_gpu"))  # işi kabul et ve tezgâha koy
 	await _shot(p, Vector3(0.5, 0, -1.6), 0, -30, "desk")
 	jobs.pc.toggle_panel()
 	await get_tree().create_timer(0.8).timeout
