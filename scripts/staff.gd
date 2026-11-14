@@ -21,7 +21,6 @@ const SERVE_TECH := Vector3(-0.3, 0, 0.72)
 const CLERK_HOMES := [Vector3(-1.65, 0, 0.72), Vector3(-2.4, 0, 0.72)]
 const TECH_HOMES := [Vector3(-2.4, 0, -2.35), Vector3(2.4, 0, -0.9)]
 const SHELF_X := -3.1
-const SHELF_Z := {"gpu:1": -1.6, "gpu:2": -0.9, "ram:1": -1.7, "ram:2": -1.35, "cpu:1": -0.85, "psu:1": -1.6, "ssd:1": -1.05}
 # tamir süresi (oyun saati, beceri çarpanından önce)
 const BASE_HOURS := 0.35
 const PART_HOURS := 0.4
@@ -279,7 +278,8 @@ func _clerk_sale(e, c) -> bool:
 	e.task = "sell"
 	e.noted = c
 	e.reserved = [[w[0], w[1]]]
-	var shelf := Vector3(SHELF_X, 0, float(SHELF_Z.get(Game.sku(w[0], w[1]), -1.2)))
+	var sp: Vector3 = Game.shelf_pos.get(Game.sku(w[0], w[1]), Vector3(SHELF_X, 0, -1.2))  # raf kurulurken main.gd yazar
+	var shelf := Vector3(SHELF_X, 0, sp.z)
 	e.say_for("Hemen getiriyorum, bir saniye.", 2.0)
 	e.walk([shelf], func():
 		e.face_angle = -PI * 0.5

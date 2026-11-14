@@ -16,7 +16,7 @@ func setup(type: String, owner_pc):
 	collision_layer = 2
 	collision_mask = 0
 	monitoring = false
-	var info: Dictionary = PM.INFO[type]
+	var info: Dictionary = PM.info(type)
 	MU.add_box_shape(self, info.size * 1.08, info.center)
 	var gm := MU.new_mat(Color(0.2, 0.9, 1.0, 0.25), 0, 0.5, 1.0)
 	gm.no_depth_test = false
@@ -42,7 +42,7 @@ func get_hint(player) -> String:
 		return part.display_name
 	if player.held and player.held.part_type == accepts:
 		return "Tak: %s  [E]" % player.held.display_name
-	return "Boş yuva: %s" % PM.TYPE_NAMES[accepts]
+	return "Boş yuva: %s" % PM.type_name(accepts)
 
 
 func interact(player) -> void:

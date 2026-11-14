@@ -23,7 +23,7 @@ func _ready() -> void:
 	for it in items:
 		var b: Dictionary = PM.build(it[0], it[1])
 		var n: Node3D = b.node
-		var info: Dictionary = PM.INFO[it[0]]
+		var info: Dictionary = PM.info(it[0])
 		var holder := Node3D.new()
 		p.cam.add_child(holder)
 		holder.position = Vector3(0, 0, -it[2])

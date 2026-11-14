@@ -1,0 +1,33 @@
+{
+"hold_default": {"euler": [15, -35, 0], "offset": [0, 0, 0]},
+"categories": {
+	"cpu": {"name": "İşlemci", "size": [0.064, 0.09, 0.09], "center": [0.032, 0, 0], "shelf_row": 1, "hold": {"euler": [25, -80, 0], "offset": [-0.02, 0.0, 0.05]}},
+	"ram": {"name": "RAM", "size": [0.037, 0.132, 0.008], "center": [0.018, 0, 0], "shelf_row": 1, "hold": {"euler": [15, -60, -20], "offset": [0.0, 0.0, 0.07]}},
+	"gpu": {"name": "Ekran Kartı", "size": [0.11, 0.042, 0.245], "center": [0.055, -0.016, 0], "shelf_row": 0, "hold": {"euler": [10, -78, 0], "offset": [-0.02, -0.02, -0.09]}},
+	"psu": {"name": "Güç Kaynağı", "size": [0.15, 0.085, 0.15], "center": [0, 0, 0], "shelf_row": 2, "hold": {"euler": [20, -40, 0], "offset": [0.0, -0.05, -0.04]}},
+	"ssd": {"name": "SSD", "size": [0.07, 0.008, 0.1], "center": [0, 0, 0], "shelf_row": 2, "hold": {"euler": [40, -30, 0], "offset": [0.0, 0.0, 0.05]}},
+	"lap_ram": {"name": "Laptop RAM", "size": [0.068, 0.004, 0.03], "center": [0, 0, 0], "shelf_row": 1},
+	"lap_ssd": {"name": "M.2 SSD", "size": [0.08, 0.005, 0.022], "center": [0, 0, 0], "shelf_row": 1},
+	"lap_bat": {"name": "Laptop Bataryası", "size": [0.22, 0.008, 0.07], "center": [0, 0, 0], "shelf_row": 2, "hold": {"euler": [45, -30, 0], "offset": [-0.02, -0.02, -0.03]}},
+	"lap_scr": {"name": "Laptop Ekranı", "size": [0.31, 0.005, 0.19], "center": [0, 0, 0], "shelf_row": 0, "shelf_tilt": 62, "hold": {"euler": [50, -25, 0], "offset": [-0.03, -0.03, -0.06]}},
+	"tel_bat": {"name": "Telefon Bataryası", "size": [0.05, 0.004, 0.08], "center": [0, 0, 0], "shelf_row": 2},
+	"tel_scr": {"name": "Telefon Ekranı", "size": [0.072, 0.003, 0.152], "center": [0, 0, 0], "shelf_row": 1, "shelf_tilt": 62},
+	"tel_port": {"name": "Şarj Soketi", "size": [0.05, 0.004, 0.014], "center": [0, 0, 0], "shelf_row": 2}
+},
+"parts": [
+	{"id": "cpu:1", "category": "cpu", "tier": 1, "name": "İşlemci (6 Çekirdek)", "brand": "Kaplan", "price": 120, "device": "pc", "model": {"builder": "cpu"}, "specs": {"cores": 6, "socket": "AM4", "tdp": 65}, "compat": {"socket": "AM4"}, "shelf": true, "start_stock": 1, "catalog": true},
+	{"id": "ram:1", "category": "ram", "tier": 1, "name": "RAM 8 GB", "brand": "Volt", "price": 40, "device": "pc", "model": {"builder": "ram", "label": "8GB DDR4", "rgb": false}, "specs": {"gb": 8, "type": "DDR4", "mhz": 3200}, "compat": {"ram_type": "DDR4"}, "shelf": true, "start_stock": 2, "catalog": true},
+	{"id": "ram:2", "category": "ram", "tier": 2, "name": "RAM 16 GB RGB", "brand": "Volt", "price": 80, "device": "pc", "model": {"builder": "ram", "label": "ULTRA 16GB", "rgb": true}, "specs": {"gb": 16, "type": "DDR4", "mhz": 3600}, "compat": {"ram_type": "DDR4"}, "shelf": true, "start_stock": 0, "catalog": true},
+	{"id": "gpu:1", "category": "gpu", "tier": 1, "name": "Ekran Kartı (Giriş)", "brand": "Nova", "price": 100, "device": "pc", "model": {"builder": "gpu", "gamer": false, "badge": "TURBO", "label": "TURBO 4GB"}, "specs": {"vram": 4, "tdp": 75, "length_mm": 240}, "compat": {}, "shelf": true, "start_stock": 1, "catalog": true},
+	{"id": "gpu:2", "category": "gpu", "tier": 2, "name": "Ekran Kartı (Oyuncu RGB)", "brand": "Nova", "price": 250, "device": "pc", "model": {"builder": "gpu", "gamer": true, "badge": "ULTRA", "label": "ULTRA RGB 12GB"}, "specs": {"vram": 12, "tdp": 170, "length_mm": 240}, "compat": {}, "shelf": true, "start_stock": 0, "catalog": true},
+	{"id": "psu:1", "category": "psu", "tier": 1, "name": "Güç Kaynağı 550W", "brand": "Volt", "price": 60, "device": "pc", "model": {"builder": "psu", "label": "550W"}, "specs": {"watts": 550, "efficiency": "80+ Bronz"}, "compat": {"watts": 550}, "shelf": true, "start_stock": 1, "catalog": true},
+	{"id": "ssd:1", "category": "ssd", "tier": 1, "name": "SSD 512 GB", "brand": "Bilgi", "price": 50, "device": "pc", "model": {"builder": "ssd", "brand_text": "BİLGİ SSD", "label": "512 GB"}, "specs": {"gb": 512, "iface": "SATA"}, "compat": {"iface": "SATA"}, "shelf": true, "start_stock": 1, "catalog": true},
+	{"id": "lap_ram:1", "category": "lap_ram", "tier": 1, "name": "Laptop RAM 8 GB (SO-DIMM)", "brand": "Volt", "price": 45, "device": "laptop", "model": {"builder": "lap_ram", "label": "8GB DDR4 SO-DIMM"}, "specs": {"gb": 8, "type": "DDR4", "mhz": 3200, "form": "SO-DIMM"}, "compat": {"ram_type": "DDR4"}, "shelf": true, "start_stock": 1, "catalog": true},
+	{"id": "lap_ssd:1", "category": "lap_ssd", "tier": 1, "name": "M.2 NVMe SSD 512 GB", "brand": "Bilgi", "price": 60, "device": "laptop", "model": {"builder": "lap_ssd", "label": "BİLGİ NVMe\n512 GB"}, "specs": {"gb": 512, "iface": "NVMe"}, "compat": {"iface": "NVMe"}, "shelf": true, "start_stock": 1, "catalog": true},
+	{"id": "lap_bat:1", "category": "lap_bat", "tier": 1, "name": "Laptop Bataryası", "brand": "", "price": 70, "device": "laptop", "model": {"builder": "lap_bat", "label": "Li-ion 11.4V  56Wh"}, "specs": {"wh": 56, "volt": 11.4}, "compat": {}, "shelf": true, "start_stock": 1, "catalog": true},
+	{"id": "lap_scr:1", "category": "lap_scr", "tier": 1, "name": "Laptop Ekranı 15.6\"", "brand": "", "price": 110, "device": "laptop", "model": {"builder": "lap_scr", "label": "15.6\" FHD IPS  eDP 30pin"}, "specs": {"inch": 15.6, "res": "FHD", "panel": "IPS"}, "compat": {}, "shelf": true, "start_stock": 1, "catalog": true},
+	{"id": "tel_bat:1", "category": "tel_bat", "tier": 1, "name": "Telefon Bataryası", "brand": "", "price": 30, "device": "phone", "model": {"builder": "tel_bat", "label": "Li-ion\n4500 mAh\n3.85V"}, "specs": {"mah": 4500, "volt": 3.85}, "compat": {}, "shelf": true, "start_stock": 1, "catalog": true},
+	{"id": "tel_scr:1", "category": "tel_scr", "tier": 1, "name": "Telefon Ekranı (OLED)", "brand": "", "price": 90, "device": "phone", "model": {"builder": "tel_scr"}, "specs": {"panel": "OLED"}, "compat": {}, "shelf": true, "start_stock": 1, "catalog": true},
+	{"id": "tel_port:1", "category": "tel_port", "tier": 1, "name": "Şarj Soketi (USB-C)", "brand": "", "price": 15, "device": "phone", "model": {"builder": "tel_port"}, "specs": {"port": "USB-C"}, "compat": {}, "shelf": true, "start_stock": 1, "catalog": true}
+]
+}
