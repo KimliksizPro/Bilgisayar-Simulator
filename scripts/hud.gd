@@ -706,6 +706,8 @@ func _hide_tip() -> void:
 # ---------------------------------------------------------------- girdi / kare güncelleme
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("ui_cancel"):
+		if Game.bench_active:  # tezgâh modu Esc'i kendisi işler
+			return
 		if office.is_open():
 			Game.sfx.ui_back()
 			close_upgrades()
@@ -734,7 +736,7 @@ func _process(delta: float) -> void:
 	if captured and not Game.started and Game.dev_mode:
 		Game.new_game()
 	Game.ui_modal = summary_root.visible or over_root.visible or office.is_open() or pause.open_now
-	Game.running = captured and Game.started and not Game.paused
+	Game.running = (captured or Game.bench_active) and Game.started and not Game.paused
 	if fps_label.visible:
 		_fps_t += delta
 		if _fps_t >= 0.25:

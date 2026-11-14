@@ -30,6 +30,8 @@ const DEV_ARGS := [
 	"--holdshot",
 	"--savetest",
 	"--datatest",
+	"--benchtest",
+	"--benchshot",
 ]
 
 # --- Ayarlanabilir sabitler ---
@@ -61,6 +63,7 @@ var player = null
 ## Tezgâhta üzerinde çalışılan cihaz (PC kasası / laptop / telefon) ya da null.
 ## Tezgâh modu ve çoklu iş sistemi arasındaki ortak sözleşme: cihazı tezgâha koyan set_bench_device çağırır.
 var bench_device = null
+var bench_active := false     # tezgâh modu (yörünge kamera) açık: fare serbest ama zaman akar
 var sfx = null
 var fader = null
 var dev_mode := false         # dev araçları (--shot vb.) menüsüz doğrudan oyuna girer

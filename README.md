@@ -25,6 +25,27 @@ yüzeylerde gerçek PBR dokular ve gökyüzü için gerçek bir şehir HDRI'si k
 | F2 | Grafik kalitesi: Düşük → Orta → Yüksek (oyun kasarsa düşür) |
 | F3 | FPS ve draw call sayacı |
 | H | Öğretici ipucunu gizle |
+| Tab | **Tezgâh modu**: tezgâhtaki cihaza yakından bak (aç / kapat) |
+
+### Tezgâh modu
+
+Tezgâhta bir cihaz (kasa, laptop, telefon) varken `Tab` ile kamera cihazın etrafındaki yörünge kameraya geçer; fare serbest kalır
+ama zaman akmaya devam eder. Birinci şahıs tamir (E ile bak-tak-sök) aynen çalışır; tezgâh modu rahat yoldur.
+
+| Girdi | İş |
+| --- | --- |
+| Sağ tık + sürükle | Cihazın etrafında döndür (Y ters çevirme ve hassasiyet ayarlarına uyar) |
+| Tekerlek | Yakınlaştır / uzaklaş |
+| WASD / orta tık sürükle | Kamerayı hafifçe kaydır |
+| Q / E | 90° döndür |
+| Sol tık | Cam kapağı aç-kapat, güç düğmesine bas, takılı parçayı söküp **tepsiye** koy, tepsideki parçayı seç, seçili parçayı yuvaya tak, seçili aleti uygula |
+| Sağ tık (sürüklemeden) | Seçili parça / aleti bırak |
+| Esc veya Tab | Tezgâh modundan çık |
+
+Sökülen parçalar cihazın önündeki parça tepsisine dizilir. Tepsideki parçayı (3B ya da yan panelden) seçince imleci izleyen bir
+hayalete dönüşür; uyumlu boş yuvalar yeşil, uyumsuzlar kırmızı yanar. Moda girerken elindeki parça tepsiye konur
+(alet ise çıkınca eline geri verilir). Masadaki termal macun ve basınçlı hava yan panelden seçilip hedefe tıklanır.
+Cihaz tezgâhtan giderse mod kapanır ve tepsideki parçalar masaya bırakılır.
 
 ## Menüler ve arayüz
 

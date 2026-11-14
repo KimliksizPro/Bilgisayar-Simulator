@@ -116,6 +116,8 @@ func apply_settings() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if Game.bench_active:  # tezgâh modunda fareyi bench_mode yönetir
+		return
 	if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 		if event is InputEventMouseButton and event.pressed and Game.started and not Game.ui_modal:
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED

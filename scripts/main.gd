@@ -13,10 +13,12 @@ const MENU := preload("res://scripts/menu.gd")
 const DELIVERY := preload("res://scripts/delivery.gd")
 const DEVICE_RACK := preload("res://scripts/device_rack.gd")  # laptop / telefon parça rafı
 const PROPS := preload("res://scripts/props.gd")
+const BENCH := preload("res://scripts/bench_mode.gd")  # tezgâh modu (yörünge kamera)
 
 const DESK_Y := 0.75
 
 var hud
+var bench
 var delivery
 var monitor
 var player
@@ -50,6 +52,9 @@ func _ready() -> void:
 	player.position = Vector3(0.9, 0, -0.9)
 	player.rotation_degrees.y = 15
 	add_child(player)
+	bench = BENCH.new()
+	bench.name = "BenchMode"
+	add_child(bench)
 	var jobs = JOBS.new()
 	jobs.world = self
 	jobs.monitor = monitor
@@ -86,6 +91,10 @@ func _ready() -> void:
 		add_child(load("res://dev/data_test.gd").new())
 	if "--holdtest" in OS.get_cmdline_user_args() and ResourceLoader.exists("res://dev/hold_test.gd"):
 		add_child(load("res://dev/hold_test.gd").new())
+	if "--benchtest" in OS.get_cmdline_user_args() and ResourceLoader.exists("res://dev/bench_test.gd"):
+		add_child(load("res://dev/bench_test.gd").new())
+	if "--benchshot" in OS.get_cmdline_user_args() and ResourceLoader.exists("res://dev/bench_shot.gd"):
+		add_child(load("res://dev/bench_shot.gd").new())
 	if "--holdshot" in OS.get_cmdline_user_args() and ResourceLoader.exists("res://dev/hold_shot.gd"):
 		add_child(load("res://dev/hold_shot.gd").new())
 	if "--looptest" in OS.get_cmdline_user_args() and ResourceLoader.exists("res://dev/loop_test.gd"):
@@ -171,7 +180,7 @@ func _setup_input() -> void:
 	var keys := {
 		"move_forward": [KEY_W, KEY_UP], "move_back": [KEY_S, KEY_DOWN],
 		"move_left": [KEY_A, KEY_LEFT], "move_right": [KEY_D, KEY_RIGHT],
-		"interact": [KEY_E], "interact_alt": [KEY_F], "drop": [KEY_G], "sprint": [KEY_SHIFT],
+		"interact": [KEY_E], "interact_alt": [KEY_F], "drop": [KEY_G], "sprint": [KEY_SHIFT], "bench": [KEY_TAB],
 	}
 	for action in keys:
 		if not InputMap.has_action(action):

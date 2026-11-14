@@ -56,18 +56,18 @@ Amaç: yeni parça/arıza/iş eklemek = bir `.tres` dosyası eklemek.
 Şu an tamir "uzaktan bakıp E'ye basarak" yapılıyor. PC Building Simulator'da asıl oyun tezgâhta, kasanın etrafında
 geçiyor. Bu faz oyunu "prototip"ten "oynanabilir oyun"a taşıyan en önemli adım.
 
-**Tezgâh modu**
+**Tezgâh modu** (`Tab`, `scripts/bench_mode.gd`; 1.5.4 vida/söküm sırası Faz 3.5'e kaldı, 1.5.5: ad var, sağlık/spec henüz yok)
 
 | # | İş | Boyut |
 | --- | --- | --- |
-| 1.5.1 | Tezgâha `E` → kamera yumuşakça tezgâh görünümüne geçer, fare serbest kalır; `Esc`/`Tab` ile çıkış | M |
-| 1.5.2 | Kasanın etrafında **yörünge kamera**: sağ tık sürükle döndür, tekerlek yakınlaştır, kasayı yan yatır / çevir | M |
-| 1.5.3 | Fareyle parçaya tıkla → söküm; parça **tezgâh tepsisine** iner. Tepsiden sürükle → yuvaya bırak; uyumlu yuvalar yeşil, uyumsuzlar kırmızı yanar (hayalet önizleme) | L |
+| 1.5.1 ✅ | Tezgâha `Tab` → kamera yumuşakça tezgâh görünümüne geçer, fare serbest kalır; `Esc`/`Tab` ile çıkış | M |
+| 1.5.2 ✅ | Kasanın etrafında **yörünge kamera**: sağ tık sürükle döndür, tekerlek yakınlaştır, kasayı yan yatır / çevir | M |
+| 1.5.3 ✅ | Fareyle parçaya tıkla → söküm; parça **tezgâh tepsisine** iner. Tepsiden sürükle → yuvaya bırak; uyumlu yuvalar yeşil, uyumsuzlar kırmızı yanar (hayalet önizleme) | L |
 | 1.5.4 | Söküm sırası: yan kapak vidaları → kapak → GPU braketi vidası → GPU kilidi → GPU (Faz 3.5 tornavida ile) | M |
-| 1.5.5 | Parçanın üstüne gelince küçük bilgi kartı: ad, durum, spec, (teşhis aleti varsa) sağlık | S |
-| 1.5.6 | Tezgâh yan paneli: iş fişi (müşteri ne istedi), yapılacaklar listesi, tepside duran parçalar | M |
-| 1.5.7 | Laptop ve telefon için de aynı mod (yakın plan, alt kapak vidaları, ters çevirme) | M |
-| 1.5.8 | Birinci şahıs modda da tamir yapılabilsin ama tezgâh modu varsayılan ve rahat yol olsun | S |
+| 1.5.5 (kısmen) | Parçanın üstüne gelince küçük bilgi kartı: ad, durum, spec, (teşhis aleti varsa) sağlık | S |
+| 1.5.6 ✅ | Tezgâh yan paneli: iş fişi (müşteri ne istedi), yapılacaklar listesi, tepside duran parçalar | M |
+| 1.5.7 ✅ | Laptop ve telefon için de aynı mod (yakın plan, alt kapak vidaları, ters çevirme) | M |
+| 1.5.8 ✅ | Birinci şahıs modda da tamir yapılabilsin ama tezgâh modu varsayılan ve rahat yol olsun | S |
 
 **Çoklu iş**
 
