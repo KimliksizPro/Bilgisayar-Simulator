@@ -38,6 +38,33 @@ static func tex_mat(tex: Texture2D, uv_scale := Vector3.ONE, roughness := 0.7, t
 	return m
 
 
+## Poly Haven (CC0) PBR doku seti: assets/textures/<isim>/{albedo,normal,arm}.jpg
+## Dünya koordinatlı triplanar: uv_scale = metre başına tekrar sayısı.
+static func pbr(tex_name: String, uv_scale := 1.0, tint := Color.WHITE, normal_strength := 1.0) -> StandardMaterial3D:
+	var key := "pbr|%s|%s|%s|%s" % [tex_name, uv_scale, tint.to_html(), normal_strength]
+	if _mat_cache.has(key):
+		return _mat_cache[key]
+	var dir := "res://assets/textures/%s/" % tex_name
+	var m := StandardMaterial3D.new()
+	m.albedo_texture = load(dir + "albedo.jpg")
+	m.albedo_color = tint
+	m.normal_enabled = true
+	m.normal_texture = load(dir + "normal.jpg")
+	m.normal_scale = normal_strength
+	var arm: Texture2D = load(dir + "arm.jpg")
+	m.roughness_texture = arm
+	m.roughness_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_GREEN
+	m.ao_enabled = true
+	m.ao_texture = arm
+	m.ao_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_RED
+	m.uv1_triplanar = true
+	m.uv1_world_triplanar = true
+	m.uv1_scale = Vector3.ONE * uv_scale
+	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+	_mat_cache[key] = m
+	return m
+
+
 static func glass() -> StandardMaterial3D:
 	var m := new_mat(Color(0.55, 0.7, 0.8, 0.16), 0.3, 0.05)
 	m.cull_mode = BaseMaterial3D.CULL_DISABLED
@@ -58,6 +85,84 @@ static func box(parent: Node, size: Vector3, pos: Vector3, m: Material, rot := V
 	var bm := BoxMesh.new()
 	bm.size = size
 	return _add(parent, bm, pos, m, rot)
+
+
+static var _rbox_cache := {}
+
+
+## Kenarları yuvarlatılmış kutu. Keskin kutulardan çok daha "gerçek" görünür (kenarlar ışığı yakalar).
+static func rbox(parent: Node, size: Vector3, pos: Vector3, m: Material, radius := 0.01, rot := Vector3.ZERO) -> MeshInstance3D:
+	return _add(parent, rounded_box_mesh(size, radius), pos, m, rot)
+
+
+static func rounded_box_mesh(size: Vector3, radius: float, seg := 3) -> ArrayMesh:
+	var key := "%s|%s|%s" % [size, radius, seg]
+	if _rbox_cache.has(key):
+		return _rbox_cache[key]
+	var h := size / 2.0
+	var r: float = min(radius, h.x, h.y, h.z)
+	var inner := h - Vector3(r, r, r)
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var base := 0
+	for a in 3:
+		var b := (a + 1) % 3
+		var c := (a + 2) % 3
+		var cb := _round_coords(h[b], r, seg)
+		var cc := _round_coords(h[c], r, seg)
+		for s in [-1.0, 1.0]:
+			var fn := Vector3.ZERO
+			fn[a] = s
+			for i in cb.size():
+				for j in cc.size():
+					var p := Vector3.ZERO
+					p[a] = s * h[a]
+					p[b] = cb[i]
+					p[c] = cc[j]
+					var q := p.clamp(-inner, inner)
+					var d := p - q
+					var n := d.normalized() if d.length() > 0.00001 else fn
+					st.set_normal(n)
+					st.set_uv(Vector2((cb[i] + h[b]) / size[b], (cc[j] + h[c]) / size[c]))
+					st.add_vertex(q + n * r if r > 0.0 else p)
+			var w := cc.size()
+			for i in cb.size() - 1:
+				for j in w - 1:
+					var i0 := base + i * w + j
+					var i1 := base + (i + 1) * w + j
+					var i2 := base + (i + 1) * w + j + 1
+					var i3 := base + i * w + j + 1
+					# Godot: ön yüz saat yönünde. b x c = a ekseni; s>0 için ters sıra.
+					if s > 0:
+						st.add_index(i0); st.add_index(i2); st.add_index(i1)
+						st.add_index(i0); st.add_index(i3); st.add_index(i2)
+					else:
+						st.add_index(i0); st.add_index(i1); st.add_index(i2)
+						st.add_index(i0); st.add_index(i2); st.add_index(i3)
+			base += cb.size() * w
+	st.generate_tangents()
+	var mesh := st.commit()
+	_rbox_cache[key] = mesh
+	return mesh
+
+
+static func _round_coords(hh: float, r: float, seg: int) -> PackedFloat32Array:
+	var out := PackedFloat32Array()
+	var inn := hh - r
+	for i in seg + 1:
+		out.append(-inn - r * cos(PI / 2.0 * i / seg))
+	for i in range(seg, -1, -1):
+		out.append(inn + r * cos(PI / 2.0 * i / seg))
+	return out
+
+
+static func capsule(parent: Node, radius: float, height: float, pos: Vector3, m: Material, rot := Vector3.ZERO) -> MeshInstance3D:
+	var cm := CapsuleMesh.new()
+	cm.radius = radius
+	cm.height = height
+	cm.radial_segments = 16
+	cm.rings = 6
+	return _add(parent, cm, pos, m, rot)
 
 
 static func cyl(parent: Node, radius: float, height: float, pos: Vector3, m: Material, rot := Vector3.ZERO, sides := 20, top_radius := -1.0) -> MeshInstance3D:
@@ -164,7 +269,7 @@ static func pcb_texture(base := Color(0.04, 0.2, 0.11)) -> Texture2D:
 	var key := "pcb" + base.to_html()
 	if _tex_cache.has(key):
 		return _tex_cache[key]
-	var img := Image.create(256, 256, false, Image.FORMAT_RGB8)
+	var img := Image.create_empty(256, 256, false, Image.FORMAT_RGB8)
 	img.fill(base)
 	var trace := base.lightened(0.25)
 	var rng := RandomNumberGenerator.new()
@@ -193,7 +298,7 @@ static func pcb_texture(base := Color(0.04, 0.2, 0.11)) -> Texture2D:
 static func tile_texture() -> Texture2D:
 	if _tex_cache.has("tile"):
 		return _tex_cache["tile"]
-	var img := Image.create(256, 256, false, Image.FORMAT_RGB8)
+	var img := Image.create_empty(256, 256, false, Image.FORMAT_RGB8)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 3
 	for ty in 4:
@@ -213,7 +318,7 @@ static func tile_texture() -> Texture2D:
 static func wood_texture() -> Texture2D:
 	if _tex_cache.has("wood"):
 		return _tex_cache["wood"]
-	var img := Image.create(128, 128, false, Image.FORMAT_RGB8)
+	var img := Image.create_empty(128, 128, false, Image.FORMAT_RGB8)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 11
 	for y in 128:

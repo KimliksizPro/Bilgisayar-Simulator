@@ -29,6 +29,7 @@ var case_fans: Array = []
 var rgb_mats: Array = []
 var hum: AudioStreamPlayer3D
 var led_mat: StandardMaterial3D
+var inner_light: OmniLight3D
 var _hue := 0.0
 
 
@@ -52,8 +53,15 @@ func _build() -> void:
 		[Vector3(t, H, D), Vector3(-W / 2 + t / 2, H / 2, 0), shell_m],
 	]
 	for p in pieces:
-		MU.box(body, p[0], p[1], p[2])
+		MU.rbox(body, p[0], p[1], p[2], 0.004)
 		MU.add_box_shape(body, p[0], p[1])
+	# dış kenar çerçevesi (yuvarlatılmış)
+	for y in [0.0, H]:
+		MU.rbox(self, Vector3(W + 0.004, 0.014, D + 0.004), Vector3(0, y, 0), shell_m, 0.006)
+	# ön panel ızgarası
+	var mesh_m := MU.mat(Color(0.2, 0.2, 0.22) if not white else Color(0.75, 0.75, 0.78), 0.6, 0.5)
+	for i in 14:
+		MU.box(self, Vector3(0.002, H * 0.8, 0.003), Vector3(-0.03 + i * 0.009, H / 2, D / 2 + 0.002), mesh_m)
 	# ayaklar
 	for x in [-0.08, 0.08]:
 		for z in [-0.18, 0.18]:
@@ -97,6 +105,16 @@ func _build() -> void:
 		add_child(s)
 		s.setup("ram" if name.begins_with("ram") else name, self)
 		slots[name] = s
+	# kasa içi LED şerit + ışık (parçalar karanlıkta kalmasın)
+	var strip := MU.new_mat(Color(0.9, 0.95, 1.0), 0, 0.5, 2.0)
+	rgb_mats.append(strip)
+	MU.box(self, Vector3(0.006, 0.004, D - 0.04), Vector3(0.06, H - 0.01, 0), strip)
+	inner_light = OmniLight3D.new()
+	inner_light.position = Vector3(0.04, H - 0.06, 0.0)
+	inner_light.omni_range = 0.6
+	inner_light.light_energy = 0.35
+	inner_light.light_color = Color(0.9, 0.95, 1.0)
+	add_child(inner_light)
 	hum = AudioStreamPlayer3D.new()
 	hum.stream = Game.sfx.hum()
 	hum.volume_db = -14.0
@@ -120,6 +138,15 @@ func _build_board() -> void:
 	MU.box(board, Vector3(0.01, 0.05, 0.05), Vector3(-0.083, 0.18, 0.06), metal)
 	MU.box(board, Vector3(0.03, 0.08, 0.03), Vector3(-0.072, 0.38, -0.155), MU.mat(Color(0.3, 0.3, 0.33), 0.7, 0.4))
 	MU.box(board, Vector3(0.008, 0.05, 0.012), Vector3(-0.084, 0.34, 0.11), MU.mat(Color(0.9, 0.9, 0.88)))
+	# kablolar (24-pin ve CPU güç kablosu)
+	var cable := MU.mat(Color(0.06, 0.06, 0.07), 0, 0.7)
+	for i in 4:
+		MU.cyl(board, 0.0035, 0.2, Vector3(-0.075 + i * 0.008, 0.2, 0.135), cable, Vector3.ZERO, 8)
+	MU.cyl(board, 0.004, 0.25, Vector3(-0.08, 0.3, -0.19), cable, Vector3.ZERO, 8)
+	MU.cyl(board, 0.004, 0.06, Vector3(-0.08, 0.425, -0.16), cable, Vector3(90, 0, 0), 8)
+	# arka I/O plakası ve PCIe braketleri
+	for i in 5:
+		MU.box(board, Vector3(0.03, 0.012, 0.002), Vector3(-0.06, 0.25 - i * 0.02, -0.217), MU.mat(Color(0.5, 0.5, 0.52), 0.85, 0.35))
 
 
 ## Müşteri bilgisayarını doldurur. parts: [[slot_adı, tip, seviye, bozuk_mu], ...]
@@ -224,6 +251,7 @@ func power_off() -> void:
 	hum.stop()
 	for m in _all_rgb():
 		m.emission_energy_multiplier = 0.0
+	inner_light.light_color = Color(0.9, 0.95, 1.0)
 	if monitor:
 		monitor.show_off()
 
@@ -258,3 +286,4 @@ func _process(delta: float) -> void:
 		m.emission = c
 		m.emission_energy_multiplier = 2.5
 		i += 1
+	inner_light.light_color = Color.from_hsv(_hue, 0.6, 1.0)

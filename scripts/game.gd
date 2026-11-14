@@ -7,6 +7,7 @@ const SFX := preload("res://scripts/sfx.gd")
 
 var money := 300
 var jobs_done := 0
+var high_quality := true
 var hud = null
 var player = null
 var sfx = null

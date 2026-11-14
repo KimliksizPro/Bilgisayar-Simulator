@@ -3,12 +3,12 @@
 Mahallenin bilgisayarcısı sensin! Müşteriler arızalı bilgisayarlarıyla gelir, derdini anlatır.
 Kasayı aç, arızayı bul, parçayı değiştir, bilgisayarı çalıştır ve parayı kap.
 
-Godot 4.3 ile yapılmış, low-poly 3D bir oyun. Tüm modeller kodla, temel şekillerden üretiliyor;
-dışarıdan model/ses dosyası gerekmez.
+Godot 4.4 ile yapılmış, stilize 3D bir oyun. Modeller kodla üretiliyor; zemin, duvar, ahşap gibi
+yüzeylerde gerçek PBR dokular ve gökyüzü için gerçek bir şehir HDRI'si kullanılıyor.
 
 ## Nasıl çalıştırılır
 
-1. [Godot 4.3](https://godotengine.org/download) (standart sürüm, .NET değil) indir.
+1. [Godot 4.4](https://godotengine.org/download) (standart sürüm, .NET değil) indir.
 2. Godot'u aç → **Import** → bu klasördeki `project.godot` dosyasını seç.
 3. **F5** ile oyunu başlat.
 
@@ -21,6 +21,7 @@ dışarıdan model/ses dosyası gerekmez.
 | E / Sol tık | Etkileşim (al, tak, sök, konuş, satın al) |
 | G / Sağ tık | Elindekini bırak |
 | Esc | Duraklat |
+| F2 | Grafik kalitesi (Yüksek/Düşük) — oyun kasarsa Düşük yap |
 
 ## Oynanış
 
@@ -50,7 +51,20 @@ scripts/job_manager.gd  Müşteri/iş akışı
 scripts/hud.gd          Ekran arayüzü
 scripts/mesh_util.gd    Prosedürel model ve doku yardımcıları
 scripts/sfx.gd          Kodla üretilen sesler
+assets/                 Dokular ve HDRI (Poly Haven, CC0)
 dev/                    Geliştirici araçları (ekran görüntüsü, otomatik test)
 ```
 
 Otomatik test: `godot --headless -- --looptest`
+
+## Grafik
+
+- **Yüksek kalite:** SDFGI (dolaylı ışık), SSIL, SSR yansımaları, hacimsel sis (ışık huzmeleri).
+- **Düşük kalite:** bunlar kapalı, zayıf ekran kartlarında akıcı çalışır.
+- Tonlama: AgX. Kenarlar yuvarlatılmış özel mesh'ler (`MU.rbox`) ile yapılıyor.
+
+## Lisanslar
+
+Doku ve HDRI dosyaları [Poly Haven](https://polyhaven.com)'dan alınmıştır ve **CC0** (kamu malı) lisanslıdır:
+floor_tiles_06, painted_plaster_wall, wood_table_001, laminate_floor_02, rectangular_paving,
+asphalt_02, painted_brick, buikslotermeerplein (HDRI).

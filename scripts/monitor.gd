@@ -16,10 +16,12 @@ var _token := 0
 
 func _ready() -> void:
 	var dark := MU.mat(Color(0.06, 0.06, 0.07), 0.3, 0.5)
-	MU.box(self, Vector3(0.24, 0.012, 0.17), Vector3(0, 0.006, 0), dark)
-	MU.box(self, Vector3(0.045, 0.28, 0.025), Vector3(0, 0.15, -0.03), dark)
-	MU.box(self, Vector3(0.62, 0.37, 0.025), Vector3(0, 0.43, 0), dark)
-	MU.box(self, Vector3(0.62, 0.018, 0.026), Vector3(0, 0.255, 0.0005), MU.mat(Color(0.12, 0.12, 0.13), 0.5, 0.4))
+	MU.rbox(self, Vector3(0.24, 0.012, 0.17), Vector3(0, 0.006, 0), dark, 0.006)
+	MU.rbox(self, Vector3(0.045, 0.28, 0.025), Vector3(0, 0.15, -0.03), dark, 0.01)
+	MU.rbox(self, Vector3(0.62, 0.37, 0.025), Vector3(0, 0.43, 0), dark, 0.008)
+	MU.rbox(self, Vector3(0.5, 0.3, 0.03), Vector3(0, 0.43, -0.012), dark, 0.03)
+	MU.rbox(self, Vector3(0.62, 0.018, 0.026), Vector3(0, 0.255, 0.0005), MU.mat(Color(0.12, 0.12, 0.13), 0.5, 0.4), 0.005)
+	MU.sphere(self, 0.003, Vector3(0.28, 0.255, 0.014), MU.mat(Color(0.3, 0.6, 1.0), 0, 0.5, 4.0))
 	_build_screen()
 	var q := QuadMesh.new()
 	q.size = Vector2(0.592, 0.333)

@@ -63,7 +63,7 @@ func _ready() -> void:
 	messages.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(messages)
 
-	var help := _label(root, "WASD: Yürü   Shift: Koş   E / Sol Tık: Etkileşim   G / Sağ Tık: Bırak   Esc: Duraklat", 15, Color(1, 1, 1, 0.55))
+	var help := _label(root, "WASD: Yürü   Shift: Koş   E / Sol Tık: Etkileşim   G / Sağ Tık: Bırak   Esc: Duraklat   F2: Grafik kalitesi", 15, Color(1, 1, 1, 0.55))
 	help.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
 	help.position = Vector2(20, -34)
 

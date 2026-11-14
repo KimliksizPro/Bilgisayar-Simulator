@@ -66,43 +66,84 @@ func _setup_input() -> void:
 	InputMap.action_add_event("drop", rmb)
 
 
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_F2:
+		Game.high_quality = not Game.high_quality
+		_apply_quality()
+		Game.msg("Grafik kalitesi: %s" % ("YÜKSEK" if Game.high_quality else "DÜŞÜK"), Color(0.6, 0.9, 1.0))
+
+
+var env: Environment
+
+
 func _build_environment() -> void:
-	var env := Environment.new()
-	var sky_mat := ProceduralSkyMaterial.new()
-	sky_mat.sky_top_color = Color(0.3, 0.5, 0.85)
-	sky_mat.sky_horizon_color = Color(0.75, 0.8, 0.9)
-	sky_mat.ground_horizon_color = Color(0.6, 0.6, 0.62)
+	env = Environment.new()
+	var sky_mat := PanoramaSkyMaterial.new()
+	sky_mat.panorama = load("res://assets/hdri/street.hdr")
 	var sky := Sky.new()
 	sky.sky_material = sky_mat
 	env.background_mode = Environment.BG_SKY
 	env.sky = sky
+	env.sky_rotation = Vector3(0, deg_to_rad(200), 0)
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	env.ambient_light_energy = 0.3
-	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	env.tonemap_exposure = 0.95
+	env.ambient_light_energy = 0.35
+	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
+	env.tonemap_mode = Environment.TONE_MAPPER_AGX
+	env.tonemap_exposure = 1.1
 	env.ssao_enabled = true
-	env.ssao_radius = 0.6
-	env.ssao_intensity = 1.6
+	env.ssao_radius = 0.8
+	env.ssao_intensity = 2.0
 	env.glow_enabled = true
-	env.glow_intensity = 0.6
-	env.glow_bloom = 0.05
-	env.glow_hdr_threshold = 1.1
+	env.glow_intensity = 0.5
+	env.glow_bloom = 0.03
+	env.glow_hdr_threshold = 1.2
 	env.adjustment_enabled = true
-	env.adjustment_saturation = 1.1
+	env.adjustment_saturation = 1.08
+	env.adjustment_contrast = 1.05
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
 	var sun := DirectionalLight3D.new()
-	sun.rotation_degrees = Vector3(-38, 28, 0)
-	sun.light_energy = 1.2
-	sun.light_color = Color(1.0, 0.95, 0.85)
+	sun.rotation_degrees = Vector3(-34, 24, 0)
+	sun.light_energy = 1.6
+	sun.light_color = Color(1.0, 0.93, 0.8)
 	sun.shadow_enabled = true
-	sun.directional_shadow_max_distance = 30.0
+	sun.shadow_blur = 1.5
+	sun.directional_shadow_max_distance = 25.0
+	sun.light_volumetric_fog_energy = 1.5
 	add_child(sun)
+	var probe := ReflectionProbe.new()
+	probe.size = Vector3(8.0, 3.0, 6.0)
+	probe.position = Vector3(0, 1.5, 0)
+	probe.box_projection = true
+	probe.interior = true
+	probe.ambient_mode = ReflectionProbe.AMBIENT_ENVIRONMENT
+	add_child(probe)
+	_apply_quality()
+
+
+## Yüksek: SDFGI (yansıyan ışık), SSIL, SSR yansımalar, hacimsel sis (ışık huzmeleri).
+## Düşük: zayıf ekran kartları için hepsi kapalı.
+func _apply_quality() -> void:
+	var hq: bool = Game.high_quality
+	env.sdfgi_enabled = hq
+	env.sdfgi_use_occlusion = true
+	env.sdfgi_min_cell_size = 0.1
+	env.sdfgi_cascades = 3
+	env.sdfgi_energy = 1.1
+	env.ssil_enabled = hq
+	env.ssil_intensity = 0.8
+	env.ssr_enabled = hq
+	env.ssr_max_steps = 48
+	env.volumetric_fog_enabled = hq
+	env.volumetric_fog_density = 0.006
+	env.volumetric_fog_albedo = Color(1.0, 0.97, 0.92)
+	env.volumetric_fog_sky_affect = 0.0
+	env.volumetric_fog_ambient_inject = 0.0
 
 
 func _build_room() -> void:
-	var floor_m := MU.tex_mat(MU.tile_texture(), Vector3(4, 3, 1), 0.45, Color(0.82, 0.8, 0.78))
+	var floor_m := MU.pbr("floor", 0.7)
 	var pm := PlaneMesh.new()
 	pm.size = Vector2(8, 6)
 	var fl := MeshInstance3D.new()
@@ -110,17 +151,27 @@ func _build_room() -> void:
 	fl.material_override = floor_m
 	add_child(fl)
 	MU.static_box(self, Vector3(8.4, 0.2, 6.4), Vector3(0, -0.1, 0), null)
-	var wall := MU.mat(Color(0.8, 0.74, 0.64), 0, 0.9)
-	var trim := MU.mat(Color(0.32, 0.38, 0.45), 0, 0.7)
+	var wall := MU.pbr("wall", 0.45, Color(1.0, 0.96, 0.88), 0.4)
+	var trim := MU.pbr("wall", 0.45, Color(0.32, 0.42, 0.5), 0.6)
+	var white := MU.pbr("wall", 0.45, Color(1.0, 1.0, 1.0), 0.3)
 	MU.static_box(self, Vector3(8.4, 3, 0.2), Vector3(0, 1.5, -3.1), wall)
 	MU.static_box(self, Vector3(0.2, 3, 6.2), Vector3(-4.1, 1.5, 0), wall)
 	MU.static_box(self, Vector3(0.2, 3, 6.2), Vector3(4.1, 1.5, 0), wall)
-	# alt şerit (lambri)
+	# alt lambri + süpürgelik
 	MU.box(self, Vector3(8.0, 0.9, 0.02), Vector3(0, 0.45, -2.995), trim)
 	MU.box(self, Vector3(0.02, 0.9, 6.0), Vector3(-3.995, 0.45, 0), trim)
 	MU.box(self, Vector3(0.02, 0.9, 6.0), Vector3(3.995, 0.45, 0), trim)
+	var rail := MU.mat(Color(0.92, 0.9, 0.86), 0, 0.5)
+	MU.rbox(self, Vector3(8.0, 0.04, 0.04), Vector3(0, 0.9, -2.985), rail, 0.01)
+	MU.rbox(self, Vector3(0.04, 0.04, 6.0), Vector3(-3.985, 0.9, 0), rail, 0.01)
+	MU.rbox(self, Vector3(0.04, 0.04, 6.0), Vector3(3.985, 0.9, 0), rail, 0.01)
+	var base_m := MU.mat(Color(0.15, 0.17, 0.2), 0, 0.6)
+	MU.rbox(self, Vector3(8.0, 0.1, 0.03), Vector3(0, 0.05, -2.985), base_m, 0.008)
+	MU.rbox(self, Vector3(0.03, 0.1, 6.0), Vector3(-3.985, 0.05, 0), base_m, 0.008)
+	MU.rbox(self, Vector3(0.03, 0.1, 6.0), Vector3(3.985, 0.05, 0), base_m, 0.008)
 	# ön vitrin + kapı boşluğu
-	var frame := MU.mat(Color(0.2, 0.2, 0.22), 0.8, 0.35)
+	var frame := MU.mat(Color(0.18, 0.18, 0.2), 0.85, 0.3)
+	var brick := MU.pbr("brick", 0.5, Color(0.75, 0.75, 0.78))
 	for side in [-1, 1]:
 		var cx: float = side * 2.475
 		var seg := StaticBody3D.new()
@@ -128,93 +179,128 @@ func _build_room() -> void:
 		add_child(seg)
 		MU.add_box_shape(seg, Vector3(3.45, 3, 0.2), Vector3(0, 1.5, 0))
 		MU.box(seg, Vector3(3.45, 0.5, 0.2), Vector3(0, 0.25, 0), trim)
-		MU.box(seg, Vector3(3.45, 1.9, 0.03), Vector3(0, 1.45, 0), MU.glass())
+		MU.box(seg, Vector3(3.45, 0.5, 0.02), Vector3(0, 0.25, 0.11), brick)
+		MU.box(seg, Vector3(3.45, 1.9, 0.02), Vector3(0, 1.45, 0), MU.glass())
 		MU.box(seg, Vector3(3.45, 0.6, 0.2), Vector3(0, 2.7, 0), wall)
-		MU.box(seg, Vector3(3.45, 0.05, 0.22), Vector3(0, 0.52, 0), frame)
-		MU.box(seg, Vector3(3.45, 0.05, 0.22), Vector3(0, 2.4, 0), frame)
+		MU.box(seg, Vector3(3.45, 0.6, 0.02), Vector3(0, 2.7, 0.11), brick)
+		MU.rbox(seg, Vector3(3.45, 0.05, 0.22), Vector3(0, 0.52, 0), frame, 0.01)
+		MU.rbox(seg, Vector3(3.45, 0.05, 0.22), Vector3(0, 2.4, 0), frame, 0.01)
 		for k in [-1, 0, 1]:
-			MU.box(seg, Vector3(0.05, 1.9, 0.22), Vector3(k * 1.7, 1.45, 0), frame)
+			MU.rbox(seg, Vector3(0.05, 1.9, 0.22), Vector3(k * 1.7, 1.45, 0), frame, 0.01)
 	MU.static_box(self, Vector3(1.5, 0.6, 0.2), Vector3(0, 2.7, 3.1), wall)
+	for x in [-0.725, 0.725]:
+		MU.rbox(self, Vector3(0.06, 2.4, 0.24), Vector3(x, 1.2, 3.1), frame, 0.012)
+	# "AÇIK" neon tabelası (camda, dışarı bakar)
+	var open_sign := MU.label(self, "AÇIK", Vector3(1.4, 1.9, 3.05), 120, Color(0.3, 1.0, 0.5), Vector3(0, 180, 0), 0.0025)
+	open_sign.shaded = false
+	open_sign.outline_size = 20
+	open_sign.outline_modulate = Color(0.2, 1.0, 0.4, 0.3)
+	var open_back := MU.label(self, "AÇIK", Vector3(1.4, 1.9, 3.06), 120, Color(0.3, 1.0, 0.5, 0.35), Vector3.ZERO, 0.0025)
+	open_back.shaded = false
+	# giriş paspası
+	MU.rbox(self, Vector3(1.2, 0.015, 0.7), Vector3(0, 0.008, 2.55), MU.mat(Color(0.25, 0.2, 0.18), 0, 1.0), 0.006)
 	# tavan ve lambalar
-	MU.box(self, Vector3(8.4, 0.1, 6.4), Vector3(0, 3.05, 0), MU.mat(Color(0.92, 0.92, 0.9)))
-	var lamp_m := MU.mat(Color(1.0, 0.97, 0.9), 0, 0.5, 4.0)
-	for p in [Vector3(-1.6, 0, -1.2), Vector3(1.6, 0, -1.2), Vector3(0, 0, 1.6)]:
-		MU.box(self, Vector3(1.2, 0.03, 0.3), Vector3(p.x, 2.985, p.z), lamp_m)
+	MU.box(self, Vector3(8.4, 0.1, 6.4), Vector3(0, 3.05, 0), white)
+	var lamp_m := MU.mat(Color(1.0, 0.97, 0.9), 0, 0.5, 5.0)
+	var fixture := MU.mat(Color(0.85, 0.85, 0.87), 0.6, 0.35)
+	for p in [Vector3(-1.6, 0, -1.2), Vector3(1.6, 0, -1.2), Vector3(-0.8, 0, 1.6)]:
+		MU.rbox(self, Vector3(1.3, 0.05, 0.38), Vector3(p.x, 2.975, p.z), fixture, 0.012)
+		MU.box(self, Vector3(1.2, 0.01, 0.3), Vector3(p.x, 2.948, p.z), lamp_m)
 		var l := OmniLight3D.new()
-		l.position = Vector3(p.x, 2.6, p.z)
+		l.position = Vector3(p.x, 2.7, p.z)
 		l.omni_range = 6.0
-		l.light_energy = 0.75
-		l.light_color = Color(1.0, 0.95, 0.86)
-		l.shadow_enabled = p.z < 0
+		l.omni_attenuation = 1.2
+		l.light_energy = 1.0
+		l.light_color = Color(1.0, 0.93, 0.82)
+		l.light_size = 0.3
+		l.shadow_enabled = true
 		add_child(l)
+	# klima
+	var ac := MU.rbox(self, Vector3(0.9, 0.28, 0.2), Vector3(-2.2, 2.6, -2.88), MU.mat(Color(0.95, 0.95, 0.94), 0, 0.35), 0.04)
+	for i in 6:
+		MU.box(ac, Vector3(0.75, 0.006, 0.02), Vector3(0, -0.06 - i * 0.012, 0.1), MU.mat(Color(0.8, 0.8, 0.8)))
+	# prizler
+	for x in [-1.2, 1.2]:
+		var o := MU.rbox(self, Vector3(0.08, 0.08, 0.015), Vector3(x, 0.35, -2.99), MU.mat(Color(0.95, 0.95, 0.93), 0, 0.4), 0.008)
+		MU.cyl(o, 0.022, 0.01, Vector3(0, 0, 0.007), MU.mat(Color(0.8, 0.8, 0.78)), Vector3(90, 0, 0), 16)
 
 
 func _build_outside() -> void:
-	MU.static_box(self, Vector3(60, 0.2, 40), Vector3(0, -0.11, 23.2), MU.mat(Color(0.22, 0.22, 0.24), 0, 0.95))
-	MU.box(self, Vector3(60, 0.12, 4.0), Vector3(0, 0.0, 5.2), MU.mat(Color(0.62, 0.6, 0.57), 0, 0.9))
+	MU.static_box(self, Vector3(60, 0.2, 40), Vector3(0, -0.11, 23.2), MU.pbr("asphalt", 0.25))
+	MU.static_box(self, Vector3(60, 0.15, 4.0), Vector3(0, -0.07, 5.2), MU.pbr("paving", 0.5))
+	MU.rbox(self, Vector3(60, 0.16, 0.2), Vector3(0, -0.07, 7.2), MU.mat(Color(0.6, 0.6, 0.58), 0, 0.8), 0.03)
 	for i in 12:
-		MU.box(self, Vector3(1.6, 0.02, 0.15), Vector3(-26 + i * 5, 0.0, 11.0), MU.mat(Color(0.9, 0.9, 0.85)))
-	var colors := [Color(0.8, 0.55, 0.45), Color(0.65, 0.7, 0.75), Color(0.85, 0.78, 0.6), Color(0.55, 0.6, 0.5)]
-	for i in 7:
-		var h := randf_range(6, 14)
-		var b := MU.box(self, Vector3(6.5, h, 6), Vector3(-21 + i * 7, h / 2, 21), MU.mat(colors[i % colors.size()], 0, 0.9))
-		for fy in range(2, int(h) - 1, 3):
-			for fx in [-2.0, 0.0, 2.0]:
-				MU.box(b, Vector3(1.0, 1.2, 0.05), Vector3(fx, fy - h / 2, -3.0), MU.mat(Color(0.35, 0.45, 0.55), 0.5, 0.2))
-	for x in [-6.0, 5.5, 9.0]:
-		MU.cyl(self, 0.12, 2.0, Vector3(x, 1.0, 6.6), MU.mat(Color(0.4, 0.28, 0.18)))
-		MU.sphere(self, 1.0, Vector3(x, 2.6, 6.6), MU.mat(Color(0.3, 0.55, 0.25), 0, 0.9), Vector3(1, 1.2, 1))
-	# tabela
-	var sign_body := MU.box(self, Vector3(3.2, 0.6, 0.12), Vector3(0, 3.35, 3.3), MU.mat(Color(0.1, 0.15, 0.3)))
-	var l := MU.label(sign_body, "BİLGİSAYARCI", Vector3(0, 0, 0.07), 150, Color(1.0, 0.85, 0.3), Vector3.ZERO, 0.0035)
+		MU.box(self, Vector3(1.6, 0.02, 0.15), Vector3(-26 + i * 5, 0.0, 11.0), MU.mat(Color(0.9, 0.9, 0.85), 0, 0.7))
+	# dış cephe (tuğla) ve tabela
+	var brick := MU.pbr("brick", 0.5, Color(0.75, 0.75, 0.78))
+	for x in [-6.5, 6.5]:
+		MU.static_box(self, Vector3(4.6, 4.5, 0.4), Vector3(x, 2.25, 3.1), brick)
+	MU.box(self, Vector3(8.6, 1.3, 0.4), Vector3(0, 3.65, 3.1), brick)
+	var sign_body := MU.rbox(self, Vector3(3.4, 0.62, 0.14), Vector3(0, 3.4, 3.38), MU.mat(Color(0.08, 0.12, 0.25), 0.3, 0.4), 0.03)
+	var l := MU.label(sign_body, "BİLGİSAYARCI", Vector3(0, 0, 0.075), 150, Color(1.0, 0.85, 0.3), Vector3.ZERO, 0.0035)
+	l.shaded = false
 	l.double_sided = false
+	# tente
+	var awning := MU.mat(Color(0.75, 0.15, 0.15), 0, 0.8)
+	MU.box(self, Vector3(8.0, 0.03, 1.0), Vector3(0, 2.95, 3.75), awning, Vector3(-18, 0, 0))
 
 
 func _build_desk() -> void:
-	var wood := MU.tex_mat(MU.wood_texture(), Vector3(2, 1, 1), 0.55)
-	MU.box(self, Vector3(2.6, 0.05, 0.8), Vector3(0.25, DESK_Y - 0.025, -2.5), wood)
-	var leg := MU.mat(Color(0.15, 0.15, 0.16), 0.8, 0.4)
-	for x in [-1.0, 1.5]:
-		for z in [-2.85, -2.15]:
-			MU.box(self, Vector3(0.05, DESK_Y - 0.05, 0.05), Vector3(x, (DESK_Y - 0.05) / 2, z), leg)
+	var wood := MU.pbr("wood", 0.8)
+	MU.rbox(self, Vector3(2.6, 0.05, 0.8), Vector3(0.25, DESK_Y - 0.025, -2.5), wood, 0.012)
+	var leg := MU.mat(Color(0.12, 0.12, 0.13), 0.85, 0.35)
+	for x in [-0.98, 1.48]:
+		for z in [-2.83, -2.17]:
+			MU.rbox(self, Vector3(0.05, DESK_Y - 0.05, 0.05), Vector3(x, (DESK_Y - 0.05) / 2, z), leg, 0.01)
+	MU.rbox(self, Vector3(2.5, 0.08, 0.03), Vector3(0.25, DESK_Y - 0.09, -2.85), leg, 0.008)
 	MU.static_box(self, Vector3(2.6, DESK_Y, 0.8), Vector3(0.25, DESK_Y / 2, -2.5), null)
-	MU.box(self, Vector3(1.0, 0.004, 0.5), Vector3(0.55, DESK_Y + 0.002, -2.45), MU.mat(Color(0.2, 0.35, 0.6), 0, 0.9))
+	MU.rbox(self, Vector3(1.0, 0.004, 0.5), Vector3(0.55, DESK_Y + 0.002, -2.45), MU.mat(Color(0.12, 0.3, 0.55), 0, 0.95), 0.002)
 	monitor = MONITOR.new()
 	monitor.position = Vector3(-0.5, DESK_Y, -2.72)
 	add_child(monitor)
 	# klavye ve fare
-	var kb := MU.box(self, Vector3(0.44, 0.02, 0.14), Vector3(-0.5, DESK_Y + 0.01, -2.32), MU.mat(Color(0.1, 0.1, 0.11)))
-	var key_m := MU.mat(Color(0.2, 0.2, 0.22))
+	var kb := MU.rbox(self, Vector3(0.44, 0.02, 0.14), Vector3(-0.5, DESK_Y + 0.01, -2.32), MU.mat(Color(0.1, 0.1, 0.11), 0.3, 0.5), 0.006)
+	var key_m := MU.mat(Color(0.2, 0.2, 0.22), 0, 0.6)
 	for r in 4:
 		for c in 14:
-			MU.box(kb, Vector3(0.024, 0.008, 0.024), Vector3(-0.195 + c * 0.03, 0.013, -0.045 + r * 0.03), key_m)
-	MU.sphere(self, 0.03, Vector3(-0.15, DESK_Y + 0.01, -2.3), MU.mat(Color(0.12, 0.12, 0.13)), Vector3(0.8, 0.45, 1.2))
+			MU.rbox(kb, Vector3(0.025, 0.01, 0.025), Vector3(-0.195 + c * 0.03, 0.013, -0.045 + r * 0.03), key_m, 0.003)
+	MU.rbox(kb, Vector3(0.16, 0.01, 0.025), Vector3(0.0, 0.013, 0.075), key_m, 0.003)
+	MU.sphere(self, 0.03, Vector3(-0.15, DESK_Y + 0.01, -2.3), MU.mat(Color(0.12, 0.12, 0.13), 0.2, 0.4), Vector3(0.8, 0.45, 1.2))
 	# masa lambası
-	var lamp_m := MU.mat(Color(0.9, 0.3, 0.2), 0.3, 0.5)
-	MU.cyl(self, 0.07, 0.02, Vector3(1.3, DESK_Y + 0.01, -2.75), lamp_m)
+	var lamp_m := MU.mat(Color(0.85, 0.25, 0.18), 0.4, 0.4)
+	MU.cyl(self, 0.07, 0.02, Vector3(1.3, DESK_Y + 0.01, -2.75), lamp_m, Vector3.ZERO, 24)
 	MU.cyl(self, 0.01, 0.42, Vector3(1.3, DESK_Y + 0.22, -2.75), leg)
-	MU.cyl(self, 0.03, 0.12, Vector3(1.22, DESK_Y + 0.42, -2.68), lamp_m, Vector3(40, 45, 0), 16, 0.08)
-	var dl := OmniLight3D.new()
-	dl.position = Vector3(1.15, DESK_Y + 0.33, -2.6)
-	dl.omni_range = 1.6
-	dl.light_energy = 0.8
+	MU.cyl(self, 0.03, 0.12, Vector3(1.22, DESK_Y + 0.42, -2.68), lamp_m, Vector3(40, 45, 0), 24, 0.08)
+	MU.sphere(self, 0.025, Vector3(1.19, DESK_Y + 0.39, -2.65), MU.mat(Color(1.0, 0.9, 0.7), 0, 0.5, 6.0))
+	var dl := SpotLight3D.new()
+	dl.position = Vector3(1.19, DESK_Y + 0.4, -2.65)
+	dl.rotation_degrees = Vector3(-60, -35, 0)
+	dl.spot_range = 2.0
+	dl.spot_angle = 45
+	dl.light_energy = 2.0
 	dl.light_color = Color(1.0, 0.85, 0.65)
+	dl.shadow_enabled = true
 	add_child(dl)
-	# tornavida
-	MU.cyl(self, 0.012, 0.09, Vector3(1.0, DESK_Y + 0.012, -2.25), MU.mat(Color(0.9, 0.2, 0.15)), Vector3(0, 0, 90), 8)
-	MU.cyl(self, 0.003, 0.1, Vector3(0.905, DESK_Y + 0.012, -2.25), MU.mat(Color(0.8, 0.8, 0.82), 0.9, 0.3), Vector3(0, 0, 90), 6)
+	# tornavida ve kupa
+	MU.capsule(self, 0.012, 0.09, Vector3(1.0, DESK_Y + 0.012, -2.25), MU.mat(Color(0.85, 0.15, 0.12), 0, 0.35), Vector3(0, 0, 90))
+	MU.cyl(self, 0.003, 0.1, Vector3(0.905, DESK_Y + 0.012, -2.25), MU.mat(Color(0.8, 0.8, 0.82), 0.9, 0.25), Vector3(0, 0, 90), 8)
+	var mug := MU.cyl(self, 0.04, 0.1, Vector3(-1.0, DESK_Y + 0.05, -2.6), MU.mat(Color(0.95, 0.95, 0.92), 0, 0.2), Vector3.ZERO, 24)
+	MU.cyl(mug, 0.035, 0.005, Vector3(0, 0.045, 0), MU.mat(Color(0.25, 0.12, 0.05), 0, 0.1), Vector3.ZERO, 24)
+	MU.torus(mug, 0.02, 0.028, Vector3(0.045, 0, 0), MU.mat(Color(0.95, 0.95, 0.92), 0, 0.2), Vector3(90, 0, 0))
 	# arıza rehberi posteri
-	var poster := MU.box(self, Vector3(1.3, 0.85, 0.01), Vector3(-0.2, 1.8, -2.99), MU.mat(Color(0.97, 0.95, 0.88)))
-	MU.box(poster, Vector3(1.3, 0.12, 0.012), Vector3(0, 0.365, 0), MU.mat(Color(0.75, 0.15, 0.15)))
-	var t1 := MU.label(poster, "ARIZA REHBERİ", Vector3(0, 0.365, 0.008), 64, Color.WHITE, Vector3.ZERO, 0.0012)
+	var poster := MU.rbox(self, Vector3(1.3, 0.85, 0.012), Vector3(-0.2, 1.8, -2.99), MU.mat(Color(0.97, 0.95, 0.9), 0, 0.8), 0.004)
+	MU.box(poster, Vector3(1.3, 0.12, 0.014), Vector3(0, 0.365, 0), MU.mat(Color(0.75, 0.15, 0.15), 0, 0.7))
+	var t1 := MU.label(poster, "ARIZA REHBERİ", Vector3(0, 0.365, 0.009), 64, Color.WHITE, Vector3.ZERO, 0.0012)
 	t1.double_sided = false
-	var t2 := MU.label(poster, "• Hiçbir tepki yok  →  Güç Kaynağı (PSU)\n• Fan dönüyor, bip yok, görüntü yok  →  İşlemci (CPU)\n• Sürekli kısa bipler  →  RAM\n• 1 uzun 3 kısa bip  →  Ekran Kartı (GPU)\n• \"Boot device\" hatası  →  SSD\n• Tek kısa bip  →  Her şey yolunda!", Vector3(0, -0.06, 0.008), 34, Color(0.12, 0.12, 0.14), Vector3.ZERO, 0.0011)
+	var t2 := MU.label(poster, "• Hiçbir tepki yok  →  Güç Kaynağı (PSU)\n• Fan dönüyor, bip yok, görüntü yok  →  İşlemci (CPU)\n• Sürekli kısa bipler  →  RAM\n• 1 uzun 3 kısa bip  →  Ekran Kartı (GPU)\n• \"Boot device\" hatası  →  SSD\n• Tek kısa bip  →  Her şey yolunda!", Vector3(0, -0.06, 0.009), 34, Color(0.12, 0.12, 0.14), Vector3.ZERO, 0.0011)
 	t2.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	t2.line_spacing = 6
 	t2.double_sided = false
+	for c in [Vector2(-0.6, 0.38), Vector2(0.6, 0.38), Vector2(-0.6, -0.38), Vector2(0.6, -0.38)]:
+		MU.sphere(poster, 0.008, Vector3(c.x, c.y, 0.008), MU.mat(Color(0.2, 0.4, 0.9), 0.3, 0.3))
 	# hurda kutusu
-	var bin := MU.cyl(self, 0.2, 0.5, Vector3(1.85, 0.25, -2.55), MU.mat(Color(0.25, 0.4, 0.3), 0.4, 0.6), Vector3.ZERO, 16, 0.22)
-	MU.torus(bin, 0.2, 0.23, Vector3(0, 0.25, 0), MU.mat(Color(0.15, 0.2, 0.17)))
+	var bin := MU.cyl(self, 0.2, 0.5, Vector3(1.85, 0.25, -2.55), MU.mat(Color(0.2, 0.38, 0.28), 0.5, 0.45), Vector3.ZERO, 24, 0.22)
+	MU.torus(bin, 0.2, 0.23, Vector3(0, 0.25, 0), MU.mat(Color(0.12, 0.16, 0.14), 0.5, 0.4))
 	var bl := MU.label(bin, "HURDA", Vector3(0, 0.05, 0.215), 60, Color(0.95, 0.95, 0.9), Vector3.ZERO, 0.0012)
 	bl.double_sided = false
 	MU.interactable(self, Vector3(0.46, 0.55, 0.46), Vector3(1.85, 0.27, -2.55), _bin_hint, _bin_use)
@@ -244,21 +330,27 @@ func _bin_use(p) -> void:
 
 func _build_shelf() -> void:
 	var x0 := -3.75
-	var wood := MU.tex_mat(MU.wood_texture(), Vector3(1, 3, 1), 0.6, Color(0.85, 0.85, 0.85))
+	var wood := MU.pbr("laminate", 1.0)
 	var zc := -0.7
 	var length := 3.0
 	for z in [zc - length / 2, zc + length / 2]:
-		MU.static_box(self, Vector3(0.42, 2.1, 0.04), Vector3(x0, 1.05, z), wood)
-	MU.box(self, Vector3(0.02, 2.1, length), Vector3(x0 - 0.2, 1.05, zc), wood)
+		MU.static_box(self, Vector3(0.42, 2.1, 0.04), Vector3(x0, 1.05, z), null)
+		MU.rbox(self, Vector3(0.42, 2.1, 0.04), Vector3(x0, 1.05, z), wood, 0.008)
+	MU.box(self, Vector3(0.02, 2.1, length), Vector3(x0 - 0.2, 1.05, zc), MU.pbr("wall", 0.5, Color(0.85, 0.88, 0.92), 0.3))
 	var levels := [0.45, 0.95, 1.45, 1.95]
 	for y in levels:
-		MU.static_box(self, Vector3(0.42, 0.03, length), Vector3(x0, y, zc), wood)
-	var shelf_light := OmniLight3D.new()
-	shelf_light.position = Vector3(x0 + 0.9, 1.6, zc)
-	shelf_light.omni_range = 2.2
-	shelf_light.light_energy = 0.6
-	add_child(shelf_light)
-	var title := MU.label(self, "PARÇA RAFI", Vector3(x0 + 0.05, 2.2, zc), 90, Color(0.2, 0.25, 0.35), Vector3(0, 90, 0), 0.0025)
+		MU.static_box(self, Vector3(0.42, 0.03, length), Vector3(x0, y, zc), null)
+		MU.rbox(self, Vector3(0.42, 0.03, length), Vector3(x0, y, zc), wood, 0.006)
+		# raf altı LED şerit
+		MU.box(self, Vector3(0.01, 0.004, length - 0.1), Vector3(x0 + 0.18, y - 0.017, zc), MU.mat(Color(1.0, 0.95, 0.85), 0, 0.5, 3.0))
+	for y in [0.75, 1.25, 1.75]:
+		var sl := OmniLight3D.new()
+		sl.position = Vector3(x0 + 0.15, y, zc)
+		sl.omni_range = 1.6
+		sl.light_energy = 0.7
+		sl.light_color = Color(1.0, 0.95, 0.88)
+		add_child(sl)
+	var title := MU.label(self, "PARÇA RAFI", Vector3(x0 + 0.05, 2.48, zc), 90, Color(0.15, 0.2, 0.3), Vector3(0, 90, 0), 0.0025)
 	title.double_sided = false
 	var items := [
 		[1.45, -1.6, "gpu", 1], [1.45, -0.9, "gpu", 2],
@@ -267,6 +359,12 @@ func _build_shelf() -> void:
 	]
 	for it in items:
 		_shelf_item(x0, it[0] + 0.015, it[1] + 0.7 + zc, it[2], it[3])
+	# en üst rafta süs kutuları
+	var box_cols := [Color(0.15, 0.3, 0.7), Color(0.75, 0.2, 0.2), Color(0.1, 0.1, 0.12), Color(0.9, 0.6, 0.1)]
+	for i in 6:
+		var bs := Vector3(0.3, randf_range(0.18, 0.3), randf_range(0.2, 0.35))
+		var bx := MU.rbox(self, bs, Vector3(x0, 1.965 + bs.y / 2, zc - 1.25 + i * 0.45), MU.mat(box_cols[i % 4], 0, 0.5), 0.008)
+		MU.box(bx, Vector3(0.01, bs.y * 0.4, bs.z * 0.7), Vector3(0.15, 0, 0), MU.mat(Color(0.95, 0.95, 0.95), 0, 0.5))
 
 
 func _shelf_item(x0: float, shelf_y: float, z: float, type: String, tier: int) -> void:
@@ -274,16 +372,18 @@ func _shelf_item(x0: float, shelf_y: float, z: float, type: String, tier: int) -
 	var built := PM.build(type, tier)
 	var n: Node3D = built.node
 	var c: Vector3 = info.center
-	n.position = Vector3(x0 + 0.06 - c.x, shelf_y + info.size.y / 2 - c.y, z - c.z)
+	var k := 1.5
+	n.scale = Vector3.ONE * k
+	n.position = Vector3(x0 + 0.06 - c.x * k, shelf_y + (info.size.y / 2 - c.y) * k, z - c.z * k)
 	add_child(n)
 	var price := PM.price(type, tier)
 	var dname := PM.display_name(type, tier)
-	MU.interactable(self, info.size + Vector3(0.04, 0.04, 0.04), Vector3(x0 + 0.06, shelf_y + info.size.y / 2, z),
+	MU.interactable(self, info.size * 1.5 + Vector3(0.04, 0.04, 0.04), Vector3(x0 + 0.06, shelf_y + info.size.y * 0.75, z),
 		func(p): return "Satın al: %s — %d TL  [E]" % [dname, price] if p.held == null else "Elin dolu",
 		func(p): _buy(p, type, tier))
-	var l := MU.label(self, "%s\n%d TL" % [dname, price], Vector3(x0 + 0.213, shelf_y - 0.045, z), 30, Color(0.1, 0.1, 0.1), Vector3(0, 90, 0), 0.0008)
+	var l := MU.label(self, "%s\n%d TL" % [dname, price], Vector3(x0 + 0.214, shelf_y - 0.045, z), 30, Color(0.1, 0.1, 0.1), Vector3(0, 90, 0), 0.001)
 	l.double_sided = false
-	var tag := MU.box(self, Vector3(0.002, 0.05, 0.16), Vector3(x0 + 0.211, shelf_y - 0.045, z), MU.mat(Color(1.0, 0.92, 0.4)))
+	var tag := MU.box(self, Vector3(0.002, 0.06, 0.24), Vector3(x0 + 0.212, shelf_y - 0.045, z), MU.mat(Color(1.0, 0.92, 0.4)))
 	tag.name = "PriceTag"
 
 
@@ -303,36 +403,51 @@ func _buy(p, type: String, tier: int) -> void:
 
 
 func _build_counter() -> void:
-	var wood := MU.tex_mat(MU.wood_texture(), Vector3(3, 1, 1), 0.5)
-	MU.box(self, Vector3(3.4, 0.98, 0.6), Vector3(-1.0, 0.49, 1.3), MU.mat(Color(0.25, 0.3, 0.38), 0, 0.7))
-	MU.box(self, Vector3(3.5, 0.05, 0.7), Vector3(-1.0, 1.0, 1.3), wood)
+	var wood := MU.pbr("wood", 0.8)
+	var body_m := MU.pbr("wall", 0.6, Color(0.22, 0.3, 0.4), 0.5)
+	MU.rbox(self, Vector3(3.4, 0.98, 0.6), Vector3(-1.0, 0.49, 1.3), body_m, 0.02)
+	MU.rbox(self, Vector3(3.5, 0.05, 0.7), Vector3(-1.0, 1.0, 1.3), wood, 0.015)
+	MU.rbox(self, Vector3(3.42, 0.06, 0.02), Vector3(-1.0, 0.06, 1.6), MU.mat(Color(0.12, 0.12, 0.13), 0.6, 0.4), 0.008)
 	MU.static_box(self, Vector3(3.5, 1.03, 0.7), Vector3(-1.0, 0.515, 1.3), null)
 	# yazar kasa
-	var reg := MU.box(self, Vector3(0.35, 0.12, 0.3), Vector3(-2.1, 1.085, 1.3), MU.mat(Color(0.15, 0.15, 0.17)))
-	MU.box(reg, Vector3(0.2, 0.1, 0.02), Vector3(0, 0.1, 0.05), MU.mat(Color(0.2, 0.8, 0.5), 0, 0.3, 1.5), Vector3(-20, 0, 0))
+	var reg := MU.rbox(self, Vector3(0.35, 0.12, 0.3), Vector3(-2.1, 1.085, 1.3), MU.mat(Color(0.15, 0.15, 0.17), 0.3, 0.4), 0.02)
+	MU.rbox(reg, Vector3(0.2, 0.1, 0.02), Vector3(0, 0.1, -0.05), MU.mat(Color(0.2, 0.8, 0.5), 0, 0.3, 1.5), 0.005, Vector3(20, 0, 0))
+	for r in 3:
+		for c in 4:
+			MU.rbox(reg, Vector3(0.03, 0.01, 0.03), Vector3(-0.06 + c * 0.04, 0.062, 0.02 + r * 0.04), MU.mat(Color(0.85, 0.85, 0.82), 0, 0.5), 0.004)
 	# eski CRT monitör (süs)
-	var crt := MU.box(self, Vector3(0.4, 0.35, 0.38), Vector3(-1.4, 1.2, 1.35), MU.mat(Color(0.85, 0.82, 0.72)))
-	MU.box(crt, Vector3(0.32, 0.26, 0.01), Vector3(0, 0.01, -0.19), MU.mat(Color(0.15, 0.2, 0.18), 0.2, 0.2))
+	var crt := MU.rbox(self, Vector3(0.4, 0.35, 0.38), Vector3(-1.4, 1.2, 1.35), MU.mat(Color(0.85, 0.82, 0.72), 0, 0.5), 0.04)
+	MU.rbox(crt, Vector3(0.32, 0.26, 0.01), Vector3(0, 0.01, -0.19), MU.mat(Color(0.1, 0.14, 0.12), 0.2, 0.15), 0.02)
 	var sticky := MU.label(self, "Kartvizit\nalınız :)", Vector3(-0.3, 1.03, 1.2), 40, Color(0.2, 0.2, 0.25), Vector3(-90, 180, 0), 0.001)
 	sticky.double_sided = false
+	MU.rbox(self, Vector3(0.12, 0.004, 0.1), Vector3(-0.3, 1.027, 1.2), MU.mat(Color(1.0, 0.95, 0.5), 0, 0.8), 0.002)
 
 
 func _build_decor() -> void:
-	var cardboard := MU.mat(Color(0.7, 0.55, 0.35), 0, 0.9)
-	var tape := MU.mat(Color(0.85, 0.75, 0.55), 0, 0.6)
+	var cardboard := MU.mat(Color(0.68, 0.52, 0.33), 0, 0.95)
+	var tape := MU.mat(Color(0.85, 0.75, 0.55), 0, 0.5)
 	var stacks := [[Vector3(3.4, 0.25, -2.5), Vector3(0.6, 0.5, 0.5), 0.0], [Vector3(3.35, 0.75, -2.5), Vector3(0.5, 0.5, 0.45), 12.0],
 		[Vector3(3.5, 0.2, -1.8), Vector3(0.45, 0.4, 0.45), -8.0], [Vector3(3.3, 1.15, -2.45), Vector3(0.35, 0.3, 0.3), 25.0]]
 	for s in stacks:
-		var b := MU.static_box(self, s[1], s[0], cardboard, Vector3(0, s[2], 0))
+		var b := MU.static_box(self, s[1], s[0], null, Vector3(0, s[2], 0))
+		MU.rbox(b, s[1], Vector3.ZERO, cardboard, 0.012)
 		MU.box(b, Vector3(s[1].x + 0.002, 0.06, s[1].z + 0.002), Vector3(0, s[1].y / 2 - 0.02, 0), tape)
+		var arrow := MU.label(b, "↑↑  KIRILIR", Vector3(0, 0, s[1].z / 2 + 0.002), 40, Color(0.25, 0.18, 0.1), Vector3.ZERO, 0.0012)
+		arrow.double_sided = false
 	# saksı bitkisi
-	MU.cyl(self, 0.2, 0.4, Vector3(3.5, 0.2, 2.5), MU.mat(Color(0.7, 0.35, 0.2)), Vector3.ZERO, 14, 0.24)
-	for i in 6:
-		var a := TAU * i / 6.0
-		MU.sphere(self, 0.22, Vector3(3.5 + cos(a) * 0.12, 0.62 + (i % 2) * 0.15, 2.5 + sin(a) * 0.12), MU.mat(Color(0.25, 0.55, 0.25), 0, 0.85), Vector3(0.7, 1.4, 0.7))
+	MU.cyl(self, 0.2, 0.4, Vector3(3.5, 0.2, 2.5), MU.mat(Color(0.65, 0.32, 0.2), 0, 0.7), Vector3.ZERO, 24, 0.24)
+	MU.cyl(self, 0.22, 0.02, Vector3(3.5, 0.39, 2.5), MU.mat(Color(0.25, 0.17, 0.1), 0, 1.0), Vector3.ZERO, 24)
+	var leaf := MU.mat(Color(0.2, 0.48, 0.2), 0, 0.6)
+	for i in 14:
+		var a := TAU * i / 7.0
+		var piv := Node3D.new()
+		piv.position = Vector3(3.5, 0.4, 2.5)
+		piv.rotation = Vector3(deg_to_rad(randf_range(15, 55)), a, 0)
+		add_child(piv)
+		MU.sphere(piv, 0.09, Vector3(0, 0.3 + (i % 2) * 0.12, 0), leaf, Vector3(0.45, 1.9, 0.12))
 	# duvar saati
-	var clock := MU.cyl(self, 0.22, 0.04, Vector3(3.99, 2.2, -0.5), MU.mat(Color(0.95, 0.95, 0.95)), Vector3(0, 0, 90), 24)
-	MU.torus(clock, 0.21, 0.24, Vector3.ZERO, MU.mat(Color(0.15, 0.15, 0.15)))
+	var clock := MU.cyl(self, 0.22, 0.04, Vector3(3.99, 2.2, -0.5), MU.mat(Color(0.97, 0.97, 0.97), 0, 0.3), Vector3(0, 0, 90), 32)
+	MU.torus(clock, 0.21, 0.24, Vector3.ZERO, MU.mat(Color(0.12, 0.12, 0.12), 0.6, 0.3))
 	MU.box(clock, Vector3(0.012, 0.012, 0.15), Vector3(0, -0.025, 0.05), MU.mat(Color(0.1, 0.1, 0.1)))
 	MU.box(clock, Vector3(0.1, 0.012, 0.012), Vector3(0.04, -0.025, 0), MU.mat(Color(0.1, 0.1, 0.1)))
 	# neon yazı
@@ -344,12 +459,31 @@ func _build_decor() -> void:
 	var nl := OmniLight3D.new()
 	nl.position = Vector3(3.6, 2.1, 1.5)
 	nl.light_color = Color(1.0, 0.35, 0.8)
-	nl.light_energy = 0.6
+	nl.light_energy = 0.8
 	nl.omni_range = 2.5
 	add_child(nl)
+	# duvar posterleri
+	var posters := [["RGB = +10 FPS", Color(0.15, 0.1, 0.3), Color(0.4, 0.9, 1.0)], ["TERMAL MACUN\nSÜRMEYİ UNUTMA!", Color(0.95, 0.8, 0.2), Color(0.15, 0.1, 0.05)]]
+	for i in posters.size():
+		var pp := MU.rbox(self, Vector3(0.012, 0.6, 0.45), Vector3(3.99, 1.65, -2.2 + i * 0.65), MU.mat(posters[i][1], 0, 0.7), 0.004)
+		var pl := MU.label(pp, posters[i][0], Vector3(-0.008, 0, 0), 48, posters[i][2], Vector3(0, -90, 0), 0.0012)
+		pl.double_sided = false
 	# sandalye
-	var chair_m := MU.mat(Color(0.12, 0.12, 0.14), 0.2, 0.6)
-	MU.box(self, Vector3(0.48, 0.08, 0.48), Vector3(0.4, 0.5, -1.75), chair_m)
-	MU.box(self, Vector3(0.48, 0.55, 0.06), Vector3(0.4, 0.82, -1.5), chair_m, Vector3(-8, 0, 0))
-	MU.cyl(self, 0.03, 0.45, Vector3(0.4, 0.25, -1.75), MU.mat(Color(0.6, 0.6, 0.62), 0.9, 0.3))
-	MU.cyl(self, 0.28, 0.03, Vector3(0.4, 0.04, -1.75), chair_m, Vector3.ZERO, 5)
+	var chair_m := MU.mat(Color(0.1, 0.1, 0.12), 0.1, 0.55)
+	var fabric := MU.pbr("wall", 2.0, Color(0.2, 0.22, 0.28), 1.5)
+	MU.rbox(self, Vector3(0.48, 0.08, 0.48), Vector3(0.4, 0.5, -1.75), fabric, 0.03)
+	MU.rbox(self, Vector3(0.46, 0.6, 0.07), Vector3(0.4, 0.86, -1.5), fabric, 0.03, Vector3(-8, 0, 0))
+	MU.cyl(self, 0.03, 0.45, Vector3(0.4, 0.25, -1.75), MU.mat(Color(0.6, 0.6, 0.62), 0.9, 0.25))
+	for i in 5:
+		var piv := Node3D.new()
+		piv.position = Vector3(0.4, 0.05, -1.75)
+		piv.rotation.y = TAU * i / 5.0
+		add_child(piv)
+		MU.rbox(piv, Vector3(0.28, 0.03, 0.04), Vector3(0.14, 0, 0), chair_m, 0.01)
+		MU.sphere(piv, 0.025, Vector3(0.27, -0.025, 0), chair_m)
+	# rafın yanında eski kasalar
+	for i in 3:
+		var k := MU.rbox(self, Vector3(0.2, 0.42, 0.42), Vector3(-3.6 + i * 0.03, 0.21 + i * 0.0, 1.5 - i * 0.3 * 0), MU.mat(Color(0.82, 0.8, 0.72), 0, 0.6), 0.01, Vector3(0, i * 4.0, 0))
+		k.position = Vector3(-3.65, 0.21 + i * 0.42, 1.5)
+		MU.rbox(k, Vector3(0.18, 0.04, 0.01), Vector3(0, 0.12, 0.21), MU.mat(Color(0.3, 0.3, 0.3)), 0.004)
+	MU.static_box(self, Vector3(0.22, 1.26, 0.44), Vector3(-3.65, 0.63, 1.5), null)
