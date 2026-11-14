@@ -100,6 +100,7 @@ var take_was_dud := false         # son take_stock() arızalı parça verdi mi
 var warranty_list: Array = []     # bekleyen garanti dönüşleri: {due, name, type, tier}
 var warranty_chance := WARRANTY_CHANCE
 var used_listings: Array = []     # bugünün ikinci el ilanları
+var _loaded_used_sold: Array = [] # kayıttan gelen satılmış ilan id'leri (günlük üretimde bir kez uygulanır)
 var utility_today := 0
 
 var started := false          # oyuncu Yeni Oyun / Devam Et seçti mi
@@ -382,17 +383,27 @@ func _reset_economy() -> void:
 	stock_dud = {}
 	warranty_list = []
 	used_listings = []
+	_loaded_used_sold = []
 
 
 func _save_economy(d: Dictionary) -> void:
 	d.stock_cheap = stock_cheap
 	d.stock_dud = stock_dud
 	d.warranty = warranty_list
+	# satılmış ikinci el ilanları (gün sonu özeti kaydıysa yarın taze ilan gelir)
+	var sold_ids := []
+	if phase != "summary":
+		for l in used_listings:
+			if l.sold:
+				sold_ids.append(int(l.id))
+	d.used_sold = sold_ids
 
 
 func _load_economy(d: Dictionary) -> void:
 	_reset_economy()
 	used_listings = UM.generate(day)  # ilanlar günün tohumundan yeniden üretilir
+	for id in d.get("used_sold", []):
+		_loaded_used_sold.append(int(id))
 	for k in d.get("stock_cheap", {}):
 		stock_cheap[str(k)] = int(d.stock_cheap[k])
 	for k in d.get("stock_dud", {}):
@@ -483,15 +494,25 @@ func start_day() -> void:
 	shipping_today = 0
 	sales_today = 0
 	jobs_today = 0
-	used_listings = UM.generate(day)
+	_make_listings()
 	rep_day_start = rep
 	phase = "day"
 	day_started.emit()
 
 
+## Günün ilanlarını üretir; kayıttan gelen satılmış ilanlar işaretlenir (yalnızca bir kez).
+func _make_listings() -> void:
+	used_listings = UM.generate(day)
+	for l in used_listings:
+		if int(l.id) in _loaded_used_sold:
+			l.sold = true
+	_loaded_used_sold = []
+
+
 func next_day() -> void:
 	day += 1
 	_roll_market()
+	_loaded_used_sold = []  # yeni güne eski kayıttaki satış işaretleri taşınmaz
 	start_day()
 
 
