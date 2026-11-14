@@ -4,6 +4,7 @@ extends Node
 const PC := preload("res://scripts/pc_case.gd")
 const CUSTOMER := preload("res://scripts/customer.gd")
 const PM := preload("res://scripts/part_models.gd")
+const WARRANTY := preload("res://scripts/warranty.gd")
 
 const SPAWN := Vector3(-0.3, 0, 9.0)
 const DOOR := Vector3(0, 0, 3.6)
@@ -116,6 +117,8 @@ func _leave_angry(line: String, rep_loss: float) -> void:
 	state = "leaving"
 	var c = customer
 	c.say(line, true)
+	if job.get("warranty", false):
+		rep_loss += WARRANTY.REP_ANGRY_EXTRA  # garanti müşterisini kızdırmak daha pahalı
 	Game.change_rep(-rep_loss)
 	Game.sfx.error()
 	Game.msg("%s kızıp gitti! İtibar düştü." % job.name, Color(1, 0.5, 0.4))
@@ -183,6 +186,10 @@ func _make_job() -> Dictionary:
 	var j := {"name": NAMES.pick_random()}
 	var roll := randf()
 	var base := [["psu", "psu", 1], ["cpu", "cpu", 1], ["ram1", "ram", 1], ["gpu", "gpu", 1], ["ssd", "ssd", 1]]
+	# garanti dönüşü (muadil parça bozuldu) her şeyden önce gelir
+	var due := WARRANTY.take_due()
+	if not due.is_empty():
+		return WARRANTY.make_job(due, base)
 	if roll >= 0.85:
 		# tezgahtan parça satışı
 		var w: Array = SALE_WANTS.pick_random()
@@ -269,7 +276,7 @@ func _accept() -> void:
 	pc.fill(job.parts)
 	state = "working"
 	customer.say("Tamamdır usta, ben burada bekliyorum. Ücreti %d TL." % job.pay)
-	hud.set_job("%s — %d TL" % [job.name, job.pay], job.goal + "\n\nBitince müşteriyle konuş [E]")
+	hud.set_job("%s — %s" % [job.name, "GARANTİ (ücretsiz)" if job.get("warranty", false) else "%d TL" % job.pay], job.goal + "\n\nBitince müşteriyle konuş [E]")
 	Game.msg("Bilgisayar masana kondu. Kapağı açıp incele!", Color(0.6, 0.9, 1.0))
 	hud.dismiss_tip("talk")
 	hud.tip("glass", "Kapağı açmak için bilgisayarın camına bakıp E'ye bas.")
@@ -306,6 +313,10 @@ func _try_deliver() -> void:
 		return
 	state = "leaving"
 	hud.set_patience(-1.0)
+	WARRANTY.on_delivered(pc, job)  # muadil parça takıldıysa geri dönüş riski kaydedilir
+	if job.get("warranty", false):
+		_finish_warranty()
+		return
 	Game.add_money(job.pay)
 	Game.jobs_done += 1
 	Game.jobs_today += 1
@@ -318,6 +329,26 @@ func _try_deliver() -> void:
 		"Çok teşekkürler, herkese seni önereceğim!"].pick_random())
 	Game.msg("+%d TL kazandın!" % job.pay + ("  (hızlı servis, itibar arttı)" if fast else ""), Color(0.5, 1, 0.5))
 	hud.set_job("İş tamamlandı!", "")
+	var old_pc = pc
+	pc = null
+	_dispose_pc(old_pc, 0.5)
+	var g := _gen
+	var c = customer
+	await get_tree().create_timer(1.2).timeout
+	c.say("")
+	c.walk([INSIDE, DOOR, SPAWN], func(): c.queue_free())
+	if g == _gen:
+		_next_customer(_arrival_delay())
+
+
+## Garanti işi teslimi: ücret yok, hızlıysa itibar düzelir.
+func _finish_warranty() -> void:
+	var fast := work_hours < _job_limit() * 0.5
+	Game.change_rep(WARRANTY.REP_FAST if fast else WARRANTY.REP_SLOW)
+	Game.cash_sound()
+	customer.say(["Tamam usta, bu sefer sağlam olsun!", "Sağ ol usta, garanti dediğin böyle olur."].pick_random())
+	Game.msg("Garanti işi tamamlandı" + ("  (hızlı servis, itibar düzeldi)" if fast else "."), Color(0.6, 0.9, 1.0))
+	hud.set_job("Garanti işi tamamlandı!", "")
 	var old_pc = pc
 	pc = null
 	_dispose_pc(old_pc, 0.5)
@@ -369,6 +400,8 @@ func _try_sell(p) -> void:
 		hud.tip("sale", "Parça satışı: raftan istenen parçayı al, elinde tutarken müşteriye E'ye bas.")
 		return
 	var part = p.release_held()
+	if part.cheap:
+		job.pay = roundi(int(job.pay) * Game.CHEAP_FACTOR)  # muadil parça daha ucuza satılır
 	part.queue_free()
 	state = "leaving"
 	hud.set_patience(-1.0)

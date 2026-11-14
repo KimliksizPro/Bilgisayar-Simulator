@@ -107,6 +107,14 @@ MSAA kapalı, gölgeler hafifletilmiş.
 - **Kayıt:** gün sonunda ve oyundan çıkarken otomatik kaydedilir (`user://save.json`). Başlangıç
   ekranında **Devam Et** ile kayıtlı günün 09:00'ından devam edersin, **Yeni Oyun** sıfırlar.
 
+- **Muadil parça:** ParçaNet'te her ürün Orijinal ya da Muadil (%40 ucuz) alınabilir. Raftan orijinal **E**,
+  muadil **F** ile alınır. Muadil parça turuncu etiketlidir, hurdada/tezgahta %60 değerindedir.
+- **Garanti:** takılı muadil parçayla teslim edilen iş %35 ihtimalle 1-2 gün içinde `warranty` işi olarak
+  geri döner (ücretsiz tamir; hızlı çözmek itibarı düzeltir, kızıp gitmesi itibarı düşürür). Mantık `scripts/warranty.gd`.
+- **İkinci el pazarı:** laptopta İkinci El sekmesi, her gün tohumlu yeni ilanlar (`scripts/used_market.gd`).
+  Alınan parça orijinal stoğa girer; "arızalı çıkabilir" ilanlarda gizli bozuk olabilir.
+- **Elektrik faturası:** gün sonunda kiraya ek: 15 TL + iş başına 3 TL (+8 Kahve Makinesi, +5 Tabela). Z Raporu'nda görünür.
+
 İş tipleri: arıza tamiri, aşırı ısınma, ekran kartı yükseltme, RAM yükseltme, sıfırdan bilgisayar toplama,
 tezgahtan parça satışı.
 

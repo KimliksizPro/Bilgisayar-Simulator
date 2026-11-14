@@ -14,6 +14,9 @@ var _tabs: Array[Button] = []
 var _money: Label
 var _cart := {}             # sku -> adet
 var _express := false
+var _cheap := false         # ParçaNet kalite seçimi: false = orijinal, true = muadil
+var _qual_btns: Array[Button] = []
+var _qual_note: Label
 # ParçaNet satırları: sku -> {stock, price, qty, line}
 var _rows := {}
 var _market: Label
@@ -29,6 +32,7 @@ var _orders_box: VBoxContainer
 var _up_rows := {}
 var _stats_grid: GridContainer
 var _tab_cargo: Button
+var _used_box: VBoxContainer
 
 
 func _ready() -> void:
@@ -55,7 +59,7 @@ func _ready() -> void:
 	tabs.add_theme_constant_override("separation", 6)
 	vb.add_child(tabs)
 	var group := ButtonGroup.new()
-	var names := ["ParçaNet", "Kargo Takip", "Geliştirmeler", "Dükkân"]
+	var names := ["ParçaNet", "Kargo Takip", "Geliştirmeler", "Dükkân", "İkinci El"]
 	for i in names.size():
 		var b := K.button(tabs, names[i], func(): _show_page(i), "TabButton", 19, Vector2(0, 42))
 		b.toggle_mode = true
@@ -66,7 +70,7 @@ func _ready() -> void:
 	var holder := VBoxContainer.new()
 	holder.custom_minimum_size = Vector2(0, 470)
 	vb.add_child(holder)
-	for i in 4:
+	for i in names.size():
 		var page := VBoxContainer.new()
 		page.add_theme_constant_override("separation", 10)
 		page.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -77,6 +81,7 @@ func _ready() -> void:
 	_build_cargo(_pages[1])
 	_build_upgrades(_pages[2])
 	_build_stats(_pages[3])
+	_build_used(_pages[4])
 	K.hsep(vb)
 	var foot := HBoxContainer.new()
 	vb.add_child(foot)
@@ -86,6 +91,7 @@ func _ready() -> void:
 	Game.stock_changed.connect(refresh)
 	Game.orders_changed.connect(refresh)
 	Game.upgrade_bought.connect(func(_id): refresh())
+	Game.day_started.connect(refresh)
 	_show_page(0)
 
 
@@ -129,12 +135,29 @@ func _build_shop(p: Control) -> void:
 	top.add_child(brand)
 	K.label(brand, "ParçaNet  ·  Toptan Bilgisayar Parçası", 20, T.INFO, "SignLabel")
 	K.label(brand, "Fiyatlar her sabah piyasaya göre değişir. Aynı üründen %d+ adete %%%d indirim." % [Game.BULK_QTY, int(Game.BULK_DISCOUNT * 100)], 15, T.MUTED, "MutedLabel")
+	# kalite seçimi: orijinal / muadil
+	var qv := VBoxContainer.new()
+	qv.add_theme_constant_override("separation", 2)
+	top.add_child(qv)
+	K.label(qv, "KALİTE", 12, T.MUTED, "SmallCaps")
+	var qh := HBoxContainer.new()
+	qh.add_theme_constant_override("separation", 6)
+	qv.add_child(qh)
+	var qg := ButtonGroup.new()
+	for i in 2:
+		var qb := K.button(qh, "Orijinal" if i == 0 else "Muadil -%%%d" % roundi((1.0 - Game.CHEAP_FACTOR) * 100.0), func():
+			_cheap = i == 1
+			refresh(), "SegButton", 16, Vector2(0, 38))
+		qb.toggle_mode = true
+		qb.button_group = qg
+		_qual_btns.append(qb)
+	_qual_note = K.label(qv, "", 13, T.MUTED, "MutedLabel")
 	var mk := K.lcd(top, "", 26, Vector2(12, 0))
 	mk[0].size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	_market = mk[1]
 	# başlık satırı
 	var hdr := _grid_row(p)
-	for t in [["ÜRÜN", 330], ["STOK", 80], ["BİRİM FİYAT", 150], ["ADET", 170], ["TUTAR", 110]]:
+	for t in [["ÜRÜN", 310], ["STOK", 100], ["BİRİM FİYAT", 150], ["ADET", 170], ["TUTAR", 110]]:
 		var l := K.label(hdr, t[0], 12, T.MUTED, "SmallCaps")
 		l.custom_minimum_size.x = t[1]
 	var list := VBoxContainer.new()
@@ -151,12 +174,12 @@ func _build_shop(p: Control) -> void:
 		ip.add_child(r)
 		var nm := VBoxContainer.new()
 		nm.add_theme_constant_override("separation", -3)
-		nm.custom_minimum_size.x = 330
+		nm.custom_minimum_size.x = 310
 		r.add_child(nm)
 		K.label(nm, PM.display_name(type, tier), 18, T.TEXT, "BoldLabel")
 		var retail := K.label(nm, "", 14, T.MUTED, "MutedLabel")
 		var st := K.label(r, "", 20, T.TEXT, "BoldLabel")
-		st.custom_minimum_size.x = 80
+		st.custom_minimum_size.x = 100
 		st.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		var pr := K.label(r, "", 20, T.ACCENT_HI, "BoldLabel")
 		pr.custom_minimum_size.x = 150
@@ -236,7 +259,8 @@ func _sum_row(parent: Control, text: String, big := false) -> Label:
 	return v
 
 
-func _add(k: String, d: int) -> void:
+func _add(base: String, d: int) -> void:
+	var k := base + (":c" if _cheap else "")  # muadil sepet anahtarı "tür:seviye:c"
 	_cart[k] = clampi(int(_cart.get(k, 0)) + d, 0, 20)
 	if _cart[k] == 0:
 		_cart.erase(k)
@@ -367,6 +391,52 @@ func _refresh_stats() -> void:
 		K.label(_stats_grid, r[1], 18, T.TEXT, "BoldLabel")
 
 
+# ---------------------------------------------------------------- İkinci El
+func _build_used(p: Control) -> void:
+	K.label(p, "İkinci El Pazarı  ·  Günün ilanları", 20, T.INFO, "SignLabel")
+	var n := K.label(p, "Kullanılmış parçalar çok ucuzdur ama durumu değişkendir. \"Arızalı çıkabilir\" ilanlarda parça bozuk olabilir; " +
+		"raftan alınca bozuk çıkarsa ancak testte anlarsın. Alınan parça rafa (orijinal stok) girer. İlanlar her sabah yenilenir.", 15, T.MUTED, "MutedLabel")
+	n.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	n.custom_minimum_size.x = 880
+	_used_box = VBoxContainer.new()
+	_used_box.add_theme_constant_override("separation", 4)
+	p.add_child(_used_box)
+
+
+func _refresh_used() -> void:
+	for c in _used_box.get_children():
+		c.queue_free()  # satın alma düğmesinin kendi çağrısı içinde yenilenebilir
+	for l in Game.used_listings:
+		var ip := K.panel(_used_box, "InsetPanel")
+		ip.add_theme_stylebox_override("panel", T.flat(Color(0, 0, 0, 0.25), 5, Color(1, 1, 1, 0.04), 1, Vector2(12, 5)))
+		var r := HBoxContainer.new()
+		r.add_theme_constant_override("separation", 12)
+		ip.add_child(r)
+		var nm := VBoxContainer.new()
+		nm.add_theme_constant_override("separation", -3)
+		nm.custom_minimum_size.x = 300
+		r.add_child(nm)
+		K.label(nm, PM.display_name(l.type, l.tier), 18, T.TEXT, "BoldLabel")
+		K.label(nm, "Yeni fiyatı: %d TL" % Game.price_of(l.type, l.tier), 14, T.MUTED, "MutedLabel")
+		var cond: int = l.cond
+		var cl := K.label(r, "Durum %%%d" % cond, 19, T.GOOD if cond >= 70 else (T.ACCENT if cond >= 50 else T.BAD), "BoldLabel")
+		cl.custom_minimum_size.x = 130
+		cl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		var rk := CenterContainer.new()
+		rk.custom_minimum_size.x = 210
+		r.add_child(rk)
+		if l.risky:
+			K.stamp(rk, "ARIZALI ÇIKABİLİR", T.BAD, 14, -3.0)
+		var pr := K.label(r, "%d TL" % int(l.price), 20, T.ACCENT_HI, "BoldLabel")
+		pr.custom_minimum_size.x = 90
+		pr.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		pr.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		var lid: int = l.id
+		var b := K.button(r, "SATILDI" if l.sold else "Satın Al", func(): Game.UM.buy(lid), "PrimaryButton", 17, Vector2(130, 40))
+		b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		b.disabled = l.sold or Game.money < int(l.price)
+
+
 # ---------------------------------------------------------------- yenile
 func refresh() -> void:
 	if _money == null:
@@ -379,6 +449,8 @@ func refresh() -> void:
 		_refresh_upgrades()
 	if _pages[3].visible:
 		_refresh_stats()
+	if _pages[4].visible:
+		_refresh_used()
 
 
 func _refresh_shop() -> void:
@@ -389,22 +461,36 @@ func _refresh_shop() -> void:
 	for k in _rows:
 		var r: Dictionary = _rows[k]
 		var n := Game.stock_of(r.type, r.tier)
-		r.stock.text = str(n) if n > 0 else "YOK"
-		r.stock.add_theme_color_override("font_color", T.TEXT if n > 1 else (T.ACCENT if n == 1 else T.BAD))
-		var pr := Game.price_of(r.type, r.tier)
+		var cn := Game.stock_cheap_of(r.type, r.tier)
+		r.stock.text = ((str(n) if n > 0 else "0") + (" +%dM" % cn if cn > 0 else "")) if n + cn > 0 else "YOK"
+		r.stock.add_theme_color_override("font_color", T.TEXT if n + cn > 1 else (T.ACCENT if n + cn == 1 else T.BAD))
+		var pr := Game.price_of(r.type, r.tier, _cheap)
 		r.price.text = "%d TL" % pr
+		r.price.add_theme_color_override("font_color", T.GOOD if _cheap else T.ACCENT_HI)
 		r.retail.text = "Tezgahta satış: %d TL" % Game.retail_price(r.type, r.tier)
-		var q := int(_cart.get(k, 0))
+		var q := int(_cart.get(k + (":c" if _cheap else ""), 0))
 		r.qty.text = str(q)
-		var line := pr * q
-		if q >= Game.BULK_QTY:
-			line = roundi(line * (1.0 - Game.BULK_DISCOUNT))
-		r.line.text = ("%d TL" % line) if q > 0 else "—"
-		r.line.add_theme_color_override("font_color", T.GOOD if q >= Game.BULK_QTY else T.TEXT)
+		# satır tutarı: iki kalitenin toplamı (diğer kalite sepetteyse küçük not)
+		var line := 0
+		var qo := int(_cart.get(k, 0))
+		var qc := int(_cart.get(k + ":c", 0))
+		if qo > 0:
+			line += Game.cart_subtotal({k: qo})
+		if qc > 0:
+			line += Game.cart_subtotal({k + ":c": qc})
+		r.line.text = ("%d TL" % line) if q + (qc if not _cheap else qo) > 0 else "—"
+		r.line.add_theme_color_override("font_color", T.GOOD if (qo >= Game.BULK_QTY or qc >= Game.BULK_QTY) else T.TEXT)
+		var other := qo if _cheap else qc
+		r.retail.text = "Tezgahta satış: %d TL" % Game.retail_price(r.type, r.tier) + ("   ·   sepette %d %s" % [other, "orijinal" if _cheap else "muadil"] if other > 0 else "")
 	var sub := Game.cart_subtotal(_cart)
 	var raw := 0
 	for k in _cart:
-		raw += Game.price_of(_rows[k].type, _rows[k].tier) * int(_cart[k])
+		var pk: PackedStringArray = k.split(":")
+		raw += Game.price_of(pk[0], int(pk[1]), pk.size() > 2) * int(_cart[k])
+	_qual_btns[0].set_pressed_no_signal(not _cheap)
+	_qual_btns[1].set_pressed_no_signal(_cheap)
+	_qual_note.text = "ucuz ama garanti riski var" if _cheap else "güvenilir, garanti sorunu yok"
+	_qual_note.add_theme_color_override("font_color", T.BAD if _cheap else T.MUTED)
 	_sub_l.text = "%d TL" % sub
 	_bulk_l.text = ("toplu alım indirimi: -%d TL" % (raw - sub)) if raw > sub else ""
 	var fee := Game.ship_fee(_express, sub)

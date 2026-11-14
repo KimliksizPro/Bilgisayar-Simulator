@@ -153,7 +153,7 @@ func _setup_input() -> void:
 	var keys := {
 		"move_forward": [KEY_W, KEY_UP], "move_back": [KEY_S, KEY_DOWN],
 		"move_left": [KEY_A, KEY_LEFT], "move_right": [KEY_D, KEY_RIGHT],
-		"interact": [KEY_E], "drop": [KEY_G], "sprint": [KEY_SHIFT],
+		"interact": [KEY_E], "interact_alt": [KEY_F], "drop": [KEY_G], "sprint": [KEY_SHIFT],
 	}
 	for action in keys:
 		if not InputMap.has_action(action):
@@ -621,9 +621,10 @@ func _shelf_item(x0: float, shelf_y: float, z: float, type: String, tier: int) -
 	add_child(n)
 	MU.no_merge(n)  # stok bitince gizlenebilsin
 	var dname := PM.display_name(type, tier)
-	MU.interactable(self, info.size * 1.5 + Vector3(0.04, 0.04, 0.04), Vector3(x0 + 0.06, shelf_y + info.size.y * 0.75, z),
+	var it = MU.interactable(self, info.size * 1.5 + Vector3(0.04, 0.04, 0.04), Vector3(x0 + 0.06, shelf_y + info.size.y * 0.75, z),
 		func(p): return _shelf_hint(p, type, tier, dname),
 		func(p): _shelf_use(p, type, tier))
+	it.action_alt = func(p): _buy(p, type, tier, true)  # F: muadil (ucuz) parça al
 	var l := MU.label(self, "", Vector3(x0 + 0.214, shelf_y - 0.045, z), 30, Color(0.1, 0.1, 0.1), Vector3(0, 90, 0), 0.001)
 	l.double_sided = false
 	_price_labels.append([l, dname, type, tier, n])
@@ -633,30 +634,49 @@ func _shelf_item(x0: float, shelf_y: float, z: float, type: String, tier: int) -
 
 func _shelf_hint(p, type: String, tier: int, dname: String) -> String:
 	var n := Game.stock_of(type, tier)
+	var c := Game.stock_cheap_of(type, tier)
 	if p.held:
 		if not p.held.is_tool() and p.held.part_type == type and p.held.tier == tier:
-			return "Arızalı parça rafa konmaz" if p.held.broken else "Rafa geri koy: %s  [E]" % dname
+			return "Arızalı parça rafa konmaz" if p.held.broken else "Rafa geri koy: %s  [E]" % p.held.display_name
 		return "Elin dolu"
-	if n <= 0:
+	if n <= 0 and c <= 0:
 		return "%s TÜKENDİ — laptoptan (ParçaNet) sipariş ver" % dname
-	return "Al: %s  (stok %d)  [E]" % [dname, n]
+	# E: orijinal, F: muadil
+	if c <= 0:
+		return "Al: %s  (stok %d)  [E]" % [dname, n]
+	return "Al: %s  (orijinal %d [E] / muadil %d [F])" % [dname, n, c]
 
 
 func _shelf_use(p, type: String, tier: int) -> void:
 	if p.held:
 		if not p.held.is_tool() and p.held.part_type == type and p.held.tier == tier and not p.held.broken:
 			var part = p.release_held()
+			var was_cheap: bool = part.cheap
 			part.queue_free()
-			Game.add_stock(type, tier, 1)
+			if was_cheap:
+				Game.add_stock_cheap(type, tier, 1)
+			else:
+				Game.add_stock(type, tier, 1)
 			Game.sfx.click()
-			Game.msg("%s rafa kondu (stok %d)." % [PM.display_name(type, tier), Game.stock_of(type, tier)])
+			Game.msg("%s rafa kondu (stok %d)." % [PM.display_name(type, tier) + (" (muadil)" if was_cheap else ""), Game.stock_cheap_of(type, tier) if was_cheap else Game.stock_of(type, tier)])
 		return
 	_buy(p, type, tier)
 
 
 ## Raftan parça al: stoktan düşer (parası ParçaNet siparişinde ödendi).
-func _buy(p, type: String, tier: int) -> void:
+func _buy(p, type: String, tier: int, cheap := false) -> void:
 	if p.held:
+		return
+	if cheap:
+		if not Game.take_stock_cheap(type, tier):
+			Game.msg("Muadil %s stokta yok!" % PM.display_name(type, tier), Color(1, 0.5, 0.4))
+			Game.sfx.error()
+			return
+		var cp = PART.new().setup(type, tier, false)
+		cp.make_cheap()
+		add_child(cp)
+		p.pick_up(cp)
+		Game.sfx.click()
 		return
 	if not Game.take_stock(type, tier):
 		Game.msg("%s stokta yok! Tezgahtaki laptoptan ParçaNet'e sipariş ver." % PM.display_name(type, tier), Color(1, 0.5, 0.4))
@@ -664,7 +684,7 @@ func _buy(p, type: String, tier: int) -> void:
 		if Game.hud:
 			Game.hud.tip("order", "Parça bitince tezgahtaki laptopu aç: ParçaNet'ten sipariş ver, kurye getirsin.")
 		return
-	var part = PART.new().setup(type, tier, false)
+	var part = PART.new().setup(type, tier, Game.take_was_dud)  # ikinci elden gizli arızalı çıkabilir
 	add_child(part)
 	p.pick_up(part)
 	Game.sfx.click()
@@ -737,8 +757,9 @@ func _refresh_upgrades() -> void:
 ## Raf etiketleri stok adedini gösterir; tükenen ürünün modeli raftan kalkar.
 func _refresh_stock() -> void:
 	for e in _price_labels:
-		var n := Game.stock_of(e[2], e[3])
-		e[0].text = "%s\n%s" % [e[1], ("STOK: %d" % n) if n > 0 else "TÜKENDİ"]
+		var c := Game.stock_cheap_of(e[2], e[3])
+		var n := Game.stock_of(e[2], e[3]) + c
+		e[0].text = "%s\n%s" % [e[1], (("STOK: %d" % (n - c) + (" +%d M" % c if c > 0 else "")) if n > 0 else "TÜKENDİ")]
 		e[0].modulate = Color(0.1, 0.1, 0.1) if n > 0 else Color(0.75, 0.1, 0.08)
 		e[4].visible = n > 0
 

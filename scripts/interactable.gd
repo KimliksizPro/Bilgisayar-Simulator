@@ -3,6 +3,7 @@ extends StaticBody3D
 
 var hint_fn: Callable
 var action: Callable
+var action_alt: Callable   # ikinci etkileşim tuşu (F)
 
 
 func get_hint(player) -> String:
@@ -12,3 +13,8 @@ func get_hint(player) -> String:
 func interact(player) -> void:
 	if action.is_valid():
 		action.call(player)
+
+
+func interact_alt(player) -> void:
+	if action_alt.is_valid():
+		action_alt.call(player)
