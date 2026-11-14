@@ -20,7 +20,8 @@ yüzeylerde gerçek PBR dokular ve gökyüzü için gerçek bir şehir HDRI'si k
 | Shift | Koş |
 | E / Sol tık | Etkileşim (al, tak, sök, konuş, satın al) |
 | G / Sağ tık | Elindekini bırak |
-| Esc | Duraklat |
+| Esc | Duraklat (yönetim panelini kapatır) |
+| Fare | Menü, yönetim paneli ve gün sonu ekranındaki düğmeler |
 | F2 | Grafik kalitesi (Yüksek/Düşük) — oyun kasarsa Düşük yap |
 | F3 | FPS ve draw call sayacı |
 
@@ -34,6 +35,23 @@ yüzeylerde gerçek PBR dokular ve gökyüzü için gerçek bir şehir HDRI'si k
 - Kapağı kapat, müşteriyle konuş ve paranı al.
 - Eski parçaları **hurda kutusuna** at (sağlam parçalar hurdacıya satılır).
 
+## Gün döngüsü, itibar ve dükkân
+
+- **Gün:** dükkân 09:00–19:00 açıktır (bir gün yaklaşık 6 gerçek dakika; `Game.DAY_REAL_SECONDS`).
+  Saat sol üstte "Gün 3 · 14:25" olarak görünür. Kapanışta içerideki müşteri işini bitirebilir, sonra
+  **gün sonu özeti** açılır (gelir, parça giderleri, kira, net, itibar). **Sonraki gün** ile devam edilir.
+- **Kira:** her gün sonunda düşer (150 TL, 3 günde bir 25 TL artar). Kasa üst üste 2 gün eksi biterse
+  **iflas** edersin ve yeni oyun başlar.
+- **İtibar (0–5 yıldız):** başarılı teslim artırır (hızlıysa daha çok), hatalı teslim denemeleri ve
+  kızıp giden müşteriler düşürür. İtibar iş ücretini (±%20) ve müşteri gelme sıklığını etkiler.
+- **Sabır:** müşteriyle ~60 sn konuşmazsan ya da iş ~4 oyun saatinden uzun sürerse kızıp gider
+  (bilgisayarını da götürür). İş panelindeki çubuk kalan sabrı gösterir.
+- **Yönetim Paneli:** tezgahtaki laptopla aç (E). Geliştirmeler: Reklam Tabelası (müşteri daha sık gelir),
+  Toptan Anlaşma (raf fiyatları %15 indirim), Kahve Makinesi (sabır +%50), Usta Sertifikası (ücret +%15).
+  Satın alınanlar dükkânda görünür.
+- **Kayıt:** gün sonunda ve oyundan çıkarken otomatik kaydedilir (`user://save.json`). Başlangıç
+  ekranında **Devam Et** ile kayıtlı günün 09:00'ından devam edersin, **Yeni Oyun** sıfırlar.
+
 İş tipleri: arıza tamiri, ekran kartı yükseltme, RAM yükseltme, sıfırdan bilgisayar toplama.
 
 ## Proje yapısı
@@ -41,7 +59,7 @@ yüzeylerde gerçek PBR dokular ve gökyüzü için gerçek bir şehir HDRI'si k
 ```
 scenes/main.tscn        Ana sahne (sadece main.gd'yi yükler)
 scripts/main.gd         Dükkânı, ışıkları, rafı, tezgahı kurar
-scripts/game.gd         Global durum (para, HUD, ses) — autoload
+scripts/game.gd         Global durum: para, gün/saat, itibar, geliştirmeler, kayıt — autoload
 scripts/player.gd       Birinci şahıs oyuncu, etkileşim, taşıma
 scripts/pc_case.gd      Kasa, anakart, yuvalar, teşhis, güç
 scripts/part.gd         Alınıp takılabilen parça
@@ -57,7 +75,8 @@ assets/                 Dokular ve HDRI (Poly Haven, CC0)
 dev/                    Geliştirici araçları (ekran görüntüsü, otomatik test)
 ```
 
-Otomatik test: `godot --headless -- --looptest`  
+Otomatik test (tamir döngüsü + gün/itibar/kayıt/iflas): `godot --headless -- --looptest`
+Arayüz görüntüleri: `godot -- --uishot`  
 Performans ölçümü: `godot -- --perf`  ·  Parça vitrini görseli: `godot -- --partshot`
 
 ## Grafik

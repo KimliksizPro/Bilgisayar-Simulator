@@ -71,8 +71,9 @@ func build(hint_fn: Callable, action: Callable) -> void:
 	add_child(speech)
 
 
-func say(text: String) -> void:
+func say(text: String, angry := false) -> void:
 	speech.text = text
+	speech.modulate = Color(1.5, 0.7, 0.6) if angry else Color(1.4, 1.4, 1.3)
 
 
 func walk(points: Array, cb := Callable()) -> void:
