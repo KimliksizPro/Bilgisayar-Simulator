@@ -42,7 +42,25 @@ func _ready() -> void:
 	await _shot(p, Vector3(-0.2, 0, 0.5), 180, -10, "ui_upgrades")
 	o._show_page(3)
 	await _shot(p, Vector3(-0.2, 0, 0.5), 180, -10, "ui_stats")
+	# PERSONEL: bir tezgahtar + bir teknisyen işe al, sekmeyi ve dükkândaki hâllerini çek
+	Game.roll_staff_candidates()
+	Game.hire_staff(int(Game.staff_candidates[0].id))
+	Game.hire_staff(int(Game.staff_candidates[0].id))
+	o._show_page(4)
+	await _shot(p, Vector3(-0.2, 0, 0.5), 180, -10, "staff_tab")
 	Game.hud.close_upgrades()
+	var sm = Game.staff_mgr
+	for e in sm.npcs.values():
+		e.position = e.home
+		e.waypoints = []
+		sm._go_idle(e)
+		e.rotation.y = e.home_face
+	sm.npcs.values()[0].say_for("Hoş geldiniz! Bilgisayarı hemen ustamın masasına alıyorum.", 10.0)
+	sm.npcs.values()[1].say_for("Tamir ediliyor... %45", 10.0)
+	await _shot(p, Vector3(-1.9, 0, 2.6), -12, -12, "staff_shop", 1.0)
+	await _shot(p, Vector3(0.6, 0, 0.2), 50, -14, "staff_back", 0.6)
+	Game.fire_staff(int(Game.staff[0].id))
+	Game.fire_staff(int(Game.staff[0].id))
 	# kurye koliyi bırakır
 	Game.clock += 0.6
 	get_parent().delivery._send_courier()

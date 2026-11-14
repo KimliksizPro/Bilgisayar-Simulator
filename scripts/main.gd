@@ -57,6 +57,7 @@ func _ready() -> void:
 	delivery = DELIVERY.new()
 	delivery.world = self
 	add_child(delivery)
+	add_child(preload("res://scripts/staff.gd").new().setup(self, jobs, delivery))  # PERSONEL: çalışanlar
 	Settings.changed.connect(func(k): if k == "quality": _apply_quality())
 	if not Game.dev_mode:
 		_start_menu()

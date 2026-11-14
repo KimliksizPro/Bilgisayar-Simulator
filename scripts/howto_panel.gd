@@ -31,6 +31,7 @@ func _ready() -> void:
 	_controls(c)
 	_loop(c)
 	_supply(c)
+	_staff(c)  # PERSONEL
 	_guide(c)
 	_economy(c)
 	K.hsep(vb)
@@ -167,3 +168,12 @@ func _supply(parent: Control) -> void:
 	_step(v, 3, "Kurye ve koli", "Varış saatinde kurye gelir, koliyi kapının yanına bırakır. Koliye bakıp E'ye bas: parçalar stoğa girer. Kargo Takip sekmesinden izleyebilirsin.")
 	_step(v, 4, "Piyasa", "Fiyatlar her sabah kura göre değişir. Ucuzken stok yap. Sağlam parçayı rafa geri koyabilirsin (elinde tutarken rafa E).")
 	_step(v, 5, "Tezgah satışı", "Bazı müşteriler sadece parça almaya gelir. İstediği parçayı raftan al, elinde tutarken ona E'ye bas; kârlı fiyattan satılır.")
+
+
+## PERSONEL: çalışan alma
+func _staff(parent: Control) -> void:
+	var v := _section(parent, "Personel (Çalışan Alma)")
+	_para(v, "Laptop → Personel sekmesinden her sabah gelen adaylardan en fazla 2 kişiyi işe alabilirsin. Her adayın becerisi (1-5 yıldız), huyu ve günlük maaşı var; maaşlar gün sonunda kasadan düşer.")
+	_step(v, 1, "Tezgahtar", "Bekleyen müşteriyi karşılar ve işi kabul eder; parça isteyene raftan getirip satar; boşta kalınca kapıdaki ParçaNet kolilerini açar.")
+	_step(v, 2, "Teknisyen", "Masadaki işi stoktaki parçalarla kendisi tamir eder ve müşteriye teslim eder; para yine sana gelir. Ona bakıp E'ye bas ya da Personel sekmesinden \"İşi Ver\". Parça stokta yoksa haber verir.")
+	_para(v, "Beceri ne kadar yüksekse o kadar hızlı ve hatasız çalışır. Hata yaparsa bir parça yanar ve itibar düşer.", T.MUTED)
