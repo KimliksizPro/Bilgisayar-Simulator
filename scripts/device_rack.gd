@@ -12,12 +12,6 @@ const LEVELS := [1.02, 1.32, 1.62]
 const K := 1.25                             # raftaki model büyütmesi (küçük parçalar daha büyük)
 const K_SMALL := 1.7
 
-## [raf, x, tür, eğim(derece, X ekseni)]
-const ITEMS := [
-	[0, -0.38, "lap_bat", 0.0], [0, 0.02, "tel_bat", 0.0], [0, 0.34, "tel_port", 0.0],
-	[1, -0.36, "lap_ram", 0.0], [1, 0.0, "lap_ssd", 0.0], [1, 0.36, "tel_scr", 62.0],
-	[2, -0.2, "lap_scr", 62.0],
-]
 
 
 static func build(main: Node3D) -> void:
@@ -53,16 +47,32 @@ static func build(main: Node3D) -> void:
 	MU.rbox(root, Vector3(0.62, 0.1, 0.012), Vector3(0, top + 0.08, 0.02), MU.mat(Color(0.12, 0.3, 0.55), 0, 0.5), 0.006)
 	var title := MU.label(root, "LAPTOP & TELEFON", Vector3(0, top + 0.08, 0.027), 56, Color(1, 1, 1), Vector3.ZERO, 0.0012)
 	title.double_sided = false
-	for it in ITEMS:
-		_item(main, root, LEVELS[it[0]], it[1], it[2], it[3])
+	# raftaki ürünler data/parts.json'dan; yerleşim otomatik (satır 0 = en üst raf, ortalanır)
+	var entries := []
+	for d in DB.parts.shelf_items(["laptop", "phone"]):
+		var info: Dictionary = PM.info(d.category)
+		var k := _scale_for(info, info.shelf_tilt)
+		entries.append({"def": d, "w": maxf(info.size.x * k, 0.3) + 0.04})
+	var rows: Array = DB.parts.flow_rows(entries, WIDTH - 0.1, LEVELS.size())
+	for r in rows.size():
+		for e in rows[r].items:
+			var x: float = e.c - rows[r].width / 2.0
+			var shelf_y: float = LEVELS[LEVELS.size() - 1 - r]
+			_item(main, root, shelf_y, x, e.def.category, PM.info(e.def.category).shelf_tilt)
+			Game.shelf_pos[e.def.id] = root.to_global(Vector3(x, shelf_y, DEPTH * 0.45))
+
+
+## Model büyütmesi: küçük ve eğimsiz parçalar daha büyük durur.
+static func _scale_for(info: Dictionary, tilt: float) -> float:
+	return K_SMALL if info.size.x < 0.1 and tilt == 0.0 else K
 
 
 static func _item(main: Node3D, root: Node3D, shelf_y: float, x: float, type: String, tilt: float) -> void:
-	var info: Dictionary = PM.INFO[type]
+	var info: Dictionary = PM.info(type)
 	var built := PM.build(type, 1)
 	var n: Node3D = built.node
 	var sz: Vector3 = info.size
-	var k := K_SMALL if sz.x < 0.1 and tilt == 0.0 else K
+	var k := _scale_for(info, tilt)
 	n.scale = Vector3.ONE * k
 	n.rotation_degrees.x = tilt
 	# eğik duranlar (ekranlar) arka panoya yaslanır

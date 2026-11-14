@@ -28,6 +28,7 @@ const DEV_ARGS := [
 	"--holdtest",
 	"--holdshot",
 	"--savetest",
+	"--datatest",
 ]
 
 # --- Ayarlanabilir sabitler ---
@@ -76,15 +77,14 @@ var jobs_today := 0
 var rep_day_start := START_REP
 
 # --- stok ve sipariş (ParçaNet) ---
-## Satılan ürünler: [tür, seviye]. Stok anahtarı "tür:seviye".
-const CATALOG := [["cpu", 1], ["ram", 1], ["ram", 2], ["gpu", 1], ["gpu", 2], ["psu", 1], ["ssd", 1],
-	# --- laptop / telefon parçaları ---
-	["lap_ram", 1], ["lap_ssd", 1], ["lap_bat", 1], ["lap_scr", 1], ["tel_bat", 1], ["tel_scr", 1], ["tel_port", 1],
-]
-const START_STOCK := {"cpu:1": 1, "ram:1": 2, "gpu:1": 1, "psu:1": 1, "ssd:1": 1,
-	# --- laptop / telefon parçaları ---
-	"lap_ram:1": 1, "lap_ssd:1": 1, "lap_bat:1": 1, "lap_scr:1": 1, "tel_bat:1": 1, "tel_scr:1": 1, "tel_port:1": 1,
-}
+## Satılan ürünler: [tür, seviye]. Stok anahtarı "tür:seviye" (= parçanın SKU'su).
+## Veri data/parts.json'dan gelir (DB.parts); eski adlar uyumluluk için korunur.
+var CATALOG: Array:
+	get: return DB.parts.catalog_pairs()
+var START_STOCK: Dictionary:
+	get: return DB.parts.start_stock()
+## Raftaki ürünlerin dünya konumu: {sku: Vector3}. Raf kurulurken main.gd doldurur; personel buradan okur.
+var shelf_pos := {}
 const SHIP_STD_HOURS := 2.0
 const SHIP_EXP_HOURS := 0.5
 const SHIP_STD_FEE := 15

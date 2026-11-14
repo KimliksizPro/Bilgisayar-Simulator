@@ -40,7 +40,7 @@ static func make_job(w: Dictionary, base: Array) -> Dictionary:
 		parts.append([b[0], b[1], b[2], b[1] == broken])
 	return {"name": w.name, "kind": "warranty", "warranty": true, "broken": broken, "pay": 0, "parts": parts,
 		"intro": DB.jobs.text("warranty_pc_intro")[0],
-		"goal": DB.jobs.text("warranty_pc_goal")[0] % PM.TYPE_NAMES[broken]}
+		"goal": DB.jobs.text("warranty_pc_goal")[0] % PM.type_name(broken)}
 
 
 ## Laptop/telefon garanti dönüşü: aynı cihaz, muadil takılan parçanın yuvası arızalı.

@@ -24,7 +24,7 @@ func get_hint(player) -> String:
 		return part.display_name
 	if player.held and player.held.part_type == accepts:
 		return "Tak: %s  [E]" % player.held.display_name
-	return "Boş yuva: %s" % PM.TYPE_NAMES[accepts]
+	return "Boş yuva: %s" % PM.type_name(accepts)
 
 
 func interact(player) -> void:

@@ -82,6 +82,8 @@ func _ready() -> void:
 		add_child(load("res://dev/job_dist_test.gd").new())
 	if "--jobdatatest" in OS.get_cmdline_user_args() and ResourceLoader.exists("res://dev/job_data_test.gd"):
 		add_child(load("res://dev/job_data_test.gd").new())
+	if "--datatest" in OS.get_cmdline_user_args() and ResourceLoader.exists("res://dev/data_test.gd"):
+		add_child(load("res://dev/data_test.gd").new())
 	if "--holdtest" in OS.get_cmdline_user_args() and ResourceLoader.exists("res://dev/hold_test.gd"):
 		add_child(load("res://dev/hold_test.gd").new())
 	if "--holdshot" in OS.get_cmdline_user_args() and ResourceLoader.exists("res://dev/hold_shot.gd"):
@@ -607,13 +609,19 @@ func _build_shelf() -> void:
 		add_child(sl)
 	var title := MU.label(self, "STOK RAFI", Vector3(x0 + 0.05, 2.48, zc), 90, Color(0.15, 0.2, 0.3), Vector3(0, 90, 0), 0.0025)
 	title.double_sided = false
-	var items := [
-		[1.45, -1.6, "gpu", 1], [1.45, -0.9, "gpu", 2],
-		[0.95, -1.7, "ram", 1], [0.95, -1.35, "ram", 2], [0.95, -0.85, "cpu", 1],
-		[0.45, -1.6, "psu", 1], [0.45, -1.05, "ssd", 1],
-	]
-	for it in items:
-		_shelf_item(x0, it[0] + 0.015, it[1] + 0.7 + zc, it[2], it[3])
+	# raftaki ürünler data/parts.json'dan; yerleşim otomatik (satırlar üstten alta, her türün tercih ettiği sıra var)
+	var rows_y := [1.45, 0.95, 0.45]
+	var entries := []
+	for d in DB.parts.shelf_items(["pc"]):
+		var sz: Vector3 = PM.info(d.category).size
+		entries.append({"def": d, "w": maxf(sz.z * 1.5 + 0.1, 0.4)})
+	var rows: Array = DB.parts.flow_rows(entries, length - 0.3, rows_y.size())
+	Game.shelf_pos = {}
+	for r in rows.size():
+		for e in rows[r].items:
+			var z: float = zc - length / 2 + 0.15 + e.c
+			_shelf_item(x0, rows_y[r] + 0.015, z, e.def.category, e.def.tier)
+			Game.shelf_pos[e.def.id] = Vector3(x0 + 0.06, rows_y[r] + 0.015, z)
 	# en üst rafta süs kutuları
 	var box_cols := [Color(0.15, 0.3, 0.7), Color(0.75, 0.2, 0.2), Color(0.1, 0.1, 0.12), Color(0.9, 0.6, 0.1)]
 	for i in 6:
@@ -623,7 +631,7 @@ func _build_shelf() -> void:
 
 
 func _shelf_item(x0: float, shelf_y: float, z: float, type: String, tier: int) -> void:
-	var info: Dictionary = PM.INFO[type]
+	var info: Dictionary = PM.info(type)
 	var built := PM.build(type, tier)
 	var n: Node3D = built.node
 	var c: Vector3 = info.center
