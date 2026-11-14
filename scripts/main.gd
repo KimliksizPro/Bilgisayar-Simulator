@@ -27,6 +27,7 @@ func _ready() -> void:
 	_build_decor()
 	MU.no_merge(monitor)
 	MU.merge_static(self)
+	_build_upgrades()  # birleştirmeden sonra: açılıp kapanan nesneler
 	hud = HUD.new()
 	add_child(hud)
 	var player = PLAYER.new()
@@ -42,6 +43,8 @@ func _ready() -> void:
 	jobs.start()
 	if "--shot" in OS.get_cmdline_user_args() and ResourceLoader.exists("res://dev/screenshot.gd"):
 		add_child(load("res://dev/screenshot.gd").new())
+	if "--uishot" in OS.get_cmdline_user_args() and ResourceLoader.exists("res://dev/ui_shot.gd"):
+		add_child(load("res://dev/ui_shot.gd").new())
 	if "--perf" in OS.get_cmdline_user_args() and ResourceLoader.exists("res://dev/perf.gd"):
 		add_child(load("res://dev/perf.gd").new())
 	if "--partshot" in OS.get_cmdline_user_args() and ResourceLoader.exists("res://dev/parts_shot.gd"):
@@ -384,13 +387,13 @@ func _shelf_item(x0: float, shelf_y: float, z: float, type: String, tier: int) -
 	n.scale = Vector3.ONE * k
 	n.position = Vector3(x0 + 0.06 - c.x * k, shelf_y + (info.size.y / 2 - c.y) * k, z - c.z * k)
 	add_child(n)
-	var price := PM.price(type, tier)
 	var dname := PM.display_name(type, tier)
 	MU.interactable(self, info.size * 1.5 + Vector3(0.04, 0.04, 0.04), Vector3(x0 + 0.06, shelf_y + info.size.y * 0.75, z),
-		func(p): return "Satın al: %s — %d TL  [E]" % [dname, price] if p.held == null else "Elin dolu",
+		func(p): return "Satın al: %s — %d TL  [E]" % [dname, Game.price_of(type, tier)] if p.held == null else "Elin dolu",
 		func(p): _buy(p, type, tier))
-	var l := MU.label(self, "%s\n%d TL" % [dname, price], Vector3(x0 + 0.214, shelf_y - 0.045, z), 30, Color(0.1, 0.1, 0.1), Vector3(0, 90, 0), 0.001)
+	var l := MU.label(self, "%s\n%d TL" % [dname, Game.price_of(type, tier)], Vector3(x0 + 0.214, shelf_y - 0.045, z), 30, Color(0.1, 0.1, 0.1), Vector3(0, 90, 0), 0.001)
 	l.double_sided = false
+	_price_labels.append([l, dname, type, tier])
 	var tag := MU.box(self, Vector3(0.002, 0.06, 0.24), Vector3(x0 + 0.212, shelf_y - 0.045, z), MU.mat(Color(1.0, 0.92, 0.4)))
 	tag.name = "PriceTag"
 
@@ -398,7 +401,7 @@ func _shelf_item(x0: float, shelf_y: float, z: float, type: String, tier: int) -
 func _buy(p, type: String, tier: int) -> void:
 	if p.held:
 		return
-	var price := PM.price(type, tier)
+	var price := Game.price_of(type, tier)
 	if not Game.spend(price):
 		Game.msg("Paran yetmiyor! (%d TL lazım)" % price, Color(1, 0.5, 0.4))
 		Game.sfx.error()
@@ -408,6 +411,70 @@ func _buy(p, type: String, tier: int) -> void:
 	p.pick_up(part)
 	Game.sfx.coin()
 	Game.msg("%s satın alındı: -%d TL" % [PM.display_name(type, tier), price])
+
+
+var _price_labels := []   # raf etiketleri: [Label3D, ad, tür, seviye]
+var _up_nodes := {}       # geliştirme id -> görünürlüğü açılacak düğümler
+
+
+## Yönetim laptopu + satın alınan geliştirmelerin fiziksel görünümleri.
+func _build_upgrades() -> void:
+	var dark := MU.mat(Color(0.12, 0.12, 0.14), 0.5, 0.4)
+	# laptop (tezgah üstü, oyuncuya bakar)
+	var lap := Node3D.new()
+	lap.position = Vector3(0.3, 1.025, 1.22)
+	add_child(lap)
+	MU.rbox(lap, Vector3(0.36, 0.02, 0.26), Vector3(0, 0.01, 0), MU.mat(Color(0.7, 0.72, 0.76), 0.8, 0.35), 0.008)
+	MU.rbox(lap, Vector3(0.3, 0.004, 0.14), Vector3(0, 0.021, -0.03), dark, 0.002)
+	var scr := MU.rbox(lap, Vector3(0.36, 0.24, 0.012), Vector3(0, 0.14, 0.12), MU.mat(Color(0.7, 0.72, 0.76), 0.8, 0.35), 0.008, Vector3(-18, 0, 0))
+	MU.rbox(scr, Vector3(0.33, 0.21, 0.004), Vector3(0, 0, -0.005), MU.mat(Color(0.1, 0.35, 0.55), 0, 0.2, 1.3), 0.004)
+	var t := MU.label(scr, "YÖNETİM\nPANELİ", Vector3(0, 0, -0.009), 36, Color(1, 1, 1), Vector3(0, 180, 0), 0.0017)
+	t.shaded = false
+	t.double_sided = false
+	MU.interactable(lap, Vector3(0.4, 0.3, 0.3), Vector3(0, 0.15, 0.05),
+		func(_p): return "Yönetim Paneli (geliştirmeler)  [E]",
+		func(_p): Game.hud.open_upgrades())
+	# reklam tabelası: ön duvarda, içeri bakan ışıklı tabela
+	var sign_n := Node3D.new()
+	sign_n.position = Vector3(-2.4, 2.72, 2.98)
+	add_child(sign_n)
+	MU.rbox(sign_n, Vector3(1.5, 0.42, 0.05), Vector3.ZERO, MU.mat(Color(0.1, 0.12, 0.2), 0.3, 0.4), 0.02)
+	var st := MU.label(sign_n, "EN UCUZ TAMİR!\n%100 GARANTİ", Vector3(0, 0, -0.03), 60, Color(1.0, 0.9, 0.3), Vector3(0, 180, 0), 0.0016)
+	st.shaded = false
+	st.double_sided = false
+	_up_nodes["sign"] = [sign_n]
+	# kahve makinesi (tezgah ucu)
+	var cm := Node3D.new()
+	cm.position = Vector3(-2.55, 1.025, 1.3)
+	add_child(cm)
+	MU.rbox(cm, Vector3(0.2, 0.05, 0.24), Vector3(0, 0.025, 0), dark, 0.01)
+	MU.rbox(cm, Vector3(0.2, 0.34, 0.2), Vector3(0, 0.22, 0.02), MU.mat(Color(0.75, 0.15, 0.12), 0.3, 0.4), 0.025)
+	MU.rbox(cm, Vector3(0.14, 0.05, 0.06), Vector3(0, 0.3, -0.1), dark, 0.01)
+	MU.cyl(cm, 0.035, 0.07, Vector3(0, 0.08, -0.07), MU.mat(Color(0.95, 0.95, 0.95), 0, 0.3), Vector3.ZERO, 12)
+	MU.sphere(cm, 0.012, Vector3(0.07, 0.34, -0.1), MU.mat(Color(0.3, 1.0, 0.4), 0, 0.3, 3.0))
+	_up_nodes["coffee"] = [cm]
+	# sertifika: sağ duvarda çerçeveli
+	var cert := Node3D.new()
+	cert.position = Vector3(3.97, 1.7, 0.45)
+	add_child(cert)
+	MU.rbox(cert, Vector3(0.03, 0.5, 0.7), Vector3.ZERO, MU.mat(Color(0.55, 0.38, 0.15), 0.4, 0.4), 0.01)
+	MU.rbox(cert, Vector3(0.012, 0.42, 0.62), Vector3(-0.01, 0, 0), MU.mat(Color(0.97, 0.94, 0.82), 0, 0.8), 0.004)
+	var cl := MU.label(cert, "USTA\nSERTİFİKASI", Vector3(-0.018, 0.03, 0), 40, Color(0.35, 0.2, 0.05), Vector3(0, -90, 0), 0.0012)
+	cl.double_sided = false
+	var seal := MU.cyl(cert, 0.05, 0.01, Vector3(-0.018, -0.14, 0.2), MU.mat(Color(0.8, 0.12, 0.12), 0.3, 0.4), Vector3(0, 0, 90), 16)
+	seal.name = "Seal"
+	_up_nodes["cert"] = [cert]
+	Game.upgrade_bought.connect(func(_id): _refresh_upgrades())
+	_refresh_upgrades()
+
+
+## Satın alınanları göster, raf fiyat etiketlerini güncelle.
+func _refresh_upgrades() -> void:
+	for id in _up_nodes:
+		for n in _up_nodes[id]:
+			n.visible = Game.has_upgrade(id)
+	for e in _price_labels:
+		e[0].text = "%s\n%d TL" % [e[1], Game.price_of(e[2], e[3])]
 
 
 func _build_counter() -> void:

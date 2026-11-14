@@ -37,15 +37,114 @@ var customer = null
 var pc = null
 var job := {}
 
+# Sabır / süre ayarları
+const WAIT_PATIENCE := 60.0   # konuşulmayı bekleme sınırı (gerçek sn)
+const JOB_HOURS := 4.0        # iş süresi sınırı (oyun saati)
+const BUILD_HOURS := 7.0      # sıfırdan toplama için sınır
+
+var _gen := 0                 # gün/oturum sayacı: eski bekleyen çağrıları iptal eder
+var wait_t := 0.0
+var work_hours := 0.0
+var fail_count := 0
+var _warned := false
+
 
 func start() -> void:
-	_next_customer(1.5)
+	state = "none"
+	hud.set_job("Hoş geldin!", "Yeni oyun başlat ya da kaydı yükle.")
+	Game.day_started.connect(begin_day)
+	Game.day_ended.connect(func(_s): _gen += 1)
+
+
+## Yeni gün: ortada kalan müşteri/bilgisayarı temizle, ilk müşteriyi çağır.
+func begin_day() -> void:
+	_gen += 1
+	if is_instance_valid(customer):
+		customer.queue_free()
+	if is_instance_valid(pc):
+		pc.power_off()
+		pc.queue_free()
+	customer = null
+	pc = null
+	_next_customer(2.0)
+
+
+func _arrival_delay() -> float:
+	return randf_range(5.0, 9.0) * Game.arrival_mult()
+
+
+func _process(delta: float) -> void:
+	if Game.phase != "day":
+		return
+	if Game.running:
+		if state == "waiting":
+			wait_t += delta
+			var lim := WAIT_PATIENCE * Game.patience_mult()
+			hud.set_patience(1.0 - wait_t / lim)
+			if wait_t >= lim:
+				_leave_angry("Çok bekledim usta, ben gidiyorum!", 0.4)
+		elif state == "working":
+			work_hours += delta * Game.HOURS_PER_SEC
+			var lim := _job_limit()
+			hud.set_patience(1.0 - work_hours / lim)
+			if not _warned and work_hours > lim * 0.75:
+				_warned = true
+				customer.say("Usta biraz acele et, işim var!", true)
+			if work_hours >= lim:
+				_leave_angry("Bu kadar uzar mı be usta! Bilgisayarımı alıyorum, gidiyorum!", 0.5)
+	# kapanış saati geldi ve müşteri kalmadı -> gün sonu
+	if Game.is_closed() and (state == "none" or state == "closed"):
+		Game.end_day()
+
+
+func _job_limit() -> float:
+	var base := float(job.get("hours", BUILD_HOURS if job.get("kind", "") == "build" else JOB_HOURS))
+	return base * Game.patience_mult()
+
+
+## Müşteri sabrı bitti: bilgisayarı alıp kızgın gider, itibar düşer.
+func _leave_angry(line: String, rep_loss: float) -> void:
+	state = "leaving"
+	var c = customer
+	c.say(line, true)
+	Game.change_rep(-rep_loss)
+	Game.sfx.error()
+	Game.msg("%s kızıp gitti! İtibar düştü." % job.name, Color(1, 0.5, 0.4))
+	hud.set_job("Müşteri gitti", "")
+	hud.set_patience(-1.0)
+	if is_instance_valid(pc):
+		_dispose_pc(pc, 0.3)
+		pc = null
+	var g := _gen
+	await get_tree().create_timer(1.5).timeout
+	if is_instance_valid(c):
+		c.say("")
+		c.walk([INSIDE, DOOR, SPAWN], func(): c.queue_free())
+	if g == _gen:
+		_next_customer(_arrival_delay())
+
+
+func _dispose_pc(old_pc, wait: float) -> void:
+	var tw := create_tween()
+	tw.tween_interval(wait)
+	tw.tween_property(old_pc, "scale", Vector3.ONE * 0.01, 0.4)
+	tw.tween_callback(func():
+		old_pc.power_off()
+		old_pc.queue_free())
 
 
 func _next_customer(delay: float) -> void:
 	state = "none"
+	var g := _gen
 	hud.set_job("Müşteri bekleniyor...", "")
+	hud.set_patience(-1.0)
 	await get_tree().create_timer(delay).timeout
+	if g != _gen or Game.phase != "day":
+		return
+	if Game.is_closed():
+		state = "closed"
+		hud.set_job("Dükkân kapandı", "")
+		return
 	job = _make_job()
 	customer = CUSTOMER.new()
 	customer.position = SPAWN
@@ -61,6 +160,7 @@ func _on_arrived() -> void:
 	customer.face_angle = PI
 	customer.say("Merhaba usta! " + job.intro)
 	state = "waiting"
+	wait_t = 0.0
 	hud.set_job("Yeni müşteri: %s" % job.name, "Tezgahtaki müşteriyle konuş [E]")
 	Game.msg("Bir müşteri geldi!", Color(0.6, 0.9, 1.0))
 
@@ -124,6 +224,10 @@ func _customer_talk(_p) -> void:
 
 
 func _accept() -> void:
+	job.pay = Game.job_pay(int(job.pay))  # itibar ve sertifika etkisi
+	work_hours = 0.0
+	fail_count = 0
+	_warned = false
 	pc = PC.new()
 	pc.transform = pc_spot
 	world.add_child(pc)
@@ -155,27 +259,33 @@ func _problem() -> String:
 func _try_deliver() -> void:
 	var problem := _problem()
 	if problem != "":
-		customer.say(problem)
+		customer.say(problem, true)
 		Game.sfx.error()
+		fail_count += 1
+		if fail_count <= 3:
+			Game.change_rep(-0.05)
 		return
 	state = "leaving"
+	hud.set_patience(-1.0)
 	Game.add_money(job.pay)
 	Game.jobs_done += 1
-	Game.sfx.coin()
+	Game.jobs_today += 1
+	Game.stats.total_jobs = int(Game.stats.total_jobs) + 1
+	var fast := work_hours < _job_limit() * 0.4
+	Game.change_rep(0.25 if fast else 0.15)
+	Game.cash_sound()
+	hud.pop_money(int(job.pay))
 	customer.say(["Eline sağlık usta, sağ ol!", "Helal olsun, tıkır tıkır çalışıyor!",
 		"Çok teşekkürler, herkese seni önereceğim!"].pick_random())
-	Game.msg("+%d TL kazandın!" % job.pay, Color(0.5, 1, 0.5))
+	Game.msg("+%d TL kazandın!" % job.pay + ("  (hızlı servis, itibar arttı)" if fast else ""), Color(0.5, 1, 0.5))
 	hud.set_job("İş tamamlandı!", "")
 	var old_pc = pc
 	pc = null
-	var tw := create_tween()
-	tw.tween_interval(0.5)
-	tw.tween_property(old_pc, "scale", Vector3.ONE * 0.01, 0.4)
-	tw.tween_callback(func():
-		old_pc.power_off()
-		old_pc.queue_free())
-	await get_tree().create_timer(1.2).timeout
-	customer.say("")
+	_dispose_pc(old_pc, 0.5)
+	var g := _gen
 	var c = customer
+	await get_tree().create_timer(1.2).timeout
+	c.say("")
 	c.walk([INSIDE, DOOR, SPAWN], func(): c.queue_free())
-	_next_customer(4.0)
+	if g == _gen:
+		_next_customer(_arrival_delay())
