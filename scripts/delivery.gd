@@ -54,7 +54,7 @@ func _send_courier() -> void:
 	courier = CUSTOMER.new()
 	courier.position = SPAWN
 	world.add_child(courier)
-	courier.build(func(_p): return "", func(_p): pass, Color(0.95, 0.55, 0.12))
+	courier.build(func(_p): return "", func(_p): pass, "", Color(0.95, 0.55, 0.12))
 	courier.speed = 1.8
 	# elinde koli
 	var carried := MU.rbox(courier, Vector3(0.42, 0.3, 0.32), Vector3(0, 1.05, 0.26), MU.mat(Color(0.68, 0.52, 0.33), 0, 0.95), 0.012)

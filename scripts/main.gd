@@ -12,6 +12,7 @@ const JOBS := preload("res://scripts/job_manager.gd")
 const MENU := preload("res://scripts/menu.gd")
 const DELIVERY := preload("res://scripts/delivery.gd")
 const DEVICE_RACK := preload("res://scripts/device_rack.gd")  # laptop / telefon parça rafı
+const PROPS := preload("res://scripts/props.gd")
 
 const DESK_Y := 0.75
 
@@ -73,6 +74,8 @@ func _ready() -> void:
 		add_child(load("res://dev/flow_test.gd").new())
 	if "--perf" in OS.get_cmdline_user_args() and ResourceLoader.exists("res://dev/perf.gd"):
 		add_child(load("res://dev/perf.gd").new())
+	if "--propshot" in OS.get_cmdline_user_args() and ResourceLoader.exists("res://dev/props_shot.gd"):
+		add_child(load("res://dev/props_shot.gd").new())
 	if "--partshot" in OS.get_cmdline_user_args() and ResourceLoader.exists("res://dev/parts_shot.gd"):
 		add_child(load("res://dev/parts_shot.gd").new())
 	if "--looptest" in OS.get_cmdline_user_args() and ResourceLoader.exists("res://dev/loop_test.gd"):
@@ -491,23 +494,18 @@ func _build_desk() -> void:
 	monitor = MONITOR.new()
 	monitor.position = Vector3(-0.5, DESK_Y, -2.72)
 	add_child(monitor)
-	# klavye ve fare
-	var kb := MU.rbox(self, Vector3(0.44, 0.02, 0.14), Vector3(-0.5, DESK_Y + 0.01, -2.32), MU.mat(Color(0.1, 0.1, 0.11), 0.3, 0.5), 0.006)
-	var key_m := MU.mat(Color(0.2, 0.2, 0.22), 0, 0.6)
-	for r in 4:
-		for c in 14:
-			MU.rbox(kb, Vector3(0.025, 0.01, 0.025), Vector3(-0.195 + c * 0.03, 0.013, -0.045 + r * 0.03), key_m, 0.003)
-	MU.rbox(kb, Vector3(0.16, 0.01, 0.025), Vector3(0.0, 0.013, 0.075), key_m, 0.003)
-	MU.sphere(self, 0.03, Vector3(-0.15, DESK_Y + 0.01, -2.3), MU.mat(Color(0.12, 0.12, 0.13), 0.2, 0.4), Vector3(0.8, 0.45, 1.2))
+	# klavye, fare, telefon
+	PROPS.keyboard(self, Vector3(-0.5, DESK_Y, -2.31))
+	PROPS.mousepad(self, Vector3(-0.13, DESK_Y, -2.3))
+	PROPS.mouse(self, Vector3(-0.12, DESK_Y + 0.003, -2.27), -8.0)
+	PROPS.phone(self, Vector3(-0.87, DESK_Y, -2.32), 18.0, Color(0.16, 0.2, 0.32), true, "09:41")
 	# masa lambası
-	var lamp_m := MU.mat(Color(0.85, 0.25, 0.18), 0.4, 0.4)
-	MU.cyl(self, 0.07, 0.02, Vector3(1.3, DESK_Y + 0.01, -2.75), lamp_m, Vector3.ZERO, 24)
-	MU.cyl(self, 0.01, 0.42, Vector3(1.3, DESK_Y + 0.22, -2.75), leg)
-	MU.cyl(self, 0.03, 0.12, Vector3(1.22, DESK_Y + 0.42, -2.68), lamp_m, Vector3(40, 45, 0), 24, 0.08)
-	MU.sphere(self, 0.025, Vector3(1.19, DESK_Y + 0.39, -2.65), MU.mat(Color(1.0, 0.9, 0.7), 0, 0.5, 6.0))
+	var lamp_rot := Vector3(-60, -35, 0)
+	var lamp_bulb := Vector3(1.19, DESK_Y + 0.4, -2.65)
+	PROPS.desk_lamp(self, Vector3(1.3, DESK_Y, -2.78), lamp_bulb, Basis.from_euler(lamp_rot * PI / 180.0) * Vector3.FORWARD, Color(0.85, 0.25, 0.18))
 	var dl := SpotLight3D.new()
-	dl.position = Vector3(1.19, DESK_Y + 0.4, -2.65)
-	dl.rotation_degrees = Vector3(-60, -35, 0)
+	dl.position = lamp_bulb
+	dl.rotation_degrees = lamp_rot
 	dl.spot_range = 2.0
 	dl.spot_angle = 45
 	dl.light_energy = 2.0
@@ -515,11 +513,8 @@ func _build_desk() -> void:
 	dl.shadow_enabled = true
 	add_child(dl)
 	# tornavida ve kupa
-	MU.capsule(self, 0.012, 0.09, Vector3(1.0, DESK_Y + 0.012, -2.25), MU.mat(Color(0.85, 0.15, 0.12), 0, 0.35), Vector3(0, 0, 90))
-	MU.cyl(self, 0.003, 0.1, Vector3(0.905, DESK_Y + 0.012, -2.25), MU.mat(Color(0.8, 0.8, 0.82), 0.9, 0.25), Vector3(0, 0, 90), 8)
-	var mug := MU.cyl(self, 0.04, 0.1, Vector3(-1.0, DESK_Y + 0.05, -2.6), MU.mat(Color(0.95, 0.95, 0.92), 0, 0.2), Vector3.ZERO, 24)
-	MU.cyl(mug, 0.035, 0.005, Vector3(0, 0.045, 0), MU.mat(Color(0.25, 0.12, 0.05), 0, 0.1), Vector3.ZERO, 24)
-	MU.torus(mug, 0.02, 0.028, Vector3(0.045, 0, 0), MU.mat(Color(0.95, 0.95, 0.92), 0, 0.2), Vector3(90, 0, 0))
+	PROPS.screwdriver(self, Vector3(0.955, DESK_Y + 0.0125, -2.25))
+	PROPS.mug(self, Vector3(-1.0, DESK_Y, -2.6), Color(0.95, 0.95, 0.92), 200.0)
 	# arıza rehberi posteri
 	var poster := MU.rbox(self, Vector3(1.3, 0.85, 0.012), Vector3(-0.2, 1.8, -2.99), MU.mat(Color(0.97, 0.95, 0.9), 0, 0.8), 0.004)
 	MU.box(poster, Vector3(1.3, 0.12, 0.014), Vector3(0, 0.365, 0), MU.mat(Color(0.75, 0.15, 0.15), 0, 0.7))
@@ -532,9 +527,13 @@ func _build_desk() -> void:
 	for c in [Vector2(-0.6, 0.38), Vector2(0.6, 0.38), Vector2(-0.6, -0.38), Vector2(0.6, -0.38)]:
 		MU.sphere(poster, 0.008, Vector3(c.x, c.y, 0.008), MU.mat(Color(0.2, 0.4, 0.9), 0.3, 0.3))
 	# hurda kutusu
-	var bin := MU.cyl(self, 0.2, 0.5, Vector3(1.85, 0.25, -2.55), MU.mat(Color(0.2, 0.38, 0.28), 0.5, 0.45), Vector3.ZERO, 24, 0.22)
-	MU.torus(bin, 0.2, 0.23, Vector3(0, 0.25, 0), MU.mat(Color(0.12, 0.16, 0.14), 0.5, 0.4))
-	var bl := MU.label(bin, "HURDA", Vector3(0, 0.05, 0.215), 60, Color(0.95, 0.95, 0.9), Vector3.ZERO, 0.0012)
+	var bin_m := MU.mat(Color(0.2, 0.38, 0.28), 0.5, 0.45)
+	MU.lathe(self, PackedVector2Array([Vector2(0, 0), Vector2(0.195, 0), Vector2(0.2, 0.012), Vector2(0.2, 0.012), Vector2(0.221, 0.48),
+		Vector2(0.221, 0.48), Vector2(0.232, 0.486), Vector2(0.233, 0.505), Vector2(0.226, 0.51), Vector2(0.212, 0.5),
+		Vector2(0.192, 0.04), Vector2(0, 0.035)]), Vector3(1.85, 0, -2.55), bin_m, 32)
+	for k in 3:
+		MU.lathe(self, PackedVector2Array([Vector2(0.2045 + k * 0.0045 * 2.2, 0.08 + k * 0.1), Vector2(0.2065 + k * 0.0045 * 2.2, 0.09 + k * 0.1)]), Vector3(1.85, 0, -2.55), MU.mat(Color(0.12, 0.2, 0.15), 0.5, 0.4), 32)
+	var bl := MU.label(self, "HURDA", Vector3(1.85, 0.3, -2.55 + 0.2145), 60, Color(0.95, 0.95, 0.9), Vector3.ZERO, 0.0012)
 	bl.double_sided = false
 	MU.interactable(self, Vector3(0.46, 0.55, 0.46), Vector3(1.85, 0.27, -2.55), _bin_hint, _bin_use)
 
@@ -697,23 +696,9 @@ var _price_labels := []   # raf etiketleri: [Label3D, ad, tür, seviye, model]
 var _up_nodes := {}       # geliştirme id -> görünürlüğü açılacak düğümler
 
 
-## Yönetim laptopu + satın alınan geliştirmelerin fiziksel görünümleri.
+## Satın alınan geliştirmelerin fiziksel görünümleri (açılıp kapanırlar, birleştirilmez).
 func _build_upgrades() -> void:
 	var dark := MU.mat(Color(0.12, 0.12, 0.14), 0.5, 0.4)
-	# laptop (tezgah üstü, oyuncuya bakar)
-	var lap := Node3D.new()
-	lap.position = Vector3(0.3, 1.025, 1.22)
-	add_child(lap)
-	MU.rbox(lap, Vector3(0.36, 0.02, 0.26), Vector3(0, 0.01, 0), MU.mat(Color(0.7, 0.72, 0.76), 0.8, 0.35), 0.008)
-	MU.rbox(lap, Vector3(0.3, 0.004, 0.14), Vector3(0, 0.021, -0.03), dark, 0.002)
-	var scr := MU.rbox(lap, Vector3(0.36, 0.24, 0.012), Vector3(0, 0.14, 0.12), MU.mat(Color(0.7, 0.72, 0.76), 0.8, 0.35), 0.008, Vector3(-18, 0, 0))
-	MU.rbox(scr, Vector3(0.33, 0.21, 0.004), Vector3(0, 0, -0.005), MU.mat(Color(0.1, 0.35, 0.55), 0, 0.2, 1.3), 0.004)
-	var t := MU.label(scr, "ParçaNet\n& YÖNETİM", Vector3(0, 0, -0.009), 34, Color(1, 1, 1), Vector3(0, 180, 0), 0.0017)
-	t.shaded = false
-	t.double_sided = false
-	MU.interactable(lap, Vector3(0.4, 0.3, 0.3), Vector3(0, 0.15, 0.05),
-		func(_p): return "Laptop: parça siparişi, kargo, geliştirmeler  [E]",
-		func(_p): Game.hud.open_upgrades())
 	# reklam tabelası: ön duvarda, içeri bakan ışıklı tabela
 	var sign_n := Node3D.new()
 	sign_n.position = Vector3(-2.4, 2.72, 2.98)
@@ -774,15 +759,14 @@ func _build_counter() -> void:
 	MU.rbox(self, Vector3(3.5, 0.05, 0.7), Vector3(-1.0, 1.0, 1.3), wood, 0.015)
 	MU.rbox(self, Vector3(3.42, 0.06, 0.02), Vector3(-1.0, 0.06, 1.6), MU.mat(Color(0.12, 0.12, 0.13), 0.6, 0.4), 0.008)
 	MU.static_box(self, Vector3(3.5, 1.03, 0.7), Vector3(-1.0, 0.515, 1.3), null)
-	# yazar kasa
-	var reg := MU.rbox(self, Vector3(0.35, 0.12, 0.3), Vector3(-2.1, 1.085, 1.3), MU.mat(Color(0.15, 0.15, 0.17), 0.3, 0.4), 0.02)
-	MU.rbox(reg, Vector3(0.2, 0.1, 0.02), Vector3(0, 0.1, -0.05), MU.mat(Color(0.2, 0.8, 0.5), 0, 0.3, 1.5), 0.005, Vector3(20, 0, 0))
-	for r in 3:
-		for c in 4:
-			MU.rbox(reg, Vector3(0.03, 0.01, 0.03), Vector3(-0.06 + c * 0.04, 0.062, 0.02 + r * 0.04), MU.mat(Color(0.85, 0.85, 0.82), 0, 0.5), 0.004)
-	# eski CRT monitör (süs)
-	var crt := MU.rbox(self, Vector3(0.4, 0.35, 0.38), Vector3(-1.4, 1.2, 1.35), MU.mat(Color(0.85, 0.82, 0.72), 0, 0.5), 0.04)
-	MU.rbox(crt, Vector3(0.32, 0.26, 0.01), Vector3(0, 0.01, -0.19), MU.mat(Color(0.1, 0.14, 0.12), 0.2, 0.15), 0.02)
+	# yazar kasa, CRT, telefon, yönetim laptopu (oyuncu tezgahın −Z tarafında durur)
+	PROPS.register(self, Vector3(-2.1, 1.025, 1.3), 180.0)
+	PROPS.crt(self, Vector3(-1.4, 1.025, 1.33), 180.0)
+	PROPS.phone(self, Vector3(-0.72, 1.025, 1.18), 200.0, Color(0.55, 0.12, 0.16), false)
+	PROPS.laptop(self, Vector3(0.3, 1.025, 1.24), 180.0, _laptop_screen)
+	MU.interactable(self, Vector3(0.4, 0.3, 0.3), Vector3(0.3, 1.175, 1.24),
+		func(_p): return "Laptop: parça siparişi, kargo, geliştirmeler  [E]",
+		func(_p): Game.hud.open_upgrades())
 	var sticky := MU.label(self, "Kartvizit\nalınız :)", Vector3(-0.3, 1.03, 1.2), 40, Color(0.2, 0.2, 0.25), Vector3(-90, 180, 0), 0.001)
 	sticky.double_sided = false
 	MU.rbox(self, Vector3(0.12, 0.004, 0.1), Vector3(-0.3, 1.027, 1.2), MU.mat(Color(1.0, 0.95, 0.5), 0, 0.8), 0.002)
@@ -852,3 +836,68 @@ func _build_decor() -> void:
 		k.position = Vector3(-3.65, 0.21 + i * 0.42, 1.5)
 		MU.rbox(k, Vector3(0.18, 0.04, 0.01), Vector3(0, 0.12, 0.21), MU.mat(Color(0.3, 0.3, 0.3)), 0.004)
 	MU.static_box(self, Vector3(0.22, 1.26, 0.44), Vector3(-3.65, 0.63, 1.5), null)
+
+
+## Yönetim laptopunun ekranı (bir kez çizilip dokuya pişirilir).
+func _laptop_screen(root: Control) -> void:
+	var bg := ColorRect.new()
+	bg.color = Color(0.06, 0.08, 0.13)
+	bg.size = root.size
+	root.add_child(bg)
+	var top := ColorRect.new()
+	top.color = Color(0.1, 0.13, 0.2)
+	top.size = Vector2(root.size.x, 52)
+	root.add_child(top)
+	var t := Label.new()
+	t.text = "◆ BİLGİSAYARCI  ·  Yönetim Paneli"
+	t.position = Vector2(20, 10)
+	t.add_theme_font_size_override("font_size", 24)
+	t.add_theme_color_override("font_color", Color(1.0, 0.82, 0.35))
+	root.add_child(t)
+	var cards := [["Haftalık Gelir", "▲ %18", Color(0.45, 0.9, 0.55)], ["İtibar", "★★★☆☆", Color(1.0, 0.8, 0.3)], ["Geliştirmeler", "4 adet", Color(0.5, 0.75, 1.0)]]
+	for i in cards.size():
+		var p := Panel.new()
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = Color(0.12, 0.15, 0.23)
+		sb.set_corner_radius_all(10)
+		p.add_theme_stylebox_override("panel", sb)
+		p.position = Vector2(20 + i * 204, 72)
+		p.size = Vector2(192, 92)
+		root.add_child(p)
+		var a := Label.new()
+		a.text = cards[i][0]
+		a.position = Vector2(14, 10)
+		a.add_theme_font_size_override("font_size", 17)
+		a.modulate = Color(1, 1, 1, 0.7)
+		p.add_child(a)
+		var b := Label.new()
+		b.text = cards[i][1]
+		b.position = Vector2(14, 38)
+		b.add_theme_font_size_override("font_size", 30)
+		b.add_theme_color_override("font_color", cards[i][2])
+		p.add_child(b)
+	# gelir grafiği
+	var vals := [0.35, 0.5, 0.42, 0.62, 0.55, 0.78, 0.9]
+	for i in vals.size():
+		var bar := ColorRect.new()
+		var h: float = vals[i] * 150.0
+		bar.color = Color(0.35, 0.65, 1.0).lerp(Color(1.0, 0.75, 0.3), i / 6.0)
+		bar.position = Vector2(34 + i * 52, 350 - h)
+		bar.size = Vector2(34, h)
+		root.add_child(bar)
+	var btn := Panel.new()
+	var bsb := StyleBoxFlat.new()
+	bsb.bg_color = Color(1.0, 0.72, 0.25)
+	bsb.set_corner_radius_all(12)
+	btn.add_theme_stylebox_override("panel", bsb)
+	btn.position = Vector2(420, 250)
+	btn.size = Vector2(196, 100)
+	root.add_child(btn)
+	var bl := Label.new()
+	bl.text = "Paneli Aç\n[E]"
+	bl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	bl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	bl.size = btn.size
+	bl.add_theme_font_size_override("font_size", 26)
+	bl.add_theme_color_override("font_color", Color(0.1, 0.08, 0.05))
+	btn.add_child(bl)
