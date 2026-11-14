@@ -33,6 +33,7 @@ func _ready() -> void:
 	_supply(c)
 	_guide(c)
 	_economy(c)
+	_depth(c)
 	K.hsep(vb)
 	var foot := HBoxContainer.new()
 	vb.add_child(foot)
@@ -88,7 +89,7 @@ func _controls(parent: Control) -> void:
 	g.add_theme_constant_override("v_separation", 10)
 	v.add_child(g)
 	var rows := [["WASD", "Yürü"], ["Shift", "Koş"], ["E / Sol tık", "Etkileşim"], ["G / Sağ tık", "Elindekini bırak"],
-		["Esc", "Duraklat / menü"], ["F2", "Grafik kalitesi"], ["F3", "FPS sayacı"], ["Fare", "Etrafa bak"]]
+		["F", "Raftan muadil al"], ["Esc", "Duraklat / menü"], ["F2", "Grafik kalitesi"], ["F3", "FPS sayacı"], ["Fare", "Etrafa bak"]]
 	for r in rows:
 		var cell := HBoxContainer.new()
 		cell.custom_minimum_size = Vector2(150, 0)
@@ -167,3 +168,11 @@ func _supply(parent: Control) -> void:
 	_step(v, 3, "Kurye ve koli", "Varış saatinde kurye gelir, koliyi kapının yanına bırakır. Koliye bakıp E'ye bas: parçalar stoğa girer. Kargo Takip sekmesinden izleyebilirsin.")
 	_step(v, 4, "Piyasa", "Fiyatlar her sabah kura göre değişir. Ucuzken stok yap. Sağlam parçayı rafa geri koyabilirsin (elinde tutarken rafa E).")
 	_step(v, 5, "Tezgah satışı", "Bazı müşteriler sadece parça almaya gelir. İstediği parçayı raftan al, elinde tutarken ona E'ye bas; kârlı fiyattan satılır.")
+
+
+func _depth(parent: Control) -> void:
+	var v := _section(parent, "Muadil Parça, Garanti ve İkinci El")
+	_step(v, 1, "Muadil parça", "ParçaNet'te KALİTE düğmesinden Orijinal ya da Muadil seç. Muadil %40 ucuzdur ama garanti riski taşır. Rafta orijinal için E, muadil için F tuşu; muadil parçada turuncu etiket ve (muadil) yazısı vardır.")
+	_step(v, 2, "Garanti dönüşü", "Takılı muadil parçayla teslim ettiğin işin müşterisi 1-2 gün içinde %35 ihtimalle geri gelebilir. Garanti işi ücretsizdir; hızlı çözersen itibarın biraz düzelir, reddedersen ya da müşteri kızıp giderse itibarın düşer.")
+	_step(v, 3, "İkinci el pazarı", "Laptopta İkinci El sekmesi: her gün yeni ilanlar. Çok ucuz ama durumu değişkendir; \"arızalı çıkabilir\" ilanlardaki parça bozuk çıkabilir, rafta gizli kalır, taktığında anlarsın.")
+	_step(v, 4, "Elektrik faturası", "Her gün sonunda kira dışında elektrik faturası da düşer: sabit bedel + çalışılan iş başına ek; Kahve Makinesi ve Reklam Tabelası ek tüketir. Z Raporu'nda görünür.")

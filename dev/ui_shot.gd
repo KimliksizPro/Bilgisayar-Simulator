@@ -35,6 +35,15 @@ func _ready() -> void:
 	o._express = true
 	o.refresh()
 	await _shot(p, Vector3(-0.2, 0, 0.5), 180, -10, "ui_shop")
+	# muadil kalite seçimi + ikinci el sekmesi (eco_* görüntüleri)
+	o._cheap = true
+	o._cart["cpu:1:c"] = 2
+	o.refresh()
+	await _shot(p, Vector3(-0.2, 0, 0.5), 180, -10, "eco_shop")
+	o._cheap = false
+	o._show_page(4)
+	await _shot(p, Vector3(-0.2, 0, 0.5), 180, -10, "eco_used")
+	o._show_page(0)
 	o._order()
 	Game.place_order({"cpu:1": 2}, false)
 	await _shot(p, Vector3(-0.2, 0, 0.5), 180, -10, "ui_cargo")
@@ -53,8 +62,10 @@ func _ready() -> void:
 	Game.parts_today = 215
 	Game.jobs_today = 4
 	Game.rep = 3.4
+	Game.warranty_list.append({"due": Game.day + 1, "name": "Ahmet Abi", "type": "psu", "tier": 1})
 	Game.end_day()
 	await _shot(p, Vector3(-0.2, 0, 0.5), 180, -10, "ui_summary")
+	await _shot(p, Vector3(-0.2, 0, 0.5), 180, -10, "eco_zreport", 0.2)
 	Game.hud.summary_btn.pressed.emit()
 	await get_tree().create_timer(0.5).timeout
 	Game.hud.open_pause()

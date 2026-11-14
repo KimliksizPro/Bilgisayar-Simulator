@@ -508,6 +508,8 @@ func _on_day_ended(s: Dictionary) -> void:
 	if int(s.get("shipping", 0)) > 0:
 		_row("Kargo", "-%s TL" % K.money(s.shipping), red)
 	_row("Kira", "-%s TL" % K.money(s.rent), red)
+	if int(s.get("utility", 0)) > 0:
+		_row("Elektrik faturası", "-%s TL" % K.money(s.utility), red)
 	_receipt_rule(summary_rows)
 	_row("Net kazanç", "%s%s TL" % ["+" if s.net >= 0 else "", K.money(s.net)], green if s.net >= 0 else red, true)
 	var d: float = s.rep_delta
@@ -524,6 +526,7 @@ func _on_day_ended(s: Dictionary) -> void:
 	dl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_row("Kasa", "%s TL" % K.money(s.money), T.INK if s.money >= 0 else red, true)
 	summary_note.text = ("!! DİKKAT: KASA EKSİDE !!\nYarın da eksi kalırsa iflas.\n" if s.warn else "") \
+		+ ("Garanti dönüşü bekleyen: %d iş\n" % int(s.warranty_pending) if int(s.get("warranty_pending", 0)) > 0 else "") \
 		+ "Yarınki kira: %s TL" % K.money(s.next_rent)
 	summary_note.add_theme_color_override("font_color", red if s.warn else T.INK)
 	K.open(summary_root, summary_panel)
