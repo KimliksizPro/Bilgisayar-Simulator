@@ -45,7 +45,7 @@ altlarında sarı-siyah ikaz şeridi; sürgüler mikser fader'ı, anahtarlar LED
   hedefe bakınca vizör köşeleri kapanan nişangah ve bej `E` tuşlu etkileşim ipucu; solda LED'li bildirimler;
   ödemede yükselen "+TL"; öğretici ipuçları bantla yapıştırılmış **sarı not kâğıdında**.
 - **Gün sonu:** yazar kasa fişi gibi **Z Raporu** (tırtıklı kâğıt, gelir/gider/kira/net, itibar, yarınki kira).
-- **Yönetim Paneli:** LCD kasa göstergesi, alınan yükseltmelerde "ALINDI" mührü. **İflas:** "DÜKKÂN KAPANDI" mührü.
+- **Dükkân bilgisayarı (laptop):** ParçaNet, Kargo Takip, Geliştirmeler ("ALINDI" mührü) ve Dükkân sekmeleri. **İflas:** "DÜKKÂN KAPANDI" mührü.
 
 ## Ayarlar
 
@@ -60,6 +60,24 @@ Ana menüden ve duraklatma menüsünden açılır, `user://settings.cfg` dosyas�
 
 Kalite: **Yüksek** SDFGI + SSIL + SSR + SSAO + hacimsel sis; **Orta** sadece SSAO + SSR; **Düşük** hepsi kapalı,
 MSAA kapalı, gölgeler hafifletilmiş.
+
+## Stok, ParçaNet ve kurye
+
+- **Stok rafı:** raftaki parçalar dükkânın stoğudur; etikette `STOK: N` yazar, biten ürün raftan kalkar (`TÜKENDİ`).
+  Sağlam bir parçayı elinde tutarken rafa E'ye basınca stoğa geri girer. Yeni oyunda küçük bir başlangıç stoğu var.
+- **ParçaNet (tezgahtaki laptop):** 7 ürünlük katalog, adet seçimi, sepet, toplu alım indirimi (aynı üründen 5+ adet %10),
+  Standart (2 saat, 250 TL üstü ücretsiz) veya Ekspres (30 dk, 45 TL) kargo. Fiyatlar her sabah değişen **piyasa kuruna**
+  göre oynar (0.80 - 1.30); kur değişimi ▲/▼ ile gösterilir. Toptan Anlaşma %15 indirim verir.
+- **Kurye:** varış saati gelince turuncu üniformalı kurye yürüyerek gelir, ParçaNet kolisini kapının yanına bırakır.
+  Koliye E → parçalar stoğa girer. Kapanıştan sonra varacak kargolar ertesi sabah gelir; gün sonunda açılmamış
+  koliler otomatik stoğa alınır. Yoldaki siparişler kayıtla saklanır.
+- **Kargo Takip:** her siparişin içeriği, ödenen tutar, tahmini varışı ve durumu (YOLDA / KURYEDE / KAPIDA).
+  HUD'da yazar kasanın altında yoldaki kargo ve kapıdaki koli sayısı görünür.
+- **Tezgah satışı:** bazı müşteriler sadece parça almaya gelir; istenen parçayı raftan alıp elinde tutarken müşteriye E
+  ile satarsın (piyasa fiyatı + %35). Stokta yoksa ekspres sipariş vermeye vaktin var.
+- **Dükkân sekmesi:** kasa, itibar, toplam gelir, iş ve satış sayıları, stok adedi ve değeri, kira, kur.
+- **Kurye Anlaşması** (yükseltme): kargolar yarı sürede ve ücretsiz gelir. Z raporunda parça siparişi ve kargo
+  giderleri ayrı satırdır.
 
 ## Oynanış
 
@@ -82,13 +100,15 @@ MSAA kapalı, gölgeler hafifletilmiş.
   kızıp giden müşteriler düşürür. İtibar iş ücretini (±%20) ve müşteri gelme sıklığını etkiler.
 - **Sabır:** müşteriyle ~60 sn konuşmazsan ya da iş ~4 oyun saatinden uzun sürerse kızıp gider
   (bilgisayarını da götürür). İş panelindeki çubuk kalan sabrı gösterir.
-- **Yönetim Paneli:** tezgahtaki laptopla aç (E). Geliştirmeler: Reklam Tabelası (müşteri daha sık gelir),
-  Toptan Anlaşma (raf fiyatları %15 indirim), Kahve Makinesi (sabır +%50), Usta Sertifikası (ücret +%15).
+- **Geliştirmeler:** tezgahtaki laptopla aç (E) → Geliştirmeler. Reklam Tabelası (müşteri daha sık gelir),
+  Toptan Anlaşma (ParçaNet %15 indirim), Kurye Anlaşması (kargo yarı sürede, ücretsiz),
+  Kahve Makinesi (sabır +%50), Usta Sertifikası (ücret +%15).
   Satın alınanlar dükkânda görünür.
 - **Kayıt:** gün sonunda ve oyundan çıkarken otomatik kaydedilir (`user://save.json`). Başlangıç
   ekranında **Devam Et** ile kayıtlı günün 09:00'ından devam edersin, **Yeni Oyun** sıfırlar.
 
-İş tipleri: arıza tamiri, ekran kartı yükseltme, RAM yükseltme, sıfırdan bilgisayar toplama.
+İş tipleri: arıza tamiri, aşırı ısınma, ekran kartı yükseltme, RAM yükseltme, sıfırdan bilgisayar toplama,
+tezgahtan parça satışı.
 
 ## Proje yapısı
 
@@ -104,7 +124,9 @@ scripts/slot.gd         Kasa içindeki parça yuvaları
 scripts/monitor.gd      Monitör (BIOS / masaüstü ekranı)
 scripts/customer.gd     Müşteri modeli ve yürüme
 scripts/job_manager.gd  Müşteri/iş akışı
-scripts/hud.gd          HUD, gün sonu / yönetim paneli / iflas ekranları, öğretici ipuçları
+scripts/hud.gd          HUD, gün sonu / iflas ekranları, öğretici ipuçları
+scripts/office_panel.gd Laptop: ParçaNet siparişi, Kargo Takip, Geliştirmeler, Dükkân istatistikleri
+scripts/delivery.gd     Kurye ve kargo kolileri
 scripts/menu.gd         Ana menü (+ emeği geçenler, onay penceresi)
 scripts/pause_menu.gd   Duraklatma menüsü (bulanık arka plan)
 scripts/settings.gd     Ayarlar (autoload): kayıt, uygulama, ses kanalları

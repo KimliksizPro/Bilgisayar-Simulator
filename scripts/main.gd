@@ -10,10 +10,12 @@ const HUD := preload("res://scripts/hud.gd")
 const MONITOR := preload("res://scripts/monitor.gd")
 const JOBS := preload("res://scripts/job_manager.gd")
 const MENU := preload("res://scripts/menu.gd")
+const DELIVERY := preload("res://scripts/delivery.gd")
 
 const DESK_Y := 0.75
 
 var hud
+var delivery
 var monitor
 var player
 var menu
@@ -52,6 +54,9 @@ func _ready() -> void:
 	jobs.pc_spot = Transform3D(Basis.from_euler(Vector3(0, deg_to_rad(-90), 0)), Vector3(0.45, DESK_Y + 0.012, -2.52))
 	add_child(jobs)
 	jobs.start()
+	delivery = DELIVERY.new()
+	delivery.world = self
+	add_child(delivery)
 	Settings.changed.connect(func(k): if k == "quality": _apply_quality())
 	if not Game.dev_mode:
 		_start_menu()
@@ -588,7 +593,7 @@ func _build_shelf() -> void:
 		sl.light_energy = 0.7
 		sl.light_color = Color(1.0, 0.95, 0.88)
 		add_child(sl)
-	var title := MU.label(self, "PARÇA RAFI", Vector3(x0 + 0.05, 2.48, zc), 90, Color(0.15, 0.2, 0.3), Vector3(0, 90, 0), 0.0025)
+	var title := MU.label(self, "STOK RAFI", Vector3(x0 + 0.05, 2.48, zc), 90, Color(0.15, 0.2, 0.3), Vector3(0, 90, 0), 0.0025)
 	title.double_sided = false
 	var items := [
 		[1.45, -1.6, "gpu", 1], [1.45, -0.9, "gpu", 2],
@@ -614,33 +619,58 @@ func _shelf_item(x0: float, shelf_y: float, z: float, type: String, tier: int) -
 	n.scale = Vector3.ONE * k
 	n.position = Vector3(x0 + 0.06 - c.x * k, shelf_y + (info.size.y / 2 - c.y) * k, z - c.z * k)
 	add_child(n)
+	MU.no_merge(n)  # stok bitince gizlenebilsin
 	var dname := PM.display_name(type, tier)
 	MU.interactable(self, info.size * 1.5 + Vector3(0.04, 0.04, 0.04), Vector3(x0 + 0.06, shelf_y + info.size.y * 0.75, z),
-		func(p): return "Satın al: %s — %d TL  [E]" % [dname, Game.price_of(type, tier)] if p.held == null else "Elin dolu",
-		func(p): _buy(p, type, tier))
-	var l := MU.label(self, "%s\n%d TL" % [dname, Game.price_of(type, tier)], Vector3(x0 + 0.214, shelf_y - 0.045, z), 30, Color(0.1, 0.1, 0.1), Vector3(0, 90, 0), 0.001)
+		func(p): return _shelf_hint(p, type, tier, dname),
+		func(p): _shelf_use(p, type, tier))
+	var l := MU.label(self, "", Vector3(x0 + 0.214, shelf_y - 0.045, z), 30, Color(0.1, 0.1, 0.1), Vector3(0, 90, 0), 0.001)
 	l.double_sided = false
-	_price_labels.append([l, dname, type, tier])
+	_price_labels.append([l, dname, type, tier, n])
 	var tag := MU.box(self, Vector3(0.002, 0.06, 0.24), Vector3(x0 + 0.212, shelf_y - 0.045, z), MU.mat(Color(1.0, 0.92, 0.4)))
 	tag.name = "PriceTag"
 
 
+func _shelf_hint(p, type: String, tier: int, dname: String) -> String:
+	var n := Game.stock_of(type, tier)
+	if p.held:
+		if not p.held.is_tool() and p.held.part_type == type and p.held.tier == tier:
+			return "Arızalı parça rafa konmaz" if p.held.broken else "Rafa geri koy: %s  [E]" % dname
+		return "Elin dolu"
+	if n <= 0:
+		return "%s TÜKENDİ — laptoptan (ParçaNet) sipariş ver" % dname
+	return "Al: %s  (stok %d)  [E]" % [dname, n]
+
+
+func _shelf_use(p, type: String, tier: int) -> void:
+	if p.held:
+		if not p.held.is_tool() and p.held.part_type == type and p.held.tier == tier and not p.held.broken:
+			var part = p.release_held()
+			part.queue_free()
+			Game.add_stock(type, tier, 1)
+			Game.sfx.click()
+			Game.msg("%s rafa kondu (stok %d)." % [PM.display_name(type, tier), Game.stock_of(type, tier)])
+		return
+	_buy(p, type, tier)
+
+
+## Raftan parça al: stoktan düşer (parası ParçaNet siparişinde ödendi).
 func _buy(p, type: String, tier: int) -> void:
 	if p.held:
 		return
-	var price := Game.price_of(type, tier)
-	if not Game.spend(price):
-		Game.msg("Paran yetmiyor! (%d TL lazım)" % price, Color(1, 0.5, 0.4))
+	if not Game.take_stock(type, tier):
+		Game.msg("%s stokta yok! Tezgahtaki laptoptan ParçaNet'e sipariş ver." % PM.display_name(type, tier), Color(1, 0.5, 0.4))
 		Game.sfx.error()
+		if Game.hud:
+			Game.hud.tip("order", "Parça bitince tezgahtaki laptopu aç: ParçaNet'ten sipariş ver, kurye getirsin.")
 		return
 	var part = PART.new().setup(type, tier, false)
 	add_child(part)
 	p.pick_up(part)
-	Game.sfx.coin()
-	Game.msg("%s satın alındı: -%d TL" % [PM.display_name(type, tier), price])
+	Game.sfx.click()
 
 
-var _price_labels := []   # raf etiketleri: [Label3D, ad, tür, seviye]
+var _price_labels := []   # raf etiketleri: [Label3D, ad, tür, seviye, model]
 var _up_nodes := {}       # geliştirme id -> görünürlüğü açılacak düğümler
 
 
@@ -655,11 +685,11 @@ func _build_upgrades() -> void:
 	MU.rbox(lap, Vector3(0.3, 0.004, 0.14), Vector3(0, 0.021, -0.03), dark, 0.002)
 	var scr := MU.rbox(lap, Vector3(0.36, 0.24, 0.012), Vector3(0, 0.14, 0.12), MU.mat(Color(0.7, 0.72, 0.76), 0.8, 0.35), 0.008, Vector3(-18, 0, 0))
 	MU.rbox(scr, Vector3(0.33, 0.21, 0.004), Vector3(0, 0, -0.005), MU.mat(Color(0.1, 0.35, 0.55), 0, 0.2, 1.3), 0.004)
-	var t := MU.label(scr, "YÖNETİM\nPANELİ", Vector3(0, 0, -0.009), 36, Color(1, 1, 1), Vector3(0, 180, 0), 0.0017)
+	var t := MU.label(scr, "ParçaNet\n& YÖNETİM", Vector3(0, 0, -0.009), 34, Color(1, 1, 1), Vector3(0, 180, 0), 0.0017)
 	t.shaded = false
 	t.double_sided = false
 	MU.interactable(lap, Vector3(0.4, 0.3, 0.3), Vector3(0, 0.15, 0.05),
-		func(_p): return "Yönetim Paneli (geliştirmeler)  [E]",
+		func(_p): return "Laptop: parça siparişi, kargo, geliştirmeler  [E]",
 		func(_p): Game.hud.open_upgrades())
 	# reklam tabelası: ön duvarda, içeri bakan ışıklı tabela
 	var sign_n := Node3D.new()
@@ -692,6 +722,7 @@ func _build_upgrades() -> void:
 	seal.name = "Seal"
 	_up_nodes["cert"] = [cert]
 	Game.upgrade_bought.connect(func(_id): _refresh_upgrades())
+	Game.stock_changed.connect(_refresh_stock)
 	_refresh_upgrades()
 
 
@@ -700,8 +731,16 @@ func _refresh_upgrades() -> void:
 	for id in _up_nodes:
 		for n in _up_nodes[id]:
 			n.visible = Game.has_upgrade(id)
+	_refresh_stock()
+
+
+## Raf etiketleri stok adedini gösterir; tükenen ürünün modeli raftan kalkar.
+func _refresh_stock() -> void:
 	for e in _price_labels:
-		e[0].text = "%s\n%d TL" % [e[1], Game.price_of(e[2], e[3])]
+		var n := Game.stock_of(e[2], e[3])
+		e[0].text = "%s\n%s" % [e[1], ("STOK: %d" % n) if n > 0 else "TÜKENDİ"]
+		e[0].modulate = Color(0.1, 0.1, 0.1) if n > 0 else Color(0.75, 0.1, 0.08)
+		e[4].visible = n > 0
 
 
 func _build_counter() -> void:

@@ -7,6 +7,8 @@ signal upgrade_bought(id: String)
 signal day_started
 signal day_ended(summary: Dictionary)
 signal game_over(summary: Dictionary)
+signal stock_changed
+signal orders_changed
 
 const SFX := preload("res://scripts/sfx.gd")
 const PM := preload("res://scripts/part_models.gd")
@@ -29,7 +31,8 @@ const SAVE_PATH := "user://save.json"
 
 const UPGRADE_LIST := [
 	{"id": "sign", "name": "Reklam Tabelası", "price": 400, "desc": "Müşteriler daha sık gelir."},
-	{"id": "wholesale", "name": "Toptan Anlaşma", "price": 600, "desc": "Raftaki tüm parçalar %15 indirimli."},
+	{"id": "wholesale", "name": "Toptan Anlaşma", "price": 600, "desc": "ParçaNet'te tüm parçalar %15 indirimli."},
+	{"id": "courier", "name": "Kurye Anlaşması", "price": 500, "desc": "Kargolar yarı sürede ve ücretsiz gelir."},
 	{"id": "coffee", "name": "Kahve Makinesi", "price": 350, "desc": "Müşteri sabrı %50 artar."},
 	{"id": "cert", "name": "Usta Sertifikası", "price": 800, "desc": "İş ücretleri %15 artar."},
 ]
@@ -56,6 +59,26 @@ var income_today := 0
 var parts_today := 0
 var jobs_today := 0
 var rep_day_start := START_REP
+
+# --- stok ve sipariş (ParçaNet) ---
+## Satılan ürünler: [tür, seviye]. Stok anahtarı "tür:seviye".
+const CATALOG := [["cpu", 1], ["ram", 1], ["ram", 2], ["gpu", 1], ["gpu", 2], ["psu", 1], ["ssd", 1]]
+const START_STOCK := {"cpu:1": 1, "ram:1": 2, "gpu:1": 1, "psu:1": 1, "ssd:1": 1}
+const SHIP_STD_HOURS := 2.0
+const SHIP_EXP_HOURS := 0.5
+const SHIP_STD_FEE := 15
+const SHIP_EXP_FEE := 45
+const FREE_SHIP_OVER := 250       # standart kargo bu tutarın üstünde ücretsiz
+const BULK_QTY := 5               # aynı üründen bu kadar alınca ek indirim
+const BULK_DISCOUNT := 0.10
+const RETAIL_MARKUP := 1.35       # tezgahtan parça satışında kâr marjı
+var stock := {}
+var orders: Array = []            # {id, items: {sku: adet}, eta: mutlak saat, express, cost, state}
+var next_order_id := 1
+var market := 1.0                 # günlük piyasa çarpanı (kur)
+var market_prev := 1.0
+var shipping_today := 0
+var sales_today := 0
 
 var started := false          # oyuncu Yeni Oyun / Devam Et seçti mi
 var phase := "menu"           # menu / day / summary / over
@@ -114,6 +137,8 @@ func spend(amount: int, category := "parts") -> bool:
 	money -= amount
 	if category == "parts":
 		parts_today += amount
+	elif category == "shipping":
+		shipping_today += amount
 	money_changed.emit(money)
 	return true
 
@@ -128,11 +153,160 @@ func has_upgrade(id: String) -> bool:
 	return upgrades.has(id)
 
 
+## Bugünkü ParçaNet alış fiyatı: piyasa çarpanı ve toptan anlaşma uygulanır.
 func price_of(type: String, tier: int) -> int:
-	var p := PM.price(type, tier)
+	var p := PM.price(type, tier) * market
 	if has_upgrade("wholesale"):
-		p = roundi(p * 0.85)
-	return p
+		p *= 0.85
+	return roundi(p)
+
+
+## Müşteriye tezgahtan satış fiyatı (piyasa fiyatı + kâr).
+func retail_price(type: String, tier: int) -> int:
+	return roundi(PM.price(type, tier) * market * RETAIL_MARKUP / 5.0) * 5
+
+
+# --- Stok ---
+static func sku(type: String, tier: int) -> String:
+	return "%s:%d" % [type, tier]
+
+
+func stock_of(type: String, tier: int) -> int:
+	return int(stock.get(sku(type, tier), 0))
+
+
+func add_stock(type: String, tier: int, n := 1) -> void:
+	var k := sku(type, tier)
+	stock[k] = maxi(0, int(stock.get(k, 0)) + n)
+	stock_changed.emit()
+
+
+func take_stock(type: String, tier: int) -> bool:
+	if stock_of(type, tier) <= 0:
+		return false
+	add_stock(type, tier, -1)
+	return true
+
+
+func stock_value() -> int:
+	var v := 0
+	for k in stock:
+		var a: PackedStringArray = k.split(":")
+		v += PM.price(a[0], int(a[1])) * int(stock[k])
+	return v
+
+
+func stock_count() -> int:
+	var n := 0
+	for k in stock:
+		n += int(stock[k])
+	return n
+
+
+# --- Sipariş ---
+## Mutlak oyun saati (gün * 24 + saat): kargo varış zamanları bununla tutulur.
+func now_abs() -> float:
+	return day * 24.0 + clock
+
+
+func ship_hours(express: bool) -> float:
+	var h := SHIP_EXP_HOURS if express else SHIP_STD_HOURS
+	return h * (0.5 if has_upgrade("courier") else 1.0)
+
+
+func ship_fee(express: bool, subtotal: int) -> int:
+	if has_upgrade("courier"):
+		return 0
+	if express:
+		return SHIP_EXP_FEE
+	return 0 if subtotal >= FREE_SHIP_OVER else SHIP_STD_FEE
+
+
+## Sepet tutarı (toplu alım indirimi dahil, kargo hariç).
+func cart_subtotal(items: Dictionary) -> int:
+	var t := 0
+	for k in items:
+		var a: PackedStringArray = k.split(":")
+		var q := int(items[k])
+		var line := price_of(a[0], int(a[1])) * q
+		if q >= BULK_QTY:
+			line = roundi(line * (1.0 - BULK_DISCOUNT))
+		t += line
+	return t
+
+
+## Siparişi öde ve yola çıkar. Varış kapanıştan sonraysa ertesi sabah gelir.
+func place_order(items: Dictionary, express: bool) -> bool:
+	var clean := {}
+	for k in items:
+		if int(items[k]) > 0:
+			clean[k] = int(items[k])
+	if clean.is_empty():
+		return false
+	var sub := cart_subtotal(clean)
+	var fee := ship_fee(express, sub)
+	if money < sub + fee:
+		sfx.error()
+		msg("Paran yetmiyor! (%d TL lazım)" % (sub + fee), Color(1, 0.5, 0.4))
+		return false
+	spend(sub, "parts")
+	if fee > 0:
+		spend(fee, "shipping")
+	var eta := now_abs() + ship_hours(express)
+	orders.append({"id": next_order_id, "items": clean, "eta": eta, "express": express, "cost": sub + fee, "state": "transit"})
+	next_order_id += 1
+	sfx.coin()
+	msg("Sipariş verildi (%d TL). Tahmini varış: %s" % [sub + fee, abs_time_text(eta)], Color(0.6, 0.9, 1.0))
+	orders_changed.emit()
+	return true
+
+
+func abs_time_text(t: float) -> String:
+	var d := int(t / 24.0)
+	var h := t - d * 24.0
+	if h >= CLOSE_HOUR:
+		return "yarın 09:30"
+	var hh := int(h)
+	var mm := int((h - hh) * 60.0)
+	var s := "%02d:%02d" % [hh, mm]
+	return s if d == day else "Gün %d %s" % [d, s]
+
+
+## Varış zamanı gelmiş, henüz kurye getirmemiş siparişler.
+func due_orders() -> Array:
+	var now := now_abs()
+	return orders.filter(func(o): return o.state == "transit" and float(o.eta) <= now)
+
+
+## Kargo kutusu açıldı: parçalar stoğa girer.
+func receive_order(id: int) -> Dictionary:
+	for i in orders.size():
+		if int(orders[i].id) == id:
+			var o: Dictionary = orders[i]
+			orders.remove_at(i)
+			for k in o.items:
+				var a: PackedStringArray = k.split(":")
+				add_stock(a[0], int(a[1]), int(o.items[k]))
+			orders_changed.emit()
+			return o
+	return {}
+
+
+static func items_text(items: Dictionary) -> String:
+	var parts := []
+	for k in items:
+		var a: PackedStringArray = k.split(":")
+		parts.append("%d x %s" % [int(items[k]), PM.display_name(a[0], int(a[1]))])
+	return ", ".join(parts)
+
+
+## Her sabah piyasa kuru biraz oynar (0.8 - 1.3 arası rastgele yürüyüş).
+func _roll_market() -> void:
+	market_prev = market
+	market = clampf(market + randf_range(-0.08, 0.1), 0.8, 1.3)
+	market = snappedf(market, 0.01)
+
+
 
 
 func patience_mult() -> float:
@@ -192,11 +366,18 @@ func new_game() -> void:
 	upgrades = {}
 	rent_level = 0
 	debt_days = 0
-	stats = {"total_income": 0, "total_jobs": 0}
+	stats = {"total_income": 0, "total_jobs": 0, "total_sales": 0}
+	stock = START_STOCK.duplicate()
+	orders = []
+	next_order_id = 1
+	market = 1.0
+	market_prev = 1.0
 	started = true
 	money_changed.emit(money)
 	rep_changed.emit(rep)
 	upgrade_bought.emit("")
+	stock_changed.emit()
+	orders_changed.emit()
 	start_day()
 
 
@@ -204,6 +385,8 @@ func start_day() -> void:
 	clock = OPEN_HOUR
 	income_today = 0
 	parts_today = 0
+	shipping_today = 0
+	sales_today = 0
 	jobs_today = 0
 	rep_day_start = rep
 	phase = "day"
@@ -212,6 +395,7 @@ func start_day() -> void:
 
 func next_day() -> void:
 	day += 1
+	_roll_market()
 	start_day()
 
 
@@ -221,8 +405,8 @@ func end_day() -> void:
 	var r := rent()
 	money -= r
 	money_changed.emit(money)
-	var s := {"day": day, "income": income_today, "parts": parts_today, "rent": r,
-		"net": income_today - parts_today - r, "rep_delta": rep - rep_day_start, "rep": rep,
+	var s := {"day": day, "income": income_today, "parts": parts_today, "rent": r, "shipping": shipping_today,
+		"sales": sales_today, "net": income_today - parts_today - shipping_today - r, "rep_delta": rep - rep_day_start, "rep": rep,
 		"money": money, "jobs": jobs_today, "warn": false}
 	debt_days = debt_days + 1 if money < 0 else 0
 	if day % RENT_RAISE_EVERY == 0:
@@ -272,11 +456,18 @@ func return_to_menu() -> void:
 
 func save_game() -> void:
 	var d := {"day": day, "clock": clock, "money": money, "rep": rep, "upgrades": upgrades.keys(),
-		"jobs_done": jobs_done, "rent_level": rent_level, "debt_days": debt_days, "stats": stats}
+		"jobs_done": jobs_done, "rent_level": rent_level, "debt_days": debt_days, "stats": stats,
+		"stock": stock, "market": market, "market_prev": market_prev, "next_order_id": next_order_id}
+	# kapıdaki/yoldaki kargolar kayıtta "yolda" sayılır; kurye yeniden getirir
+	var ol := []
+	for o in orders:
+		ol.append({"id": o.id, "items": o.items, "eta": o.eta, "express": o.express, "cost": o.cost})
+	d.orders = ol
 	# gün sonu özeti açıkken kayıt ertesi günden devam etsin
 	if phase == "summary":
 		d.day = day + 1
 		d.clock = OPEN_HOUR
+		d.market = market
 	var f := FileAccess.open(save_path, FileAccess.WRITE)
 	if f:
 		f.store_string(JSON.stringify(d))
@@ -300,7 +491,22 @@ func load_game() -> bool:
 	for id in d.get("upgrades", []):
 		upgrades[str(id)] = true
 	var st = d.get("stats", {})
-	stats = {"total_income": int(st.get("total_income", 0)), "total_jobs": int(st.get("total_jobs", 0))}
+	stats = {"total_income": int(st.get("total_income", 0)), "total_jobs": int(st.get("total_jobs", 0)),
+		"total_sales": int(st.get("total_sales", 0))}
+	stock = {}
+	var sd = d.get("stock", START_STOCK)
+	for k in sd:
+		stock[str(k)] = int(sd[k])
+	market = float(d.get("market", 1.0))
+	market_prev = float(d.get("market_prev", market))
+	next_order_id = int(d.get("next_order_id", 1))
+	orders = []
+	for o in d.get("orders", []):
+		var items := {}
+		for k in o.get("items", {}):
+			items[str(k)] = int(o.items[k])
+		orders.append({"id": int(o.id), "items": items, "eta": float(o.eta), "express": bool(o.get("express", false)),
+			"cost": int(o.get("cost", 0)), "state": "transit"})
 	return true
 
 
@@ -311,6 +517,8 @@ func continue_game() -> bool:
 	money_changed.emit(money)
 	rep_changed.emit(rep)
 	upgrade_bought.emit("")
+	stock_changed.emit()
+	orders_changed.emit()
 	start_day()  # kayıtlı gün 09:00'dan taze başlar
 	return true
 

@@ -26,9 +26,29 @@ func _ready() -> void:
 	Game.add_money(3000)
 	for id in ["sign", "coffee"]:
 		Game.buy_upgrade(id)
-	Game.hud.open_upgrades()
+	# ParçaNet: sepette ürünler
+	Game.market_prev = 1.0
+	Game.market = 1.06
+	Game.hud.open_upgrades(0)
+	var o = Game.hud.office
+	o._cart = {"gpu:2": 1, "ram:2": 5, "ssd:1": 2}
+	o._express = true
+	o.refresh()
+	await _shot(p, Vector3(-0.2, 0, 0.5), 180, -10, "ui_shop")
+	o._order()
+	Game.place_order({"cpu:1": 2}, false)
+	await _shot(p, Vector3(-0.2, 0, 0.5), 180, -10, "ui_cargo")
+	o._show_page(2)
 	await _shot(p, Vector3(-0.2, 0, 0.5), 180, -10, "ui_upgrades")
+	o._show_page(3)
+	await _shot(p, Vector3(-0.2, 0, 0.5), 180, -10, "ui_stats")
 	Game.hud.close_upgrades()
+	# kurye koliyi bırakır
+	Game.clock += 0.6
+	get_parent().delivery._send_courier()
+	await get_tree().create_timer(4.5).timeout
+	await _shot(p, Vector3(0.2, 0, 0.6), 160, -22, "ui_delivery", 0.3)
+	await _shot(p, Vector3(-2.7, 0, -0.3), 90, -12, "ui_stockshelf", 0.3)
 	Game.income_today = 640
 	Game.parts_today = 215
 	Game.jobs_today = 4

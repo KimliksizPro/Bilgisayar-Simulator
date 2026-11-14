@@ -30,6 +30,7 @@ func _ready() -> void:
 	_scroll.add_child(c)
 	_controls(c)
 	_loop(c)
+	_supply(c)
 	_guide(c)
 	_economy(c)
 	K.hsep(vb)
@@ -118,7 +119,7 @@ func _loop(parent: Control) -> void:
 	var v := _section(parent, "Oyun Döngüsü")
 	_step(v, 1, "Müşteriyi karşıla", "Tezgaha gelen müşteriye bak ve E'ye bas. Derdini anlatır, bilgisayarını masana bırakır.")
 	_step(v, 2, "Arızayı bul", "Bilgisayarın cam kapağını aç, güç düğmesine bas. Bip seslerini, ekranı ve anakartın hata LED'lerini izle.")
-	_step(v, 3, "Parçayı değiştir", "Arızalı parçayı sök (E), hurda kutusuna at. Raftan yenisini satın al ve yuvaya tak.")
+	_step(v, 3, "Parçayı değiştir", "Arızalı parçayı sök (E), hurda kutusuna at. Stok rafından yenisini al ve yuvaya tak.")
 	_step(v, 4, "Teslim et", "Kapağı kapat, bilgisayarı çalıştır ve müşteriyle konuş. Ücretini alırsın; hızlı servis itibarı artırır.")
 
 
@@ -155,5 +156,14 @@ func _economy(parent: Control) -> void:
 	_para(v, "Kira: her gün sonunda ödenir ve zamanla artar. Kasa üst üste iki gün eksi kalırsa iflas edersin.", T.MUTED)
 	_para(v, "İtibar (5 yıldız): hızlı ve doğru servis artırır, hatalı teslim ve kızıp giden müşteri düşürür. İtibar iş ücretini ve müşteri sıklığını etkiler.")
 	_para(v, "Sabır: müşteriler uzun beklemeyi sevmez. Sağ üstteki çubuk kalan sabrı gösterir; renk yeşilden kırmızıya döner.", T.MUTED)
-	_para(v, "Yükseltmeler: tezgahtaki laptopla Yönetim Paneli'ni aç. Reklam tabelası, toptan anlaşma, kahve makinesi ve usta sertifikası alabilirsin.")
+	_para(v, "Yükseltmeler: tezgahtaki laptopta Geliştirmeler sekmesi. Reklam tabelası, toptan anlaşma, kurye anlaşması, kahve makinesi ve usta sertifikası alabilirsin.")
 	_para(v, "Oyun gün sonunda ve çıkarken otomatik kaydedilir.", T.MUTED)
+
+
+func _supply(parent: Control) -> void:
+	var v := _section(parent, "Stok ve ParçaNet Siparişi")
+	_step(v, 1, "Stok rafı", "Raftaki parçalar stoğundur; rafta her ürünün kaç adet kaldığı yazar. Biten ürün raftan kalkar ve TÜKENDİ olur.")
+	_step(v, 2, "Sipariş ver", "Tezgahtaki laptopu aç (E) → ParçaNet. Adetleri seç, kargo türünü seç (Standart 2 saat, Ekspres 30 dk) ve siparişi ver. Aynı üründen 5+ adete indirim var.")
+	_step(v, 3, "Kurye ve koli", "Varış saatinde kurye gelir, koliyi kapının yanına bırakır. Koliye bakıp E'ye bas: parçalar stoğa girer. Kargo Takip sekmesinden izleyebilirsin.")
+	_step(v, 4, "Piyasa", "Fiyatlar her sabah kura göre değişir. Ucuzken stok yap. Sağlam parçayı rafa geri koyabilirsin (elinde tutarken rafa E).")
+	_step(v, 5, "Tezgah satışı", "Bazı müşteriler sadece parça almaya gelir. İstediği parçayı raftan al, elinde tutarken ona E'ye bas; kârlı fiyattan satılır.")

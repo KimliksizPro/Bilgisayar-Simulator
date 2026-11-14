@@ -6,6 +6,7 @@ const T := preload("res://scripts/ui_theme.gd")
 const K := preload("res://scripts/ui_kit.gd")
 const CROSS := preload("res://scripts/crosshair.gd")
 const PAUSE := preload("res://scripts/pause_menu.gd")
+const OFFICE := preload("res://scripts/office_panel.gd")
 
 var _ui_root: Control
 # sol üst kart
@@ -49,11 +50,9 @@ var summary_btn: Button
 var over_root: Control
 var over_panel: Control
 var over_text: Label
-var upgrade_root: Control
-var upgrade_panel: Control
-var upgrade_money: Label
-var upgrade_rows := {}
-var upgrade_close: Button
+var office: Control
+var cargo_row: Control
+var cargo_label: Label
 
 var _clock_cache := ""
 var _last_hint := "\u0001"
@@ -93,7 +92,7 @@ func _ready() -> void:
 	Game.day_ended.connect(_on_day_ended)
 	Game.game_over.connect(_on_game_over)
 	Game.day_started.connect(_on_day_started)
-	Game.upgrade_bought.connect(func(_id): _refresh_upgrades())
+	Game.orders_changed.connect(_refresh_cargo)
 	Settings.changed.connect(func(k): if k == "show_fps": fps_label.visible = Settings.show_fps)
 	fps_label.visible = Settings.show_fps
 	_on_money(Game.money)
@@ -155,8 +154,20 @@ func _build_money_card(root: Control) -> void:
 	rep_stars = K.stars(rr, 19)
 	rep_stars.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	rep_label = K.label(rr, "3.0", 17, T.ACCENT_HI, "BoldLabel")
+	# yoldaki kargo göstergesi
+	var cr := HBoxContainer.new()
+	cr.add_theme_constant_override("separation", 8)
+	vb.add_child(cr)
+	cargo_row = cr
+	var box := PanelContainer.new()
+	box.add_theme_stylebox_override("panel", T.flat(Color(0.68, 0.52, 0.33), 2, Color(0.82, 0.7, 0.45), 2, Vector2(0, 0)))
+	box.custom_minimum_size = Vector2(16, 13)
+	box.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	cr.add_child(box)
+	cargo_label = K.label(cr, "", 15, T.TEXT, "BoldLabel")
+	cr.visible = false
 	fps_label = K.label(root, "", 15, T.GOOD, "BoldLabel")
-	fps_label.position = Vector2(24, 214)
+	fps_label.position = Vector2(24, 250)
 	fps_label.add_theme_constant_override("outline_size", 5)
 	fps_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
 
@@ -411,64 +422,20 @@ func _build_over(root: Control) -> void:
 
 
 func _build_upgrades(root: Control) -> void:
-	var m := K.modal(root, 780, 0.7)
-	upgrade_root = m[0]
-	upgrade_panel = m[1]
-	var vb: VBoxContainer = m[2]
-	var head := HBoxContainer.new()
-	head.add_theme_constant_override("separation", 16)
-	vb.add_child(head)
-	var tv := VBoxContainer.new()
-	tv.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	tv.add_theme_constant_override("separation", 2)
-	head.add_child(tv)
-	K.label(tv, "Yönetim Paneli", 34, T.ACCENT, "TitleLabel")
-	K.label(tv, "Dükkânını geliştir, daha çok kazan.", 17, T.MUTED, "MutedLabel")
-	var lc := K.lcd(head, "", 40, Vector2(16, 0))
-	lc[0].size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	upgrade_money = lc[1]
-	var tr := TextureRect.new()
-	tr.texture = T.hazard_tex()
-	tr.stretch_mode = TextureRect.STRETCH_TILE
-	tr.custom_minimum_size = Vector2(0, 6)
-	tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	tr.modulate.a = 0.85
-	vb.add_child(tr)
-	K.spacer(vb, 2)
-	for u in Game.UPGRADE_LIST:
-		var ip := K.panel(vb, "InsetPanel")
-		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 16)
-		ip.add_child(row)
-		var tcol := VBoxContainer.new()
-		tcol.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		tcol.add_theme_constant_override("separation", 0)
-		row.add_child(tcol)
-		K.label(tcol, u.name, 23, T.TEXT, "BoldLabel")
-		K.label(tcol, u.desc, 17, T.MUTED, "MutedLabel")
-		var uid: String = u.id
-		var owned := CenterContainer.new()
-		owned.custom_minimum_size = Vector2(200, 0)
-		row.add_child(owned)
-		K.stamp(owned, "ALINDI", T.GOOD, 20, -6.0)
-		var b := K.button(row, "", func(): Game.buy_upgrade(uid), "PrimaryButton", 19, Vector2(200, 52))
-		b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		upgrade_rows[uid] = [b, owned]
-	K.spacer(vb, 2)
-	upgrade_close = K.button(vb, "Kapat", close_upgrades, "", 20, Vector2(0, 50))
-	_refresh_upgrades()
+	office = OFFICE.new()
+	office.back.connect(close_upgrades)
+	root.add_child(office)
 
 
 # ---------------------------------------------------------------- dış API
-func open_upgrades() -> void:
-	_refresh_upgrades()
-	K.open(upgrade_root, upgrade_panel)
+## Tezgahtaki laptop: ParçaNet / Kargo / Geliştirmeler / Dükkân.
+func open_upgrades(page := 0) -> void:
+	office.open(page)
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-	upgrade_close.grab_focus()
 
 
 func close_upgrades() -> void:
-	K.close(upgrade_root, upgrade_panel)
+	office.close()
 	_capture()
 
 
@@ -480,21 +447,6 @@ func open_pause() -> void:
 	pause.open()
 
 
-func _refresh_upgrades() -> void:
-	if upgrade_money == null:
-		return
-	upgrade_money.text = "%s TL" % K.money(Game.money)
-	for u in Game.UPGRADE_LIST:
-		var pair: Array = upgrade_rows[u.id]
-		var b: Button = pair[0]
-		var has := Game.has_upgrade(u.id)
-		pair[1].visible = has
-		b.visible = not has
-		if not has:
-			b.text = "Satın Al  ·  %d TL" % int(u.price)
-			b.disabled = Game.money < int(u.price)
-
-
 func _stars_text(r: float) -> String:
 	return "%.1f" % r
 
@@ -502,7 +454,6 @@ func _stars_text(r: float) -> String:
 func _on_money(v: int) -> void:
 	var old := _money_target
 	_money_target = v
-	_refresh_upgrades()
 	if not _money_init:
 		_money_init = true
 		_money_shown = float(v)
@@ -550,8 +501,12 @@ func _on_day_ended(s: Dictionary) -> void:
 	var green := T.STAMP_GREEN
 	var red := T.STAMP_RED
 	_row("Tamamlanan iş", "%d ADET" % s.jobs)
+	if int(s.get("sales", 0)) > 0:
+		_row("Tezgah satışı", "%d PARÇA" % s.sales)
 	_row("Gelir", "+%s TL" % K.money(s.income), green)
-	_row("Parça giderleri", "-%s TL" % K.money(s.parts), red)
+	_row("Parça siparişi", "-%s TL" % K.money(s.parts), red)
+	if int(s.get("shipping", 0)) > 0:
+		_row("Kargo", "-%s TL" % K.money(s.shipping), red)
 	_row("Kira", "-%s TL" % K.money(s.rent), red)
 	_receipt_rule(summary_rows)
 	_row("Net kazanç", "%s%s TL" % ["+" if s.net >= 0 else "", K.money(s.net)], green if s.net >= 0 else red, true)
@@ -746,7 +701,7 @@ func _hide_tip() -> void:
 # ---------------------------------------------------------------- girdi / kare güncelleme
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("ui_cancel"):
-		if upgrade_root.visible:
+		if office.is_open():
 			Game.sfx.ui_back()
 			close_upgrades()
 			get_viewport().set_input_as_handled()
@@ -773,7 +728,7 @@ func _process(delta: float) -> void:
 	# geliştirici araçları menüsüz fareyi yakalayınca yeni oyun say
 	if captured and not Game.started and Game.dev_mode:
 		Game.new_game()
-	Game.ui_modal = summary_root.visible or over_root.visible or upgrade_root.visible or pause.open_now
+	Game.ui_modal = summary_root.visible or over_root.visible or office.is_open() or pause.open_now
 	Game.running = captured and Game.started and not Game.paused
 	if fps_label.visible:
 		_fps_t += delta
@@ -798,3 +753,23 @@ func _process(delta: float) -> void:
 			var has_key := h.contains("[E]")
 			prompt_key.visible = has_key
 			prompt_text.text = h.replace("[E]", "").replace("  ", " ").strip_edges()
+
+
+## Para kartının altında: yoldaki/kapıdaki kargo sayısı ve en yakın varış.
+func _refresh_cargo() -> void:
+	if cargo_row == null:
+		return
+	var n := Game.orders.size()
+	cargo_row.visible = n > 0
+	if n == 0:
+		return
+	var door := Game.orders.filter(func(o): return o.get("state", "") == "door").size()
+	if door > 0:
+		cargo_label.text = "%d koli kapıda — aç!" % door
+		cargo_label.add_theme_color_override("font_color", T.GOOD)
+		return
+	var eta := 1e9
+	for o in Game.orders:
+		eta = minf(eta, float(o.eta))
+	cargo_label.text = "Kargo yolda (%d) · %s" % [n, Game.abs_time_text(eta)]
+	cargo_label.add_theme_color_override("font_color", T.TEXT)

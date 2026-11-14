@@ -11,6 +11,7 @@ func _ready() -> void:
 	for type in ["psu", "cpu", "ram", "gpu", "ssd"]:
 		print("bekleniyor: ", type)
 		while jobs.state != "waiting":
+			Game.clock = minf(Game.clock, 15.0)  # test sürerken dükkân kapanmasın
 			await get_tree().create_timer(0.2).timeout
 		var j: Dictionary = jobs._make_job()
 		while j.kind != "repair" or j.broken != type:
@@ -41,9 +42,11 @@ func _ready() -> void:
 		assert(jobs.state == "leaving", "teslim olmadı")
 		print("OK %s: para %d -> %d" % [type, money_before, Game.money])
 		await get_tree().create_timer(0.1).timeout
+	await _supply_tests(main, jobs, p)
 	for kind in ["overheat_dust", "overheat_paste"]:
 		print("bekleniyor: ", kind)
 		while jobs.state != "waiting":
+			Game.clock = minf(Game.clock, 15.0)  # test sürerken dükkân kapanmasın
 			await get_tree().create_timer(0.2).timeout
 		var j: Dictionary = jobs._make_job()
 		while j.kind != kind:
@@ -115,6 +118,7 @@ func _day_tests(jobs, p) -> void:
 	assert(Game.rep > 3.0, "itibar artmalıydı: %f" % Game.rep)
 	# sabır: bekleyen müşteri çok beklerse kızıp gider
 	while jobs.state != "waiting":
+		Game.clock = minf(Game.clock, 15.0)  # test sürerken dükkân kapanmasın
 		await get_tree().create_timer(0.2).timeout
 	Game.running = true
 	var rep_before: float = Game.rep
@@ -157,3 +161,62 @@ func _day_tests(jobs, p) -> void:
 	assert(Game.phase == "over", "iflas")
 	DirAccess.remove_absolute(Game.save_path)
 	print("OK iflas")
+
+
+## Stok, ParçaNet siparişi, kurye teslimatı, rafa geri koyma ve tezgah satışı.
+func _supply_tests(main, jobs, p) -> void:
+	# 5 tamirden sonra CPU stoğu bitti
+	assert(Game.stock_of("cpu", 1) == 0, "cpu stoğu: %d" % Game.stock_of("cpu", 1))
+	main._buy(p, "cpu", 1)
+	assert(p.held == null, "stok yokken parça alındı")
+	# sipariş: 2 CPU + 5 RAM 16 GB (toplu indirim) ekspres
+	Game.add_money(1000)
+	var m: int = Game.money
+	var items := {"cpu:1": 2, "ram:2": 5}
+	var sub: int = Game.cart_subtotal(items)
+	assert(sub < Game.price_of("cpu", 1) * 2 + Game.price_of("ram", 2) * 5, "toplu indirim yok")
+	assert(Game.place_order(items, true), "sipariş verilemedi")
+	assert(Game.money == m - sub - Game.SHIP_EXP_FEE, "sipariş ücreti yanlış")
+	assert(Game.orders.size() == 1 and Game.due_orders().is_empty(), "sipariş hemen geldi")
+	Game.clock += Game.SHIP_EXP_HOURS + 0.01
+	assert(Game.due_orders().size() == 1, "varış zamanı")
+	main.delivery._send_courier()
+	var t := 0.0
+	while main.delivery.boxes.is_empty() and t < 20.0:
+		await get_tree().create_timer(0.2).timeout
+		t += 0.2
+	assert(not main.delivery.boxes.is_empty(), "kurye koliyi bırakmadı")
+	var id: int = main.delivery.boxes.keys()[0]
+	main.delivery.open_box(id, p)
+	assert(Game.stock_of("cpu", 1) == 2 and Game.stock_of("ram", 2) == 5 and Game.orders.is_empty(), "koli stoğa girmedi")
+	print("OK sipariş + kurye: %d TL, stok cpu=%d ram16=%d" % [sub, Game.stock_of("cpu", 1), Game.stock_of("ram", 2)])
+	# rafa geri koy
+	main._buy(p, "ram", 2)
+	assert(p.held != null and Game.stock_of("ram", 2) == 4)
+	main._shelf_use(p, "ram", 2)
+	assert(p.held == null and Game.stock_of("ram", 2) == 5, "rafa geri konmadı")
+	print("OK rafa geri koyma")
+	# tezgah satışı
+	while jobs.state != "waiting":
+		Game.clock = minf(Game.clock, 15.0)  # test sürerken dükkân kapanmasın
+		await get_tree().create_timer(0.2).timeout
+	var j: Dictionary = jobs._make_job()
+	while j.kind != "sale" or j.want != ["ram", 2]:
+		j = jobs._make_job()
+	jobs.job = j
+	jobs._customer_talk(p)  # elinde parça yok -> satış olmaz
+	assert(jobs.state == "waiting", "eli boşken satış oldu")
+	main._buy(p, "ram", 2)
+	var mm: int = Game.money
+	jobs._customer_talk(p)
+	assert(jobs.state == "leaving" and p.held == null and Game.money == mm + int(j.pay), "satış olmadı")
+	assert(int(j.pay) > Game.price_of("ram", 2), "satışta kâr yok")
+	print("OK tezgah satışı: +%d TL (alış %d)" % [j.pay, Game.price_of("ram", 2)])
+	# kayıt: stok ve yoldaki sipariş saklanır
+	assert(Game.place_order({"ssd:1": 1}, false))
+	Game.save_game()
+	var st: int = Game.stock_of("ram", 2)
+	Game.stock = {}
+	Game.orders = []
+	assert(Game.load_game() and Game.stock_of("ram", 2) == st and Game.orders.size() == 1, "stok/sipariş kaydı")
+	print("OK stok ve sipariş kaydı")
