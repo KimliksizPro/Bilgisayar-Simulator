@@ -27,16 +27,16 @@ düzenlemek demek).
 
 ---
 
-## Faz 0 — Acil düzeltmeler (oyunu şimdi rahatsız eden şeyler)
+## Faz 0 — Acil düzeltmeler ✅ TAMAMLANDI
 
 | # | İş | Boyut | Not |
 | --- | --- | --- | --- |
-| 0.1 | **Build fall-through hatası**: para < 300 iken build'i ağırlık 0 yap, başka dala düşmesin | S | `job_manager.gd:206` |
-| 0.2 | **Tekrar önleyici iş seçici ("JobDirector")**: ağırlıklı torba (Tetris 7-bag mantığı) + son 4 işte görülen arızanın ağırlığını ×0.25, aynı arızayı arka arkaya ×0; ceza **parça ailesine** de uygulansın (gpu tamiri, gpu yükseltme, gpu satışı birbirini zincirlemesin). Geçmiş kayda yazılsın | M | Rakip oyunların 1 numaralı şikâyeti tekrar |
-| 0.3 | **Elde tutma düzeltmesi**: (a) her karede kameradan ileri raycast, `mesafe = min(0.45, çarpma-0.1)` ile parça duvara yaklaşınca geri çekilsin; (b) asıl çözüm: elde tutulan nesne ayrı görsel katmanda (`layers`) ve aynı FOV'lu ikinci kamerayla `SubViewport`'ta çizilip ana görüntünün üstüne bindirilsin (viewmodel) → hiçbir zaman duvara girmez; (c) elde tutarken `RigidBody3D` yerine sade `Node3D` görsel kopya, bırakınca fizik gövdesi geri gelsin; (d) parça başına tutma açısı/ofset (GPU, PSU tuhaf duruyor) | M | Önce (c) ile oyunda test edilip gecikmenin kaynağı doğrulanmalı |
-| 0.4 | **Ödeme parça maliyetine göre**: tamir ücreti = parça fiyatı + işçilik (zorluk × taban) — şu an CPU tamiri ile RAM tamiri aynı parayı veriyor | S | `job_manager.gd:232` |
-| 0.5 | **Kayıt hataları**: ikinci el `sold` bayraklarını kaydet; saati geri yükle (veya gün ortası kaydı kaldır ama net söyle) | S | `game.gd:559,627`, `used_market.gd` |
-| 0.6 | Başarısız teslimde **neden** başarısız olduğunu söyle (Computer Repair Shop'un en çok eleştirilen kusuru) | S | |
+| 0.1 ✅ | **Build fall-through hatası**: para < 300 iken build'i ağırlık 0 yap, başka dala düşmesin | S | `job_manager.gd:206` |
+| 0.2 ✅ | **Tekrar önleyici iş seçici ("JobDirector")**: ağırlıklı torba (Tetris 7-bag mantığı) + son 4 işte görülen arızanın ağırlığını ×0.25, aynı arızayı arka arkaya ×0; ceza **parça ailesine** de uygulansın (gpu tamiri, gpu yükseltme, gpu satışı birbirini zincirlemesin). Geçmiş kayda yazılsın | M | Rakip oyunların 1 numaralı şikâyeti tekrar |
+| 0.3 ✅ | **Elde tutma düzeltmesi**: (a) her karede kameradan ileri raycast, `mesafe = min(0.45, çarpma-0.1)` ile parça duvara yaklaşınca geri çekilsin; (b) asıl çözüm: elde tutulan nesne ayrı görsel katmanda (`layers`) ve aynı FOV'lu ikinci kamerayla `SubViewport`'ta çizilip ana görüntünün üstüne bindirilsin (viewmodel) → hiçbir zaman duvara girmez; (c) elde tutarken `RigidBody3D` yerine sade `Node3D` görsel kopya, bırakınca fizik gövdesi geri gelsin; (d) parça başına tutma açısı/ofset (GPU, PSU tuhaf duruyor) | M | Önce (c) ile oyunda test edilip gecikmenin kaynağı doğrulanmalı |
+| 0.4 ✅ | **Ödeme parça maliyetine göre**: tamir ücreti = parça fiyatı + işçilik (zorluk × taban) — şu an CPU tamiri ile RAM tamiri aynı parayı veriyor | S | `job_manager.gd:232` |
+| 0.5 ✅ | **Kayıt hataları**: ikinci el `sold` bayraklarını kaydet; saati geri yükle (veya gün ortası kaydı kaldır ama net söyle) | S | `game.gd:559,627`, `used_market.gd` |
+| 0.6 ✅ | Başarısız teslimde **neden** başarısız olduğunu söyle (Computer Repair Shop'un en çok eleştirilen kusuru) | S | |
 
 ## Faz 1 — Veri altyapısı (her şeyin temeli)
 
