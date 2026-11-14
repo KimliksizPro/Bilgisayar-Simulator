@@ -1,8 +1,9 @@
 extends Node
 ## Personel yöneticisi: işe alınan çalışanları dükkâna yerleştirir ve işlerini yürütür.
-## Tezgahtar: bekleyen müşteriyi karşılar (işi kabul eder), satış müşterisine raftan parça getirip satar,
-## boşta kalınca kapıdaki kargo kolilerini açar. Teknisyen: masadaki işi stoktaki parçalarla
-## kendisi tamir eder (süre ve doğruluk beceriye bağlı), bitince müşteriye teslim eder.
+## Tezgahtar: tezgâhtaki müşteriyi karşılar (bırakılan işi kabul eder, fiş keser), satış müşterisine raftan parça
+## getirip satar, işi hazır olan teslim müşterisine rafın hazır cihazını getirip verir, boşta kalınca kapıdaki
+## kargo kolilerini açar. Teknisyen: Bekleyen İşler rafında duran masaüstü işlerini yerinde, stoktaki parçalarla
+## kendisi tamir eder (süre ve doğruluk beceriye bağlı) ve "hazır" yapar; laptop/telefon ve tezgâhtaki işe karışmaz.
 
 const EMP := preload("res://scripts/employee.gd")
 const PART := preload("res://scripts/part.gd")
@@ -21,6 +22,7 @@ const SERVE_TECH := Vector3(-0.3, 0, 0.72)
 const CLERK_HOMES := [Vector3(-1.65, 0, 0.72), Vector3(-2.4, 0, 0.72)]
 const TECH_HOMES := [Vector3(-2.4, 0, -2.35), Vector3(2.4, 0, -0.9)]
 const SHELF_X := -3.1
+const RACK_WAY := Vector3(3.0, 0, 0.5)         # Bekleyen İşler rafına giden yolun ara noktası
 # tamir süresi (oyun saati, beceri çarpanından önce)
 const BASE_HOURS := 0.35
 const PART_HOURS := 0.4
@@ -149,6 +151,9 @@ func _release(e) -> void:
 		if is_instance_valid(h):
 			Game.add_stock(h.part_type, h.tier, 1)
 			h.queue_free()
+	if not e.rec.is_empty():
+		jobs.busy.erase(int(e.rec.ticket))
+	e.rec = {}
 	e.pc = null
 
 
@@ -162,8 +167,8 @@ func _hint(id: int) -> String:
 	if d.role == "teknisyen":
 		if e.task == "repair":
 			return "%s — tamir ediyor (%%%d)" % [who, int(100.0 * e.work / maxf(e.need, 0.01))]
-		if e.task == "idle" and jobs.state == "working" and not _pc_taken(jobs.pc):
-			return "%s: masadaki işi ver  [E]" % who
+		if e.task == "idle" and not jobs.tech_candidates().is_empty():
+			return "%s: raftaki işi ver  [E]" % who
 	return "%s  (%s)" % [who, _task_text(e)]
 
 
@@ -181,16 +186,17 @@ func _talk(id: int) -> void:
 		if err == "":
 			return
 		if err == "iş yok":
-			e.say_for(["Masada iş yok usta, çay koyayım mı?", "Müşteri gelince işi bana ver usta."].pick_random(), 3.0)
+			e.say_for(["Rafta iş yok usta, çay koyayım mı?", "Müşteri iş bırakınca ben bakarım usta."].pick_random(), 3.0)
 		return
 	e.say_for(["Buyur usta?", "Hallediyorum usta!", "Merak etme, gözüm müşteride."].pick_random(), 2.5)
 
 
-func _pc_taken(p) -> bool:
-	for id in npcs:
-		if npcs[id].task == "repair" and npcs[id].pc == p:
-			return true
-	return false
+## Rafın o işe ait gözünün önündeki duruş noktası (rafa dönük).
+func _rack_front(rec: Dictionary) -> Vector3:
+	var i := int(str(rec.location).substr(5))
+	var jr = jobs.rack
+	var g: Vector3 = jr.to_global(Vector3(jr.slot_xz(i).x, 0.0, jr.DEPTH + 0.55))
+	return Vector3(g.x, 0.0, g.z)
 
 
 func technicians() -> Array:
@@ -240,29 +246,69 @@ func _tick_clerk(e, delta: float) -> void:
 		e.react_t += delta
 		if e.react_t < _react_delay(e):
 			return
-		if jobs.job.get("kind", "") != "sale":
-			_clerk_accept(e, c)
-		elif not _clerk_sale(e, c) and not delivery.boxes.is_empty():
-			_open_cargo(e)  # parça stokta yok: belki kapıdaki kolidedir
+		match jobs.mode:
+			"dropoff":
+				_clerk_accept(e, c)
+			"pickup":
+				if not _clerk_pickup(e, c) and not delivery.boxes.is_empty():
+					_open_cargo(e)
+			_:
+				if not _clerk_sale(e, c) and not delivery.boxes.is_empty():
+					_open_cargo(e)  # parça stokta yok: belki kapıdaki kolidedir
 		return
 	e.react_t = 0.0
 	if not delivery.boxes.is_empty():
 		_open_cargo(e)
 
 
-## Tamir/yükseltme müşterisi: tezgaha geçip işi kabul eder, bilgisayar masaya konur.
+## Tamir/yükseltme müşterisi: tezgaha geçip işi kabul eder, fiş keser, cihaz Bekleyen İşler rafına konur.
+## Raf doluysa müşteriyi kibarca geri çevirir (itibar kaybı yok).
 func _clerk_accept(e, c) -> void:
 	e.task = "serve"
 	e.noted = c
 	e.walk([SERVE_CLERK], func():
 		e.face_angle = 0.0
-		if jobs.state == "waiting" and jobs.customer == c:
-			jobs._accept()
-			Game.change_rep(float(SD.trait_info(e.info.trait).rep))
-			e.say_for(["Hoş geldiniz! Bilgisayarı hemen ustamın masasına alıyorum.", "Buyrun abi, bırakın biz bakarız."].pick_random(), 3.0)
-			Game.msg("%s müşteriyi karşıladı, bilgisayar masada." % e.info.name, Color(0.6, 0.9, 1.0))
+		if jobs.state == "waiting" and jobs.customer == c and jobs.mode == "dropoff":
+			if Game.jobs_active.size() >= Game.max_active_jobs():
+				jobs.decline_head()
+				e.say_for("Rafımız dolu, yarın gelin lütfen.", 3.0)
+			elif jobs._accept():
+				Game.change_rep(float(SD.trait_info(e.info.trait).rep))
+				e.say_for(["Hoş geldiniz! Fişinizi kestim, cihazı rafa alıyorum.", "Buyrun abi, bırakın biz bakarız."].pick_random(), 3.0)
+				Game.msg("%s müşteriyi karşıladı, cihaz Bekleyen İşler rafında." % e.info.name, Color(0.6, 0.9, 1.0))
 		e.noted = null
 		_go_home(e))
+
+
+## Teslim müşterisi: işi hazırsa rafa gidip cihazı getirir ve verir. Hazır değilse bir kez haber verir (false).
+func _clerk_pickup(e, c) -> bool:
+	var q: Array = jobs.queue
+	if q.is_empty() or q[0].customer != c:
+		return false
+	var rec: Dictionary = q[0].rec
+	if str(rec.status) != "ready" or not str(rec.location).begins_with("rack:") or jobs.busy.has(int(rec.ticket)):
+		if e.noted != c:
+			e.noted = c
+			e.say_for("Usta #%d numaralı iş henüz hazır değil." % int(rec.ticket), 3.5, true)
+		return false
+	e.task = "serve"
+	e.noted = c
+	jobs.busy[int(rec.ticket)] = true
+	e.rec = rec
+	var front := _rack_front(rec)
+	e.walk([SIDE_BACK, RACK_WAY, front], func():
+		e.face_angle = atan2(jobs.rack.global_position.x - front.x, 0.0)
+		Game.sfx.click()
+		e.walk([RACK_WAY, SIDE_BACK, SERVE_CLERK], func():
+			e.face_angle = 0.0
+			jobs.busy.erase(int(rec.ticket))
+			e.rec = {}
+			if jobs.state == "waiting" and jobs.customer == c and jobs.mode == "pickup" and jobs.staff_handover():
+				Game.change_rep(float(SD.trait_info(e.info.trait).rep))
+				e.say_for("Buyrun, fiş #%d hazırdı. İyi günler!" % int(rec.ticket), 3.0)
+			e.noted = null
+			_go_home(e)))
+	return true
 
 
 ## Parça müşterisi: stokta varsa raftan alıp getirir ve satar; yoksa bir kez haber verir.
@@ -289,7 +335,7 @@ func _clerk_sale(e, c) -> bool:
 		Game.sfx.click()
 		e.walk([SERVE_CLERK], func():
 			e.face_angle = 0.0
-			if jobs.state == "waiting" and jobs.customer == c and jobs.job.get("kind", "") == "sale":
+			if jobs.state == "waiting" and jobs.customer == c and jobs.mode == "sale":
 				jobs._try_sell(e)
 				Game.change_rep(float(SD.trait_info(e.info.trait).rep))
 			_release(e)  # satış olmadıysa parça rafa döner
@@ -320,9 +366,9 @@ func _open_cargo(e) -> void:
 func _tick_tech(e, delta: float, tick_bubble: bool, has_clerk: bool) -> void:
 	match e.task:
 		"idle":
-			if e.info.get("auto", true) and jobs.state == "working" and not _pc_taken(jobs.pc):
+			if e.info.get("auto", true) and not jobs.tech_candidates().is_empty():
 				e.react_t += delta
-				if e.react_t >= 2.0:  # bilgisayar masaya konduktan biraz sonra işe koyulur
+				if e.react_t >= 2.0:  # iş rafa konduktan biraz sonra işe koyulur
 					e.react_t = 0.0
 					assign(int(e.info.id), true)
 				return
@@ -330,7 +376,8 @@ func _tick_tech(e, delta: float, tick_bubble: bool, has_clerk: bool) -> void:
 			if not has_clerk and jobs.state != "waiting" and not delivery.boxes.is_empty():
 				_open_cargo(e)
 		"repair":
-			if not is_instance_valid(e.pc) or jobs.pc != e.pc or jobs.state != "working":
+			if not is_instance_valid(e.pc) or e.rec.is_empty() or jobs.devices.get(int(e.rec.ticket)) != e.pc \
+					or Game.job_by_ticket(int(e.rec.ticket)).is_empty() or not str(e.rec.location).begins_with("rack:"):
 				_abort(e, "")
 				return
 			if not e.at_desk:
@@ -342,44 +389,50 @@ func _tick_tech(e, delta: float, tick_bubble: bool, has_clerk: bool) -> void:
 				_finish(e)
 
 
-## Masadaki işi teknisyene ver. Hata metni döner ("" = başladı).
+## Raftaki bir işi teknisyene ver (yeterli stoğu olan ilk iş). Hata metni döner ("" = başladı).
 func assign(id: int, quiet := false) -> String:
 	var e = npcs.get(id)
 	if e == null or e.info.role != "teknisyen":
 		return "teknisyen yok"
 	if e.task != "idle":
 		return "meşgul"
-	if jobs.state != "working" or not is_instance_valid(jobs.pc):
+	var cands: Array = jobs.tech_candidates()
+	if cands.is_empty():
 		return "iş yok"
-	if _pc_taken(jobs.pc):
-		return "başkası yapıyor"
-	var p = jobs.pc
-	# teknisyen sadece masaüstü kasalarla çalışır; laptop/telefon ustaya kalır
-	if str(jobs.job.get("device", "")) != "":
-		if e.noted != p:
-			e.noted = p
-			if not quiet:
-				e.say_for("Laptop/telefon benim işim değil usta, sen bakarsın.", 3.0)
-		return "masaüstü değil"
-	var pl := make_plan(p, jobs.job)
-	# gereken parçaları stoktan ayır
-	var res := []
-	for it in pl.parts:
-		if not Game.take_stock(it[1], int(it[2])):
+	for rec in cands:
+		var p = jobs.devices.get(int(rec.ticket))
+		if p == null or not is_instance_valid(p):
+			continue
+		var pl := make_plan(p, rec)
+		# gereken parçaları stoktan ayır
+		var res := []
+		var missing := ""
+		for it in pl.parts:
+			if not Game.take_stock(it[1], int(it[2])):
+				missing = PM.display_name(it[1], int(it[2]))
+				break
+			res.append([it[1], int(it[2])])
+		if missing != "":
 			for r in res:
 				Game.add_stock(r[0], int(r[1]), 1)
-			var dname := PM.display_name(it[1], int(it[2]))
 			if e.noted != p:
 				e.noted = p
-				e.say_for("Usta stokta %s yok! ParçaNet'ten getirtmek lazım." % dname, 4.0, true)
-				Game.msg("%s: stok yok (%s)." % [e.info.name, dname], Color(1, 0.7, 0.4))
+				e.say_for("Usta stokta %s yok! ParçaNet'ten getirtmek lazım." % missing, 4.0, true)
+				Game.msg("%s: stok yok (%s)." % [e.info.name, missing], Color(1, 0.7, 0.4))
 			elif not quiet:
-				e.say_for("Hâlâ %s yok usta, stok gelmeden yapamam." % dname, 3.0, true)
-			return "stok yok"
-		res.append([it[1], int(it[2])])
+				e.say_for("Hâlâ %s yok usta, stok gelmeden yapamam." % missing, 3.0, true)
+			continue
+		_start_repair(e, rec, p, pl, res)
+		return ""
+	return "stok yok"
+
+
+func _start_repair(e, rec: Dictionary, p, pl: Dictionary, res: Array) -> void:
 	e.reserved = res
 	e.plan = pl
 	e.pc = p
+	e.rec = rec
+	jobs.busy[int(rec.ticket)] = true
 	e.noted = null
 	e.work = 0.0
 	var h: float = BASE_HOURS + PART_HOURS * pl.parts.size() + (DUST_HOURS if pl.dust else 0.0) + (PASTE_HOURS if pl.paste else 0.0)
@@ -387,16 +440,16 @@ func assign(id: int, quiet := false) -> String:
 	e.task = "repair"
 	e.at_desk = false
 	e.say_for("Tamamdır usta, ben hallederim.", 2.5)
-	Game.msg("%s işi aldı (~%.1f saat)." % [e.info.name, e.need], Color(0.6, 0.9, 1.0))
-	e.walk(_route(e, e.position, DESK_SPOT), func():
+	Game.msg("%s #%d numaralı işi aldı (~%.1f saat)." % [e.info.name, int(rec.ticket), e.need], Color(0.6, 0.9, 1.0))
+	var front := _rack_front(rec)
+	e.walk([SIDE_BACK, RACK_WAY, front], func():
 		if e.task != "repair":
 			return
-		var tp: Vector3 = e.pc.global_position if is_instance_valid(e.pc) else DESK_SPOT + Vector3(0.6, 0, -0.6)
+		var tp: Vector3 = e.pc.global_position if is_instance_valid(e.pc) else front + Vector3(0.6, 0, 0)
 		e.face_angle = atan2(tp.x - e.position.x, tp.z - e.position.z)
 		e.at_desk = true
 		if is_instance_valid(e.pc) and not e.pc.panel_open:
 			e.pc.toggle_panel())
-	return ""
 
 
 ## Bilgisayarın şu anki hâline ve işe göre yapılacaklar: değişecek parçalar, toz, macun.
@@ -473,19 +526,14 @@ func _finish(e) -> void:
 	if p.panel_open:
 		p.toggle_panel()
 	Game.change_rep(float(SD.trait_info(d.trait).rep))
-	var problem: String = jobs._problem()
+	var problem: String = jobs._problem_of(e.rec)
 	if problem != "":
 		_abort(e, "Usta bir şey eksik kaldı, sen bir bakar mısın?")
 		return
-	e.say_for("Tamamdır, tıkır tıkır çalışıyor! Teslim ediyorum.", 3.0)
-	e.task = "serve"
-	e.at_desk = false
-	e.walk(_route(e, e.position, SERVE_TECH), func():
-		e.face_angle = 0.0
-		if jobs.state == "working" and jobs.pc == p:
-			jobs._try_deliver()
-		e.pc = null
-		_go_home(e))
+	e.say_for("Tamamdır, tıkır tıkır çalışıyor! Rafa hazır diye bıraktım.", 3.0)
+	jobs.staff_finished(e.rec)
+	_release(e)
+	_go_home(e)
 
 
 func _abort(e, line: String) -> void:

@@ -13,6 +13,7 @@ const MENU := preload("res://scripts/menu.gd")
 const DELIVERY := preload("res://scripts/delivery.gd")
 const DEVICE_RACK := preload("res://scripts/device_rack.gd")  # laptop / telefon parça rafı
 const PROPS := preload("res://scripts/props.gd")
+const JOB_RACK := preload("res://scripts/job_rack.gd")  # bekleyen işler rafı
 
 const DESK_Y := 0.75
 
@@ -39,6 +40,9 @@ func _ready() -> void:
 	_build_tools()
 	_build_shelf()
 	DEVICE_RACK.build(self)
+	var job_rack = JOB_RACK.new()
+	add_child(job_rack)
+	job_rack.build()
 	_build_counter()
 	_build_decor()
 	MU.no_merge(monitor)
@@ -54,6 +58,7 @@ func _ready() -> void:
 	jobs.world = self
 	jobs.monitor = monitor
 	jobs.hud = hud
+	jobs.rack = job_rack
 	jobs.pc_spot = Transform3D(Basis.from_euler(Vector3(0, deg_to_rad(-90), 0)), Vector3(0.45, DESK_Y + 0.012, -2.52))
 	add_child(jobs)
 	jobs.start()
@@ -93,6 +98,10 @@ func _ready() -> void:
 		add_child(load("res://dev/loop_test.gd").new())
 	if "--savetest" in OS.get_cmdline_user_args() and ResourceLoader.exists("res://dev/save_test.gd"):
 		add_child(load("res://dev/save_test.gd").new())
+	if "--jobshot" in OS.get_cmdline_user_args() and ResourceLoader.exists("res://dev/jobs_shot.gd"):
+		add_child(load("res://dev/jobs_shot.gd").new())
+	if "--multijobtest" in OS.get_cmdline_user_args() and ResourceLoader.exists("res://dev/multijob_test.gd"):
+		add_child(load("res://dev/multijob_test.gd").new())
 
 
 ## Ana menü: akşamüstü, sokağın karşısından dükkânın vitrinine bakan, yavaşça süzülen kamera.
@@ -685,7 +694,7 @@ func _shelf_use(p, type: String, tier: int) -> void:
 
 ## Raftan parça al: stoktan düşer (parası ParçaNet siparişinde ödendi).
 func _buy(p, type: String, tier: int, cheap := false) -> void:
-	if p.held:
+	if p.held or Game.is_carrying():
 		return
 	if cheap:
 		if not Game.take_stock_cheap(type, tier):
