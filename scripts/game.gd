@@ -15,7 +15,7 @@ const PM := preload("res://scripts/part_models.gd")
 const FADER := preload("res://scripts/fader.gd")
 const MUSIC := preload("res://scripts/music.gd")
 const UM := preload("res://scripts/used_market.gd")
-const DEV_ARGS := ["--propshot", "--shot", "--uishot", "--perf", "--partshot", "--looptest", "--jobdisttest", "--holdtest", "--holdshot"]
+const DEV_ARGS := ["--propshot", "--shot", "--uishot", "--perf", "--partshot", "--looptest", "--jobdisttest", "--holdtest", "--holdshot", "--savetest"]
 
 # --- Ayarlanabilir sabitler ---
 const OPEN_HOUR := 9.0
@@ -29,6 +29,7 @@ const RENT_RAISE_EVERY := 3               # kaç günde bir kira seviyesi artar
 const START_REP := 3.0
 const BANKRUPT_DAYS := 2                  # üst üste kaç gün eksi bakiye = iflas
 const SAVE_PATH := "user://save.json"
+const SAVE_VERSION := 2                   # kayıt şeması sürümü (eski kayıtlar _migrate ile çevrilir)
 
 const UPGRADE_LIST := [
 	{"id": "sign", "name": "Reklam Tabelası", "price": 400, "desc": "Müşteriler daha sık gelir."},
@@ -108,6 +109,7 @@ var started := false          # oyuncu Yeni Oyun / Devam Et seçti mi
 var phase := "menu"           # menu / day / summary / over
 var running := false          # HUD ayarlar: fare yakalı ve oyun akıyor
 var save_path := SAVE_PATH
+var _loaded_from_backup := false  # son okuma ana dosya yerine yedekten mi yapıldı
 
 
 func _ready() -> void:
@@ -538,8 +540,7 @@ func end_day() -> void:
 	s.next_rent = rent()
 	if debt_days >= BANKRUPT_DAYS:
 		phase = "over"
-		if FileAccess.file_exists(save_path):
-			DirAccess.remove_absolute(save_path)
+		_delete_save_files()  # iflasta yedek de silinir: geri getirilemesin
 		game_over.emit(s)
 		return
 	s.warn = debt_days > 0
@@ -549,16 +550,106 @@ func end_day() -> void:
 
 
 # --- Kayıt ---
+## Geçerli bir kayıt (ana dosya ya da yedek) var mı.
 func has_save() -> bool:
-	return FileAccess.file_exists(save_path)
+	return not _parse_save_file(save_path).is_empty() or not _parse_save_file(_bak_path()).is_empty()
+
+
+func _bak_path() -> String:
+	return save_path + ".bak"
+
+
+func _tmp_path() -> String:
+	return save_path + ".tmp"
+
+
+## Tek bir kayıt dosyasını okur ve JSON sözlüğü olarak döndürür; bozuk/yoksa {}.
+func _parse_save_file(path: String) -> Dictionary:
+	if not FileAccess.file_exists(path):
+		return {}
+	var parsed = JSON.parse_string(FileAccess.get_file_as_string(path))
+	if typeof(parsed) != TYPE_DICTIONARY:
+		return {}
+	return parsed
+
+
+## Kaydı okur; ana dosya bozuksa yedeğe bakar. Yedekten okunduysa _loaded_from_backup true olur.
+func _read_save() -> Dictionary:
+	_loaded_from_backup = false
+	var d := _parse_save_file(save_path)
+	if d.is_empty():
+		d = _parse_save_file(_bak_path())
+		if not d.is_empty():
+			_loaded_from_backup = true
+			push_warning("Kayıt dosyası bozuk, yedekten okunuyor: " + _bak_path())
+	return d
+
+
+## Kayıt dosyalarını (ana, yedek, geçici) siler.
+func _delete_save_files() -> void:
+	for p in [save_path, _bak_path(), _tmp_path()]:
+		if FileAccess.file_exists(p):
+			DirAccess.remove_absolute(p)
+
+
+## Eski sürüm kayıtlarını güncel şemaya adım adım çevirir.
+## Yeni sürüm eklenince her dönüşüm "if from_version < N:" bloğu olarak buraya yazılır.
+func _migrate(d: Dictionary, from_version: int) -> Dictionary:
+	if from_version < 2:
+		pass  # v1 -> v2: şema aynı, yalnızca "version" alanı eklendi; dönüşüm gerekmez
+	# if from_version < 3:
+	# 	d["yeni_alan"] = varsayılan
+	return d
+
+
+## Kayıt sözlüğünü geçici dosyaya yazar, doğrular, eski kaydı yedekler ve yerine koyar.
+## Başarısızlıkta eski kayıt korunur. Dönüş: başarılıysa true.
+func _write_save_atomic(d: Dictionary) -> bool:
+	var tmp := _tmp_path()
+	var bak := _bak_path()
+	var f := FileAccess.open(tmp, FileAccess.WRITE)
+	if f == null:
+		push_error("Kayıt yazılamadı, geçici dosya açılamadı: %s" % error_string(FileAccess.get_open_error()))
+		return false
+	f.store_string(JSON.stringify(d))
+	var werr := f.get_error()
+	f.close()
+	if werr != OK or _parse_save_file(tmp).is_empty():
+		push_error("Kayıt yazılamadı, geçici dosya bozuk (hata: %s)" % error_string(werr))
+		DirAccess.remove_absolute(tmp)
+		return false
+	var had_old := FileAccess.file_exists(save_path)
+	if had_old:
+		# yalnızca geçerli ana dosya yedeklenir; bozuk dosya iyi yedeğin üstüne yazılmasın
+		if not _parse_save_file(save_path).is_empty():
+			if FileAccess.file_exists(bak):
+				DirAccess.remove_absolute(bak)
+			var cerr := DirAccess.copy_absolute(save_path, bak)
+			if cerr != OK:
+				push_error("Kayıt yedeklenemedi: %s" % error_string(cerr))
+				DirAccess.remove_absolute(tmp)
+				return false
+		# Windows'ta üstüne yeniden adlandırma başarısız olabildiği için önce ana dosya silinir
+		var derr := DirAccess.remove_absolute(save_path)
+		if derr != OK:
+			push_error("Eski kayıt silinemedi: %s" % error_string(derr))
+			DirAccess.remove_absolute(tmp)
+			return false
+	var rerr := DirAccess.rename_absolute(tmp, save_path)
+	if rerr != OK:
+		push_error("Kayıt dosyası yerine konamadı: %s" % error_string(rerr))
+		if had_old and FileAccess.file_exists(bak):
+			# eski kaydı geri getir: oyuncu kaydını kaybetmesin
+			DirAccess.copy_absolute(bak, save_path)
+		DirAccess.remove_absolute(tmp)
+		return false
+	return true
 
 
 ## Kayıt dosyasının özeti (ana menüde göstermek için); kayıt yoksa boş sözlük.
 func peek_save() -> Dictionary:
-	if not has_save():
-		return {}
-	var parsed = JSON.parse_string(FileAccess.get_file_as_string(save_path))
-	if typeof(parsed) != TYPE_DICTIONARY:
+	var parsed := _read_save()
+	if parsed.is_empty():
 		return {}
 	return {"day": int(parsed.get("day", 1)), "money": int(parsed.get("money", 0)), "rep": float(parsed.get("rep", 3.0))}
 
@@ -579,7 +670,7 @@ func return_to_menu() -> void:
 
 
 func save_game() -> void:
-	var d := {"day": day, "clock": clock, "money": money, "rep": rep, "upgrades": upgrades.keys(),
+	var d := {"version": SAVE_VERSION, "day": day, "clock": clock, "money": money, "rep": rep, "upgrades": upgrades.keys(),
 		"jobs_done": jobs_done, "rent_level": rent_level, "debt_days": debt_days, "stats": stats,
 		"stock": stock, "market": market, "market_prev": market_prev, "next_order_id": next_order_id, "job_history": job_history}
 	# kapıdaki/yoldaki kargolar kayıtta "yolda" sayılır; kurye yeniden getirir
@@ -594,19 +685,23 @@ func save_game() -> void:
 		d.clock = OPEN_HOUR
 		d.market = market
 	_save_staff(d)  # PERSONEL
-	var f := FileAccess.open(save_path, FileAccess.WRITE)
-	if f:
-		f.store_string(JSON.stringify(d))
+	if not _write_save_atomic(d):
+		msg("Kayıt yazılamadı! Disk dolu ya da yazma izni yok olabilir.", Color(1, 0.5, 0.4))
 
 
 func load_game() -> bool:
 	if not has_save():
 		return false
-	var txt := FileAccess.get_file_as_string(save_path)
-	var parsed = JSON.parse_string(txt)
-	if typeof(parsed) != TYPE_DICTIONARY:
+	var d := _read_save()
+	if d.is_empty():
 		return false
-	var d: Dictionary = parsed
+	var ver := int(d.get("version", 1))  # sürüm alanı yoksa ilk sürüm kabul edilir
+	if ver > SAVE_VERSION:
+		push_warning("Kayıt sürümü (%d) bu oyunun sürümünden (%d) yeni; kayıt yüklenmedi." % [ver, SAVE_VERSION])
+		return false
+	if _loaded_from_backup:
+		msg("Kayıt dosyası bozuktu, yedekten yüklendi.", Color(1, 0.8, 0.4))
+	d = _migrate(d, ver)
 	day = int(d.get("day", 1))
 	money = int(d.get("money", START_MONEY))
 	rep = clampf(float(d.get("rep", START_REP)), 0.0, 5.0)
