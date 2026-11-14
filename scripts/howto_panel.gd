@@ -120,10 +120,10 @@ func _step(parent: Control, n: int, title: String, body: String) -> void:
 
 func _loop(parent: Control) -> void:
 	var v := _section(parent, "Oyun Döngüsü")
-	_step(v, 1, "Müşteriyi karşıla", "Tezgaha gelen müşteriye bak ve E'ye bas. Derdini anlatır, bilgisayarını masana bırakır.")
+	_step(v, 1, "Müşteriyi karşıla", "Tezgaha gelen müşteriye bak, derdini dinle: E ile işi kabul et (F ile geri çevir). Cihaz sağ duvardaki Bekleyen İşler rafına konur, müşteri fiş alıp teslim gününde gelir. Aynı anda en çok 3 iş tutabilirsin.")
 	_step(v, 2, "Arızayı bul", "Bilgisayarın cam kapağını aç, güç düğmesine bas. Bip seslerini, ekranı ve anakartın hata LED'lerini izle.")
 	_step(v, 3, "Parçayı değiştir", "Arızalı parçayı sök (E), hurda kutusuna at. Stok rafından yenisini al ve yuvaya tak.")
-	_step(v, 4, "Teslim et", "Kapağı kapat, bilgisayarı çalıştır ve müşteriyle konuş. Ücretini alırsın; hızlı servis itibarı artırır.")
+	_step(v, 4, "Rafa koy, teslim et", "Kapağı kapat, bilgisayarı çalıştır, cihazı rafa geri koy: sorun yoksa yeşil yanar (hazır). Müşteri teslim saatinde gelip fiş numarasını söyler; o numaralı cihazı rafta bul (fişe bakıp E ile al), müşteriye E'ye bas. Ücretini alırsın; zamanında ve erken teslim itibarı artırır.")
 
 
 func _guide(parent: Control) -> void:
@@ -184,8 +184,8 @@ func _depth(parent: Control) -> void:
 func _staff(parent: Control) -> void:
 	var v := _section(parent, "Personel (Çalışan Alma)")
 	_para(v, "Laptop → Personel sekmesinden her sabah gelen adaylardan en fazla 2 kişiyi işe alabilirsin. Her adayın becerisi (1-5 yıldız), huyu ve günlük maaşı var; maaşlar gün sonunda kasadan düşer.")
-	_step(v, 1, "Tezgahtar", "Bekleyen müşteriyi karşılar ve işi kabul eder; parça isteyene raftan getirip satar; boşta kalınca kapıdaki ParçaNet kolilerini açar.")
-	_step(v, 2, "Teknisyen", "Masadaki işi stoktaki parçalarla kendisi tamir eder ve müşteriye teslim eder; para yine sana gelir. Ona bakıp E'ye bas ya da Personel sekmesinden \"İşi Ver\". Parça stokta yoksa haber verir.")
+	_step(v, 1, "Tezgahtar", "Tezgâhtaki müşteriyi karşılar, işi kabul edip fiş keser; parça isteyene raftan getirip satar; teslime gelene hazır işin cihazını rafdan getirir; boşta kalınca kapıdaki ParçaNet kolilerini açar.")
+	_step(v, 2, "Teknisyen", "Bekleyen İşler rafındaki masaüstü işlerini stoktaki parçalarla yerinde tamir eder ve hazır yapar; para teslimde sana gelir. Ona bakıp E'ye bas ya da Personel sekmesinden \"İşi Ver\". Parça stokta yoksa haber verir.")
 	_para(v, "Beceri ne kadar yüksekse o kadar hızlı ve hatasız çalışır. Hata yaparsa bir parça yanar ve itibar düşer.", T.MUTED)
 
 

@@ -7,6 +7,7 @@ const K := preload("res://scripts/ui_kit.gd")
 const CROSS := preload("res://scripts/crosshair.gd")
 const PAUSE := preload("res://scripts/pause_menu.gd")
 const OFFICE := preload("res://scripts/office_panel.gd")
+const ST := preload("res://scripts/job_store.gd")
 
 var _ui_root: Control
 # sol üst kart
@@ -24,8 +25,14 @@ var job_pay_pill: Control
 var job_no: Label
 var job_who: Label
 var _job_holder: Control
-var _ticket := 40
 var _last_job := ""
+# açık işler listesi
+var _job_card: Control
+var _jobs_holder: Control
+var _jobs_box: VBoxContainer
+var _jobs_count: Label
+var _jobs_sig := ""
+var _jobs_t := 0.0
 var _summary_sub: Label
 var job_desc: Label
 var patience_row: Control
@@ -77,6 +84,7 @@ func _ready() -> void:
 	_ui_root = root
 	_build_money_card(root)
 	_build_job_card(root)
+	_build_jobs_list(root)
 	_build_center(root)
 	_build_toasts(root)
 	_build_tip(root)
@@ -93,10 +101,10 @@ func _ready() -> void:
 	Game.game_over.connect(_on_game_over)
 	Game.day_started.connect(_on_day_started)
 	Game.orders_changed.connect(_refresh_cargo)
+	Game.jobs_changed.connect(_refresh_jobs)
 	Settings.changed.connect(func(k): if k == "show_fps": fps_label.visible = Settings.show_fps)
 	fps_label.visible = Settings.show_fps
 	_on_money(Game.money)
-	_ticket = 40 + Game.day * 3
 	_on_rep(Game.rep)
 	set_job("Hoş geldin!", "")
 	set_patience(-1.0)
@@ -188,6 +196,8 @@ func _build_job_card(root: Control) -> void:
 	var card := K.panel(holder, "PaperPanel")
 	card.custom_minimum_size = Vector2(380, 0)
 	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_job_card = card
+	card.resized.connect(_place_jobs_list)
 	# mandal
 	var clip := PanelContainer.new()
 	var cs := T.flat(Color("5d636e"), 3, Color("9aa1ad"), 0, Vector2(0, 0), 3)
@@ -204,7 +214,7 @@ func _build_job_card(root: Control) -> void:
 	card.add_child(vb)
 	var head := HBoxContainer.new()
 	vb.add_child(head)
-	K.label(head, "SERVİS FİŞİ", 17, T.INK, "SignLabel").size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	K.label(head, "TEZGÂH FİŞİ", 17, T.INK, "SignLabel").size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	job_no = K.label(head, "No. 0000", 22, T.INK_MUTED, "ReceiptLabel")
 	job_no.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	var sep := HSeparator.new()
@@ -245,6 +255,118 @@ func _build_job_card(root: Control) -> void:
 	patience_bar.add_theme_stylebox_override("background", T.flat(Color(T.INK.r, T.INK.g, T.INK.b, 0.12), 2, Color(T.INK.r, T.INK.g, T.INK.b, 0.3), 1, Vector2(0, 0)))
 	patience_row.add_child(patience_bar)
 	patience_row.visible = false
+
+
+## Açık işler listesi: tezgâh fişinin altında ikinci bir kâğıt. Fiş no, müşteri, kısa iş, durum ve teslim saati;
+## tezgâhtaki iş vurgulanır. Veri Game.jobs_active; değişince (jobs_changed) ve saat ilerleyince yenilenir.
+func _build_jobs_list(root: Control) -> void:
+	var holder := Control.new()
+	holder.anchor_left = 1.0
+	holder.anchor_right = 1.0
+	holder.offset_left = -404
+	holder.offset_right = -24
+	holder.offset_top = 250
+	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	holder.rotation_degrees = -0.5
+	holder.pivot_offset = Vector2(190, 0)
+	root.add_child(holder)
+	_jobs_holder = holder
+	var card := K.panel(holder, "PaperPanel")
+	card.custom_minimum_size = Vector2(380, 0)
+	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var vb := VBoxContainer.new()
+	vb.add_theme_constant_override("separation", 4)
+	card.add_child(vb)
+	var head := HBoxContainer.new()
+	vb.add_child(head)
+	K.label(head, "AÇIK İŞLER", 17, T.INK, "SignLabel").size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_jobs_count = K.label(head, "0 / 3", 22, T.INK_MUTED, "ReceiptLabel")
+	var sep := HSeparator.new()
+	sep.theme_type_variation = "InkSeparator"
+	sep.add_theme_constant_override("separation", 6)
+	vb.add_child(sep)
+	_jobs_box = VBoxContainer.new()
+	_jobs_box.add_theme_constant_override("separation", 5)
+	vb.add_child(_jobs_box)
+
+
+## Tezgâh fişinin boyu değişince liste hemen altına kayar.
+func _place_jobs_list() -> void:
+	if _jobs_holder and _job_card:
+		_jobs_holder.offset_top = 30 + _job_card.size.y + 20
+
+
+func _refresh_jobs() -> void:
+	_jobs_sig = ""
+	_rebuild_jobs()
+
+
+func _rebuild_jobs() -> void:
+	if _jobs_box == null:
+		return
+	var now := Game.now_abs()
+	var recs: Array = Game.jobs_active.duplicate()
+	recs.sort_custom(func(a, b): return float(a.due_abs) < float(b.due_abs))
+	var sig := "%d/%d" % [recs.size(), Game.max_active_jobs()]
+	for r in recs:
+		sig += "|%d%s%s%s" % [int(r.ticket), r.status, r.location, ST.due_label(float(r.due_abs), Game.day)] + ("!" if now > float(r.due_abs) else "")
+	if sig == _jobs_sig:
+		return
+	_jobs_sig = sig
+	for c in _jobs_box.get_children():
+		_jobs_box.remove_child(c)
+		c.queue_free()
+	_jobs_count.text = "%d / %d" % [recs.size(), Game.max_active_jobs()]
+	if recs.is_empty():
+		var e := K.label(_jobs_box, "Rafta iş yok. Müşteri bırakınca fiş burada görünür.", 15, T.INK_MUTED)
+		e.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		e.custom_minimum_size = Vector2(330, 0)
+		return
+	for r in recs:
+		_job_row(r, now)
+
+
+func _job_row(r: Dictionary, now: float) -> void:
+	var bench: bool = str(r.location) == "bench"
+	var carried: bool = str(r.location) == "carry"
+	var col := ST.status_color(r, now)
+	var ink := Color(col.r * 0.62, col.g * 0.62, col.b * 0.62)
+	var row := PanelContainer.new()
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var bg := Color(T.ACCENT.r, T.ACCENT.g, T.ACCENT.b, 0.34) if (bench or carried) else Color(T.INK.r, T.INK.g, T.INK.b, 0.05)
+	row.add_theme_stylebox_override("panel", T.flat(bg, 4, Color(T.ACCENT_LO.r, T.ACCENT_LO.g, T.ACCENT_LO.b, 0.9) if (bench or carried) else Color(0, 0, 0, 0), 2, Vector2(8, 4)))
+	_jobs_box.add_child(row)
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 8)
+	h.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(h)
+	var bar := ColorRect.new()
+	bar.color = ink
+	bar.custom_minimum_size = Vector2(5, 0)
+	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	h.add_child(bar)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", -2)
+	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	v.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	h.add_child(v)
+	var l1 := HBoxContainer.new()
+	l1.add_theme_constant_override("separation", 6)
+	v.add_child(l1)
+	K.label(l1, "#%d" % int(r.ticket), 22, T.INK_MUTED, "ReceiptLabel")
+	var nm := K.hand(l1, str(r.name), 26)
+	nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	nm.clip_text = true
+	var due := K.label(l1, ST.due_label(float(r.due_abs), Game.day), 15, ink if now > float(r.due_abs) else T.INK, "InkLabel")
+	due.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var l2 := HBoxContainer.new()
+	l2.add_theme_constant_override("separation", 6)
+	v.add_child(l2)
+	var goal := K.label(l2, ST.short_goal(r), 14, T.INK_MUTED)
+	goal.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	goal.clip_text = true
+	var stx := "ELDE" if carried else ST.status_text(r, now)
+	K.label(l2, stx, 12, ink, "SmallCaps").size_flags_vertical = Control.SIZE_SHRINK_CENTER
 
 
 func _build_center(root: Control) -> void:
@@ -503,6 +625,8 @@ func _on_day_ended(s: Dictionary) -> void:
 	_row("Tamamlanan iş", "%d ADET" % s.jobs)
 	if int(s.get("sales", 0)) > 0:
 		_row("Tezgah satışı", "%d PARÇA" % s.sales)
+	if int(s.get("open_jobs", 0)) > 0:
+		_row("Rafta açık iş", "%d ADET" % int(s.open_jobs))
 	_row("Gelir", "+%s TL" % K.money(s.income), green)
 	_row("Parça siparişi", "-%s TL" % K.money(s.parts), red)
 	if int(s.get("shipping", 0)) > 0:
@@ -577,7 +701,7 @@ func pop_money(amount: int) -> void:
 	tw.chain().tween_callback(l.queue_free)
 
 
-func set_job(title: String, desc: String) -> void:
+func set_job(title: String, desc: String, ticket := -1) -> void:
 	var parts := title.split(" — ")
 	var is_job := parts.size() > 1
 	job_name.text = parts[0]
@@ -587,12 +711,11 @@ func set_job(title: String, desc: String) -> void:
 		job_pay.text = parts[1]
 		if parts[0] != _last_job:
 			_last_job = parts[0]
-			_ticket += 1
 			# yeni fiş: hafif sallanma
 			var tw := _job_holder.create_tween()
 			tw.tween_property(_job_holder, "rotation_degrees", -2.5, 0.12).set_ease(Tween.EASE_OUT)
 			tw.tween_property(_job_holder, "rotation_degrees", 0.8, 0.5).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
-	job_no.text = "No. %04d" % _ticket
+	job_no.text = "No. %04d" % ticket if ticket >= 0 else "No. ----"
 	job_desc.text = desc.replace("[E]", "(E)")
 	job_desc.visible = desc != ""
 
@@ -741,6 +864,10 @@ func _process(delta: float) -> void:
 			_fps_t = 0.0
 			fps_label.text = "FPS: %d   Draw call: %d" % [Engine.get_frames_per_second(),
 				RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME)]
+	_jobs_t -= delta
+	if _jobs_t <= 0.0:
+		_jobs_t = 1.0
+		_rebuild_jobs()
 	var minute := int(Game.clock * 60.0)
 	var txt := "%d:%d" % [Game.day, minute]
 	if txt != _clock_cache:

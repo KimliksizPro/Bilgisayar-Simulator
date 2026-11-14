@@ -71,14 +71,14 @@ func get_hint(player) -> String:
 	if slot:
 		return slot.get_hint(player)
 	if player.held == null:
-		return "Al: %s  [E]" % display_name
+		return "Elin dolu (cihaz taşıyorsun)" if Game.is_carrying() else "Al: %s  [E]" % display_name
 	return ""
 
 
 func interact(player) -> void:
 	if slot:
 		slot.interact(player)
-	elif player.held == null:
+	elif player.held == null and not Game.is_carrying():
 		player.pick_up(self)
 
 
