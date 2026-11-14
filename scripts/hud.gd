@@ -40,6 +40,7 @@ var patience_bar: ProgressBar
 var _pfill: StyleBoxTexture
 # merkez
 var crosshair: Control
+var corner_hint: Control   # sağ alttaki "Esc Duraklat" ipucu (tezgâh modunda gizlenir)
 var prompt: Control
 var prompt_key: Control
 var prompt_text: Label
@@ -471,6 +472,7 @@ func _build_corner(root: Control) -> void:
 	h.modulate.a = 0.6
 	h.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(h)
+	corner_hint = h
 	K.keycap(h, "Esc", 14)
 	var l := K.label(h, "Duraklat", 15, T.TEXT, "MutedLabel")
 	l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -829,6 +831,8 @@ func _hide_tip() -> void:
 # ---------------------------------------------------------------- girdi / kare güncelleme
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("ui_cancel"):
+		if Game.bench_active:  # tezgâh modu Esc'i kendisi işler
+			return
 		if office.is_open():
 			Game.sfx.ui_back()
 			close_upgrades()
@@ -857,7 +861,7 @@ func _process(delta: float) -> void:
 	if captured and not Game.started and Game.dev_mode:
 		Game.new_game()
 	Game.ui_modal = summary_root.visible or over_root.visible or office.is_open() or pause.open_now
-	Game.running = captured and Game.started and not Game.paused
+	Game.running = (captured or Game.bench_active) and Game.started and not Game.paused
 	if fps_label.visible:
 		_fps_t += delta
 		if _fps_t >= 0.25:

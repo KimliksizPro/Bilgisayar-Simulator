@@ -33,6 +33,8 @@ const DEV_ARGS := [
 	"--holdshot",
 	"--savetest",
 	"--datatest",
+	"--benchtest",
+	"--benchshot",
 	"--multijobtest",
 	"--jobshot",
 ]
@@ -66,6 +68,7 @@ var player = null
 ## Tezgâhta üzerinde çalışılan cihaz (PC kasası / laptop / telefon) ya da null.
 ## Tezgâh modu ve çoklu iş sistemi arasındaki ortak sözleşme: cihazı tezgâha koyan set_bench_device çağırır.
 var bench_device = null
+var bench_active := false     # tezgâh modu (yörünge kamera) açık: fare serbest ama zaman akar
 ## Çoklu iş: müşterinin bırakıp gittiği, henüz teslim edilmemiş işler (bkz. job_manager.gd, job_store.gd).
 ## Kayıt: {ticket, name, kind, device, parts, pay, due_abs, express, status, location, state, ...}
 var jobs_active: Array = []

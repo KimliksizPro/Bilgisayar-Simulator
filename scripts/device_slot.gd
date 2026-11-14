@@ -9,8 +9,9 @@ func _process(_delta: float) -> void:
 	if part and part.slot == self:
 		part.collision_layer = 2 if open else 0
 	var p = Game.player
-	ghost.visible = open and part == null and p != null and p.held != null \
+	var lit: bool = open and part == null and p != null and p.held != null \
 		and not p.held.is_tool() and p.held.part_type == accepts
+	ghost.visible = lit or _bench_glow()
 
 
 func get_hint(player) -> String:

@@ -8,6 +8,9 @@ var accepts := ""
 var part = null
 var pc = null
 var ghost: MeshInstance3D
+var ghost_mat: StandardMaterial3D
+var bench_tint := Color(0, 0, 0, 0)  # tezgâh modu yuva ışığı (yeşil/kırmızı); a = 0 kapalı
+const GHOST_COL := Color(0.2, 0.9, 1.0, 0.25)
 
 
 func setup(type: String, owner_pc):
@@ -18,8 +21,9 @@ func setup(type: String, owner_pc):
 	monitoring = false
 	var info: Dictionary = PM.info(type)
 	MU.add_box_shape(self, info.size * 1.08, info.center)
-	var gm := MU.new_mat(Color(0.2, 0.9, 1.0, 0.25), 0, 0.5, 1.0)
+	var gm := MU.new_mat(GHOST_COL, 0, 0.5, 1.0)
 	gm.no_depth_test = false
+	ghost_mat = gm
 	ghost = MU.box(self, info.size, info.center, gm)
 	ghost.visible = false
 	return self
@@ -27,8 +31,19 @@ func setup(type: String, owner_pc):
 
 func _process(_delta: float) -> void:
 	var p = Game.player
-	ghost.visible = part == null and p != null and p.held != null \
+	var lit: bool = part == null and p != null and p.held != null \
 		and not p.held.is_tool() and p.held.part_type == accepts and pc.panel_open
+	ghost.visible = lit or _bench_glow()
+
+
+## Tezgâh modunda yuva rengi: boş yuvada tint görünür, normal ipucu rengine döner.
+func _bench_glow() -> bool:
+	var on := bench_tint.a > 0.0 and part == null
+	var c := bench_tint if on else GHOST_COL
+	if ghost_mat.albedo_color != c:
+		ghost_mat.albedo_color = c
+		ghost_mat.emission = Color(c.r, c.g, c.b)
+	return on
 
 
 func get_hint(player) -> String:
