@@ -18,8 +18,7 @@ func _ready() -> void:
 	_root = m[0]
 	_panel = m[1]
 	var vb: VBoxContainer = m[2]
-	K.label(vb, "Nasıl Oynanır?", 36, T.ACCENT, "TitleLabel")
-	K.hsep(vb)
+	K.title(vb, "Nasıl Oynanır?")
 	_scroll = ScrollContainer.new()
 	_scroll.custom_minimum_size = Vector2(0, 470)
 	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -68,7 +67,7 @@ func _section(parent: Control, title: String) -> VBoxContainer:
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 8)
 	p.add_child(v)
-	K.label(v, title, 24, T.ACCENT, "BoldLabel")
+	K.label(v, title, 20, T.ACCENT, "SignLabel")
 	return v
 
 
@@ -105,7 +104,7 @@ func _step(parent: Control, n: int, title: String, body: String) -> void:
 	var badge := K.panel(h, "KeyCap")
 	badge.custom_minimum_size = Vector2(40, 0)
 	badge.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
-	var nl := K.label(badge, str(n), 20, T.ACCENT_HI, "BoldLabel")
+	var nl := K.label(badge, str(n), 20, T.INK, "HeavyLabel")
 	nl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	var t := VBoxContainer.new()
 	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL

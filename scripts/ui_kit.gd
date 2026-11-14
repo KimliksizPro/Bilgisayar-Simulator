@@ -69,16 +69,19 @@ static func panel(parent: Node, variation := "") -> PanelContainer:
 static func keycap(parent: Node, text: String, size := 18) -> PanelContainer:
 	var p := panel(parent, "KeyCap")
 	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var l := label(p, text, size, T.TEXT, "BoldLabel")
+	var l := label(p, text, size, T.INK, "HeavyLabel")
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	p.custom_minimum_size = Vector2(maxf(34.0, size * 1.9), 0)
+	p.custom_minimum_size = Vector2(maxf(30.0, size * 1.7), 0)
 	return p
 
 
-static func stars(parent: Node, px := 22) -> Control:
+static func stars(parent: Node, px := 22, dim := Color(1, 1, 1, 0.16), on := T.ACCENT) -> Control:
 	var s: Control = STAR.new()
 	s.px = px
+	s.dim = dim
+	s.on = on
 	if parent:
 		parent.add_child(s)
 	return s
@@ -160,3 +163,58 @@ static func focus_first(n: Node) -> void:
 		if c is Button and c.is_visible_in_tree() and not c.disabled:
 			c.grab_focus()
 			return
+
+
+## Pencere başlığı: tabela yazısı (Bungee) + altında sarı-siyah ikaz şeridi.
+static func title(parent: Node, text: String, size := 34, color := T.ACCENT, stripe := true) -> Label:
+	var l := label(parent, text, size, color, "TitleLabel")
+	if stripe:
+		var tr := TextureRect.new()
+		tr.texture = T.hazard_tex()
+		tr.stretch_mode = TextureRect.STRETCH_TILE
+		tr.custom_minimum_size = Vector2(0, 6)
+		tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		tr.modulate.a = 0.85
+		tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		parent.add_child(tr)
+	return l
+
+
+## Yazar kasa LCD ekranı: [panel, etiket].
+static func lcd(parent: Node, text: String, size := 34, pad := Vector2(14, 2)) -> Array:
+	var p := panel(parent, "LcdPanel")
+	p.add_theme_stylebox_override("panel", T.lcd_box(pad))
+	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var l := label(p, text, size, T.LCD, "LcdLabel")
+	lcd_glow(l)
+	return [p, l]
+
+
+static func lcd_glow(l: Label, color := T.LCD) -> void:
+	l.add_theme_constant_override("outline_size", 8)
+	l.add_theme_color_override("font_outline_color", Color(color.r, color.g, color.b, 0.16))
+
+
+## Eğik lastik mühür (kapsayıcı döndürmeyi sıfırladığı için sabit boyutlu bir taşıyıcı içinde).
+static func stamp(parent: Node, text: String, color := T.STAMP_RED, size := 18, angle := -6.0) -> Array:
+	var holder := Control.new()
+	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	parent.add_child(holder)
+	var p := panel(holder, "")
+	p.add_theme_stylebox_override("panel", T.stamp_box(color))
+	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var l := label(p, text, size, color, "SignLabel")
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	p.rotation_degrees = angle
+	p.resized.connect(func():
+		p.pivot_offset = p.size * 0.5
+		var a := absf(deg_to_rad(angle))
+		var bb := Vector2(p.size.x * cos(a) + p.size.y * sin(a), p.size.x * sin(a) + p.size.y * cos(a))
+		holder.custom_minimum_size = bb + Vector2(6, 6)
+		p.position = (holder.custom_minimum_size - p.size) * 0.5)
+	return [holder, p, l]
+
+
+## El yazısı etiketi (Caveat).
+static func hand(parent: Node, text: String, size := 28, color := T.PEN) -> Label:
+	return label(parent, text, size, color, "HandLabel")

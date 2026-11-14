@@ -20,6 +20,9 @@ var menu
 var menu_cam: Camera3D
 var _menu_t := 0.0
 var sun: DirectionalLight3D
+var street_light: OmniLight3D
+var sign_light: OmniLight3D
+var _day_env := {}
 
 
 func _ready() -> void:
@@ -69,10 +72,10 @@ func _ready() -> void:
 		add_child(load("res://dev/loop_test.gd").new())
 
 
-## Ana menü: oyuncunun kamerası yerine yavaşça süzülen sinematik kamera.
+## Ana menü: akşamüstü, sokağın karşısından dükkânın vitrinine bakan, yavaşça süzülen kamera.
 func _start_menu() -> void:
 	menu_cam = Camera3D.new()
-	menu_cam.fov = 62.0
+	menu_cam.fov = 50.0
 	menu_cam.near = 0.05
 	add_child(menu_cam)
 	menu_cam.make_current()
@@ -81,14 +84,39 @@ func _start_menu() -> void:
 	menu.start_game.connect(_begin_game)
 	add_child(menu)
 	hud.visible = false
+	_set_evening(true)
 	_drift_camera()
 
 
+## Menü için akşam ışığı: gökyüzü ve güneş kısılır, tabela ve sokak lambası yanar.
+func _set_evening(on: bool) -> void:
+	if on:
+		_day_env = {"bg": env.background_energy_multiplier, "amb": env.ambient_light_energy,
+			"sun": sun.light_energy, "sun_col": sun.light_color, "sun_rot": sun.rotation_degrees, "exp": env.tonemap_exposure}
+		env.background_energy_multiplier = 0.15
+		env.ambient_light_energy = 0.12
+		sun.light_energy = 0.45
+		sun.light_color = Color(1.0, 0.55, 0.3)
+		sun.rotation_degrees = Vector3(-9, 60, 0)
+		env.tonemap_exposure = 1.25
+		street_light.light_energy = 2.2
+		sign_light.light_energy = 1.2
+	elif not _day_env.is_empty():
+		env.background_energy_multiplier = _day_env.bg
+		env.ambient_light_energy = _day_env.amb
+		sun.light_energy = _day_env.sun
+		sun.light_color = _day_env.sun_col
+		sun.rotation_degrees = _day_env.sun_rot
+		env.tonemap_exposure = _day_env.exp
+		street_light.light_energy = 0.0
+		sign_light.light_energy = 0.0
+
+
 func _drift_camera() -> void:
-	# ön sağ köşeden tezgah ve tamir masasına doğru yavaş yörünge
-	var a := _menu_t * 0.07
-	var pos := Vector3(-2.5 + sin(a) * 0.7, 1.55 + sin(a * 1.7) * 0.08, 0.2 + cos(a * 0.8) * 0.3)
-	var look := Vector3(1.5 + sin(a * 0.9) * 0.5, 0.95, -2.3)
+	# sokağın karşısından vitrine; hafif yatay salınım ve nefes alma
+	var a := _menu_t * 0.08
+	var pos := Vector3(-2.7 + sin(a) * 0.45, 1.7 + sin(a * 1.6) * 0.05, 11.4 + cos(a * 0.7) * 0.25)
+	var look := Vector3(-1.9 + sin(a * 0.8) * 0.12, 2.3, 3.1)
 	menu_cam.look_at_from_position(pos, look)
 
 
@@ -109,6 +137,7 @@ func _begin_game(continue_game: bool) -> void:
 	menu = null
 	menu_cam.queue_free()
 	menu_cam = null
+	_set_evening(false)
 	player.cam.make_current()
 	hud.visible = true
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
@@ -270,10 +299,9 @@ func _build_room() -> void:
 	# "AÇIK" neon tabelası (camda, dışarı bakar)
 	var open_sign := MU.label(self, "AÇIK", Vector3(1.4, 1.9, 3.05), 120, Color(0.3, 1.0, 0.5), Vector3(0, 180, 0), 0.0025)
 	open_sign.shaded = false
+	open_sign.double_sided = false
 	open_sign.outline_size = 20
 	open_sign.outline_modulate = Color(0.2, 1.0, 0.4, 0.3)
-	var open_back := MU.label(self, "AÇIK", Vector3(1.4, 1.9, 3.06), 120, Color(0.3, 1.0, 0.5, 0.35), Vector3.ZERO, 0.0025)
-	open_back.shaded = false
 	# giriş paspası
 	MU.rbox(self, Vector3(1.2, 0.015, 0.7), Vector3(0, 0.008, 2.55), MU.mat(Color(0.25, 0.2, 0.18), 0, 1.0), 0.006)
 	# tavan ve lambalar
@@ -309,18 +337,137 @@ func _build_outside() -> void:
 	MU.rbox(self, Vector3(60, 0.16, 0.2), Vector3(0, -0.07, 7.2), MU.mat(Color(0.6, 0.6, 0.58), 0, 0.8), 0.03)
 	for i in 12:
 		MU.box(self, Vector3(1.6, 0.02, 0.15), Vector3(-26 + i * 5, 0.0, 11.0), MU.mat(Color(0.9, 0.9, 0.85), 0, 0.7))
-	# dış cephe (tuğla) ve tabela
+	# dış cephe (tuğla)
 	var brick := MU.pbr("brick", 0.5, Color(0.75, 0.75, 0.78))
 	for x in [-6.5, 6.5]:
 		MU.static_box(self, Vector3(4.6, 4.5, 0.4), Vector3(x, 2.25, 3.1), brick)
 	MU.box(self, Vector3(8.6, 1.3, 0.4), Vector3(0, 3.65, 3.1), brick)
-	var sign_body := MU.rbox(self, Vector3(3.4, 0.62, 0.14), Vector3(0, 3.4, 3.38), MU.mat(Color(0.08, 0.12, 0.25), 0.3, 0.4), 0.03)
-	var l := MU.label(sign_body, "BİLGİSAYARCI", Vector3(0, 0, 0.075), 150, Color(1.0, 0.85, 0.3), Vector3.ZERO, 0.0035)
-	l.shaded = false
-	l.double_sided = false
-	# tente
-	var awning := MU.mat(Color(0.75, 0.15, 0.15), 0, 0.8)
-	MU.box(self, Vector3(8.0, 0.03, 1.0), Vector3(0, 2.95, 3.75), awning, Vector3(-18, 0, 0))
+	_build_storefront()
+
+
+## Vitrin: ışıklı kutu tabela, neon çerçeve, çizgili tente, vitrin yazıları, bayrak tabela,
+## kaldırım panosu, saksılar ve sokak lambası. Ana menü kamerası buraya bakar.
+func _build_storefront() -> void:
+	var sign_font: Font = load("res://assets/fonts/Bungee.ttf")
+	var hand_font: Font = load("res://assets/fonts/Caveat.ttf")
+	var metal := MU.mat(Color(0.12, 0.12, 0.13), 0.7, 0.35)
+	# --- ışıklı kutu tabela ---
+	var sg := Node3D.new()
+	sg.position = Vector3(0, 3.74, 3.36)
+	add_child(sg)
+	MU.rbox(sg, Vector3(5.6, 1.0, 0.2), Vector3.ZERO, metal, 0.03)
+	MU.box(sg, Vector3(5.4, 0.82, 0.02), Vector3(0, 0, 0.1), MU.mat(Color(0.05, 0.09, 0.22), 0, 0.35, 1.4))
+	var neon := MU.mat(Color(0.35, 0.9, 1.0), 0, 0.3, 6.0)
+	for y in [-0.43, 0.43]:
+		MU.cyl(sg, 0.012, 5.46, Vector3(0, y, 0.115), neon, Vector3(0, 0, 90), 8)
+	for x in [-2.73, 2.73]:
+		MU.cyl(sg, 0.012, 0.86, Vector3(x, 0, 0.115), neon, Vector3.ZERO, 8)
+	var big := MU.label(sg, "BİLGİSAYARCI", Vector3(0, 0.07, 0.115), 200, Color(1.0, 0.75, 0.22), Vector3.ZERO, 0.0026)
+	big.font = sign_font
+	big.shaded = false
+	big.double_sided = false
+	big.outline_size = 28
+	big.outline_modulate = Color(1.0, 0.55, 0.1, 0.35)
+	var small := MU.label(sg, "TAMİR  ·  BAKIM  ·  YEDEK PARÇA  ·  KASA TOPLAMA", Vector3(0, -0.29, 0.115), 64, Color(0.92, 0.95, 1.0), Vector3.ZERO, 0.0022)
+	small.font = sign_font
+	small.shaded = false
+	small.double_sided = false
+	# tabela askı kolları
+	for x in [-2.2, 2.2]:
+		MU.cyl(sg, 0.02, 0.3, Vector3(x, 0.55, -0.05), metal, Vector3(70, 0, 0), 8)
+	# --- çizgili tente ---
+	var red := MU.mat(Color(0.72, 0.12, 0.12), 0, 0.85)
+	var cream := MU.mat(Color(0.93, 0.9, 0.82), 0, 0.85)
+	var aw := Node3D.new()
+	aw.position = Vector3(0, 2.98, 3.72)
+	aw.rotation_degrees = Vector3(-22, 0, 0)
+	add_child(aw)
+	var n := 16
+	for i in n:
+		var x := -4.0 + (i + 0.5) * 8.0 / n
+		MU.box(aw, Vector3(8.0 / n, 0.03, 1.0), Vector3(x, 0, 0), red if i % 2 == 0 else cream)
+		# ön saçak (dikey sarkan şerit)
+		var flap := Node3D.new()
+		flap.position = Vector3(x, 0, 0.5)
+		flap.rotation_degrees = Vector3(22, 0, 0)
+		aw.add_child(flap)
+		MU.box(flap, Vector3(8.0 / n, 0.24, 0.02), Vector3(0, -0.12, 0), red if i % 2 == 0 else cream)
+	for x in [-3.9, 3.9]:
+		MU.cyl(self, 0.015, 1.15, Vector3(x, 2.75, 3.68), metal, Vector3(-55, 0, 0), 6)
+	# --- vitrin camı yazıları (dışarıdan okunur) ---
+	var vin := [["LAPTOP · PC · KASA", Vector3(-1.625, 2.08, 3.13), 46],
+		["HIZLI SERVİS", Vector3(-1.625, 1.9, 3.13), 66],
+		["ANAKART · EKRAN KARTI\nRAM · SSD · GÜÇ KAYNAĞI", Vector3(3.325, 2.02, 3.13), 38]]
+	for v in vin:
+		var vl := MU.label(self, v[0], v[1], v[2], Color(1, 1, 1, 0.9), Vector3.ZERO, 0.0022)
+		vl.font = sign_font
+		vl.double_sided = false
+	var neon_open := MU.label(self, "AÇIK", Vector3(1.4, 1.62, 3.13), 140, Color(0.3, 1.0, 0.5), Vector3.ZERO, 0.0024)
+	neon_open.font = sign_font
+	neon_open.shaded = false
+	neon_open.double_sided = false
+	neon_open.outline_size = 24
+	neon_open.outline_modulate = Color(0.2, 1.0, 0.4, 0.35)
+	var hours := MU.label(self, "Pzt - Cmt  09:00 - 19:00", Vector3(1.4, 1.4, 3.13), 40, Color(1, 1, 1, 0.85), Vector3.ZERO, 0.0018)
+	hours.double_sided = false
+	# --- bayrak tabela (duvara dik) ---
+	var blade := Node3D.new()
+	blade.position = Vector3(4.5, 3.05, 3.85)
+	blade.rotation_degrees = Vector3(0, 90, 0)
+	add_child(blade)
+	MU.cyl(self, 0.02, 0.6, Vector3(4.5, 3.62, 3.6), metal, Vector3(90, 0, 0), 8)
+	MU.rbox(blade, Vector3(0.95, 0.95, 0.08), Vector3.ZERO, MU.mat(Color(1.0, 0.7, 0.18), 0, 0.4, 0.6), 0.03)
+	for side in [1, -1]:
+		var bl := MU.label(blade, "PC\nTAMİR", Vector3(0, 0, side * 0.045), 120, Color(0.08, 0.08, 0.1), Vector3(0, 0 if side > 0 else 180, 0), 0.0028)
+		bl.font = sign_font
+		bl.double_sided = false
+	# --- kaldırım panosu (kara tahta, A tipi) ---
+	var board := Node3D.new()
+	board.position = Vector3(2.35, 0, 4.7)
+	board.rotation_degrees = Vector3(0, -18, 0)
+	add_child(board)
+	var wood := MU.mat(Color(0.45, 0.3, 0.18), 0, 0.8)
+	var chalk := MU.mat(Color(0.1, 0.16, 0.13), 0, 0.95)
+	for side in [1, -1]:
+		var face := Node3D.new()
+		face.position = Vector3(0, 0.5, side * 0.17)
+		face.rotation_degrees = Vector3(side * -12, 0 if side > 0 else 180, 0)
+		board.add_child(face)
+		MU.rbox(face, Vector3(0.66, 1.02, 0.03), Vector3.ZERO, wood, 0.01)
+		MU.box(face, Vector3(0.56, 0.9, 0.01), Vector3(0, 0, 0.017), chalk)
+		var t := MU.label(face, "BUGÜN", Vector3(0, 0.33, 0.024), 90, Color(1.0, 0.85, 0.3), Vector3.ZERO, 0.0016)
+		t.font = hand_font
+		t.double_sided = false
+		var b := MU.label(face, "Fan temizliği\n+ termal macun\n\n%20 indirim!", Vector3(0, -0.04, 0.024), 72, Color(0.95, 0.95, 0.92), Vector3.ZERO, 0.0016)
+		b.font = hand_font
+		b.double_sided = false
+	# --- kapı yanı saksılar ---
+	var pot := MU.mat(Color(0.25, 0.25, 0.27), 0.2, 0.6)
+	var bush := MU.mat(Color(0.16, 0.36, 0.15), 0, 0.8)
+	for x in [-1.15, 1.15]:
+		MU.rbox(self, Vector3(0.42, 0.5, 0.42), Vector3(x, 0.25, 3.62), pot, 0.03)
+		MU.sphere(self, 0.3, Vector3(x, 0.72, 3.62), bush, Vector3(1.0, 1.15, 1.0))
+		MU.sphere(self, 0.2, Vector3(x + 0.12, 0.95, 3.58), bush)
+	# --- sokak lambası ---
+	var pole := MU.mat(Color(0.16, 0.2, 0.18), 0.6, 0.5)
+	MU.cyl(self, 0.07, 4.6, Vector3(5.6, 2.3, 6.7), pole, Vector3.ZERO, 12)
+	MU.cyl(self, 0.12, 0.3, Vector3(5.6, 0.15, 6.7), pole, Vector3.ZERO, 12)
+	MU.cyl(self, 0.035, 1.1, Vector3(5.6, 4.5, 6.2), pole, Vector3(90, 0, 0), 8)
+	MU.rbox(self, Vector3(0.36, 0.12, 0.5), Vector3(5.6, 4.48, 5.7), pole, 0.03)
+	MU.box(self, Vector3(0.3, 0.01, 0.42), Vector3(5.6, 4.415, 5.7), MU.mat(Color(1.0, 0.85, 0.6), 0, 0.5, 6.0))
+	street_light = OmniLight3D.new()
+	street_light.position = Vector3(5.6, 4.2, 5.7)
+	street_light.light_color = Color(1.0, 0.78, 0.5)
+	street_light.light_energy = 0.0
+	street_light.omni_range = 9.0
+	add_child(street_light)
+	# tabela ışığı (akşam sahnesinde cepheyi aydınlatır)
+	sign_light = OmniLight3D.new()
+	sign_light.position = Vector3(0, 3.5, 4.6)
+	sign_light.light_color = Color(0.55, 0.75, 1.0)
+	sign_light.light_energy = 0.0
+	sign_light.omni_range = 5.0
+	add_child(sign_light)
 
 
 func _build_desk() -> void:

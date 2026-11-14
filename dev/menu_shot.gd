@@ -11,10 +11,10 @@ func _ready() -> void:
 	var f := FileAccess.open(Game.save_path, FileAccess.WRITE)
 	f.store_string(JSON.stringify({"day": 4, "money": 1250, "rep": 3.4, "upgrades": [], "stats": {}}))
 	f.close()
-	main.menu.queue_free()
+	if main.menu:
+		main.menu.queue_free()
 	await get_tree().process_frame
-	main.menu = MENU.new()
-	main.add_child(main.menu)
+	main._start_menu()
 	await get_tree().create_timer(3.0).timeout
 	await _shot("ui_menu")
 	var m = main.menu

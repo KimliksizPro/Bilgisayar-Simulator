@@ -28,18 +28,24 @@ yüzeylerde gerçek PBR dokular ve gökyüzü için gerçek bir şehir HDRI'si k
 
 ## Menüler ve arayüz
 
-- **Ana menü:** oyun açılınca gerçek dükkânın üzerinde yavaşça süzülen sinematik kamera, solda başlık ve düğmeler:
-  *Devam Et* (kayıt varsa gün ve kasa gösterilir), *Yeni Oyun* (kayıt varsa onay sorar), *Ayarlar*,
-  *Nasıl Oynanır*, *Emeği Geçenler*, *Çıkış*. Düğmelerde üstüne gelme/tıklama sesi ve animasyonu, oyuna
-  geçerken kararma geçişi vardır.
-- **Duraklatma (Esc):** arka plan bulanıklaşır, oyun gerçekten durur (saat, müşteri sabrı, fizik).
-  *Devam Et, Ayarlar, Nasıl Oynanır, Ana Menüye Dön* (önce kaydeder), *Oyundan Çık*.
-  Pencere odağı kaybolunca oyun kendiliğinden duraklar.
-- **HUD:** sol üstte para (değişince sayarak güncellenir), gün/saat ve gün ilerleme çubuğu, itibar yıldızları;
-  sağ üstte aktif iş kartı (müşteri, ücret, hedef, yeşilden kırmızıya kayan sabır çubuğu); ortada hedefe bakınca
-  büyüyüp amber olan nişangah ve `[E] Eylem` etkileşim ipucu; solda kayarak giren para/uyarı/bilgi bildirimleri;
-  ödemede yükselen "+TL"; ilk günlerde üstte kısa öğretici ipuçları.
-- **Gün sonu özeti, Yönetim Paneli, iflas** ekranları aynı temayla, açılış/kapanış animasyonlu.
+Arayüz "mahalle tamirhanesi" kimliğiyle tasarlandı: paneller köşeleri vidalı metal plaka, düğmeler basınca
+içeri gömülen mekanik klavye tuşu, tuş ipuçları eski bej klavye tuşu, başlıklar tabela harfleri (Bungee) ve
+altlarında sarı-siyah ikaz şeridi; sürgüler mikser fader'ı, anahtarlar LED'li, ilerleme çubukları segmentli LED.
+
+- **Ana menü:** akşamüstü, sokağın karşısından dükkânın vitrinine bakan yavaşça süzülen kamera. Işıklı kutu tabela
+  (neon çerçeveli), kırmızı-krem çizgili tente, vitrin camı yazıları, neon "AÇIK", bayrak tabela, kaldırımda
+  kara tahta pano, saksılar, sokak lambası. Solda tabela harfleriyle başlık ve 1-6 kısayollu klavye tuşu düğmeler:
+  *Devam Et* (kayıt varsa gün ve kasa LCD yazısıyla), *Yeni Oyun* (kayıt varsa onay sorar), *Ayarlar*,
+  *Nasıl Oynanır*, *Emeği Geçenler*, *Çıkış*. Oyuna geçerken kararma geçişi ve gündüz ışığına dönüş.
+- **Duraklatma (Esc):** kapıya asılan tabela gibi iki iple sarkıp sallanan panel ("Çay molası... birazdan dönerim!"),
+  arka plan bulanıklaşır, oyun gerçekten durur. *Devam Et, Ayarlar, Nasıl Oynanır, Ana Menüye Dön* (önce kaydeder),
+  *Oyundan Çık*. Pencere odağı kaybolunca oyun kendiliğinden duraklar.
+- **HUD:** sol üstte **yazar kasa** (yeşil LCD'de para, gün ve saat; LED gün çubuğu; itibar yıldızları);
+  sağ üstte mandallı **servis fişi** (fiş numarası, tükenmez kalemle müşteri adı, lastik mühürle ücret, sabır çubuğu);
+  hedefe bakınca vizör köşeleri kapanan nişangah ve bej `E` tuşlu etkileşim ipucu; solda LED'li bildirimler;
+  ödemede yükselen "+TL"; öğretici ipuçları bantla yapıştırılmış **sarı not kâğıdında**.
+- **Gün sonu:** yazar kasa fişi gibi **Z Raporu** (tırtıklı kâğıt, gelir/gider/kira/net, itibar, yarınki kira).
+- **Yönetim Paneli:** LCD kasa göstergesi, alınan yükseltmelerde "ALINDI" mührü. **İflas:** "DÜKKÂN KAPANDI" mührü.
 
 ## Ayarlar
 
@@ -104,11 +110,11 @@ scripts/pause_menu.gd   Duraklatma menüsü (bulanık arka plan)
 scripts/settings.gd     Ayarlar (autoload): kayıt, uygulama, ses kanalları
 scripts/settings_panel.gd  Ayarlar ekranı (Grafik/Ses/Kontroller/Oyun)
 scripts/howto_panel.gd  Nasıl Oynanır ekranı
-scripts/ui_theme.gd     Ortak tema (renkler, font, stiller); assets/ui/theme.tres bundan üretilir
+scripts/ui_theme.gd     Ortak tema (renkler, font, stiller); assets/ui/theme.res bundan üretilir
 scripts/ui_kit.gd       Arayüz yardımcıları (düğme, tuş kapağı, modal, animasyonlar)
 scripts/music.gd        Kodla üretilen fon müziği
-assets/fonts/           Exo 2 yazı tipi + OFL.txt
-assets/ui/theme.tres    Proje varsayılan teması (`dev/make_theme.gd` ile yeniden üretilir)
+assets/fonts/           Exo 2, Bungee, VT323, Caveat yazı tipleri + OFL_*.txt lisansları
+assets/ui/theme.res     Proje varsayılan teması (`dev/make_theme.gd` ile yeniden üretilir)
 scripts/mesh_util.gd    Prosedürel model ve doku yardımcıları
 scripts/sfx.gd          Kodla üretilen sesler (SFX kanalı)
 assets/                 Dokular ve HDRI (Poly Haven, CC0)
@@ -134,5 +140,8 @@ Doku ve HDRI dosyaları [Poly Haven](https://polyhaven.com)'dan alınmıştır v
 floor_tiles_06, painted_plaster_wall, wood_table_001, laminate_floor_02, rectangular_paving,
 asphalt_02, painted_brick, buikslotermeerplein (HDRI).
 
-Yazı tipi: **Exo 2** (The Exo 2 Project Authors), [SIL Open Font License 1.1](assets/fonts/OFL.txt).
+Yazı tipleri, hepsi [SIL Open Font License 1.1](https://openfontlicense.org): **Exo 2** (The Exo 2 Project Authors,
+[OFL_Exo2.txt](assets/fonts/OFL_Exo2.txt)), **Bungee** (The Bungee Project Authors, [OFL_Bungee.txt](assets/fonts/OFL_Bungee.txt)),
+**VT323** (The VT323 Project Authors, [OFL_VT323.txt](assets/fonts/OFL_VT323.txt)),
+**Caveat** (The Caveat Project Authors, [OFL_Caveat.txt](assets/fonts/OFL_Caveat.txt)).
 Oyun motoru: [Godot Engine](https://godotengine.org) (MIT). Ses efektleri ve fon müziği oyun içinde kodla üretilir.
