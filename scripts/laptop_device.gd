@@ -292,12 +292,8 @@ func _show(state: String) -> void:
 
 
 func _fault_line(code: String) -> String:
-	match code:
-		"ram": return "Usta bu laptop hâlâ donup mavi ekran veriyor!"
-		"ssd": return "Usta Windows hâlâ gelmiyor, 'boot device' diyor!"
-		"bat": return "Usta pil hâlâ şarj olmuyor, kabloyu çekince kapanıyor!"
-		"scr": return "Usta ekran hâlâ kırık, hiçbir şey göremiyorum!"
-	return "Usta bu laptop hâlâ düzgün çalışmıyor ki!"
+	var f = DB.jobs.fault_by_code(code, "laptop")
+	return f.fail_lines.pick_random() if f != null and not f.fail_lines.is_empty() else "Usta bu laptop hâlâ düzgün çalışmıyor ki!"
 
 
 func _open_line() -> String:

@@ -493,13 +493,15 @@ func power_button() -> void:
 		Game.msg("Bilgisayar kapatıldı.")
 		return
 	var code := diagnose()
+	var fdef = DB.jobs.fault_by_code(code)  # belirti verisi (LED, bip, ekran, mesaj) arıza tanımından
+	var sym: Dictionary = fdef.symptoms if fdef != null else {}
 	if code == "nopower":
-		Game.msg("Hiçbir tepki yok... Fanlar bile dönmüyor.", Color(1, 0.6, 0.4))
+		_symptom_msg(sym, "Hiçbir tepki yok... Fanlar bile dönmüyor.")
 		return
 	powered = true
 	cpu_temp = 36.0
 	_last_temp_i = -1
-	var led_name: String = {"cpu": "CPU", "ram": "DRAM", "gpu": "VGA", "ssd": "BOOT"}.get(code, "")
+	var led_name: String = str(sym.get("led", ""))
 	if led_name != "":
 		var lm: StandardMaterial3D = debug_leds[led_name]
 		lm.albedo_color = Color(1.0, 0.45, 0.1)
@@ -510,30 +512,29 @@ func power_button() -> void:
 	led_mat.emission = Color(0.2, 0.6, 1.0)
 	led_mat.emission_energy_multiplier = 3.0
 	hum.play()
-	match code:
-		"cpu":
-			monitor.show_no_signal()
-			Game.msg("Fanlar dönüyor ama hiç bip sesi yok, ekran kapkara.", Color(1, 0.6, 0.4))
-		"ram":
-			monitor.show_no_signal()
-			Game.msg("Bip! Bip! Bip! Sürekli tekrar eden kısa bipler...", Color(1, 0.6, 0.4))
-			Game.sfx.beeps([0.12, 0.12, 0.12, 0.12, 0.12, 0.12, 0.12, 0.12])
-		"gpu":
-			monitor.show_no_signal()
-			Game.msg("1 uzun 3 kısa bip! Ekrana görüntü gelmiyor.", Color(1, 0.6, 0.4))
-			Game.sfx.beeps([0.7, 0.13, 0.13, 0.13])
-		"ssd":
-			Game.sfx.beeps([0.15])
-			monitor.show_no_boot()
-			Game.msg("Tek bip, BIOS açıldı ama 'boot device' bulunamadı.", Color(1, 0.8, 0.4))
-		"ok":
-			Game.sfx.beeps([0.15])
-			monitor.boot(self)
-			Game.msg("Tek kısa bip... Bilgisayar sorunsuz açıldı!", Color(0.5, 1, 0.5))
-		"overheat":
-			Game.sfx.beeps([0.15])
-			monitor.boot(self)
-			Game.msg("Tek kısa bip... Bilgisayar açıldı ama fanlar çok yüksek sesle dönüyor.", Color(1, 0.85, 0.5))
+	if code == "ok":
+		Game.sfx.beeps([0.15])
+		monitor.boot(self)
+		Game.msg("Tek kısa bip... Bilgisayar sorunsuz açıldı!", Color(0.5, 1, 0.5))
+		return
+	var beeps: Array = []
+	for b in sym.get("beep", []):
+		beeps.append(float(b))
+	if not beeps.is_empty():
+		Game.sfx.beeps(beeps)
+	match str(sym.get("screen", "")):
+		"no_signal": monitor.show_no_signal()
+		"no_boot": monitor.show_no_boot()
+		"boot": monitor.boot(self)
+	_symptom_msg(sym, "")
+
+
+## Belirti mesajı (sym.msg, sym.msg_color); boşsa fallback.
+func _symptom_msg(sym: Dictionary, fallback: String) -> void:
+	var c: Array = sym.get("msg_color", [1.0, 0.6, 0.4])
+	var msg := str(sym.get("msg", fallback))
+	if msg != "":
+		Game.msg(msg, Color(float(c[0]), float(c[1]), float(c[2])))
 
 
 func power_off() -> void:

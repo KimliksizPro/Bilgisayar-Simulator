@@ -175,11 +175,8 @@ func _show(state: String) -> void:
 
 
 func _fault_line(code: String) -> String:
-	match code:
-		"bat": return "Usta pil hâlâ bitik, telefon açılır açılmaz kapanıyor!"
-		"port": return "Usta bu hâlâ şarj olmuyor ki!"
-		"scr": return "Usta ekran hâlâ paramparça!"
-	return "Usta telefon hâlâ düzgün çalışmıyor!"
+	var f = DB.jobs.fault_by_code(code, "phone")
+	return f.fail_lines.pick_random() if f != null and not f.fail_lines.is_empty() else "Usta telefon hâlâ düzgün çalışmıyor!"
 
 
 func _open_line() -> String:

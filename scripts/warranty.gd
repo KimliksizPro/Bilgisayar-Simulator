@@ -39,14 +39,14 @@ static func make_job(w: Dictionary, base: Array) -> Dictionary:
 	for b in base:
 		parts.append([b[0], b[1], b[2], b[1] == broken])
 	return {"name": w.name, "kind": "warranty", "warranty": true, "broken": broken, "pay": 0, "parts": parts,
-		"intro": "Usta taktığın parça bozuldu, garantiden bakacaksın!",
-		"goal": "GARANTİ: ücretsiz tamir. Takılan %s bozulmuş; değiştir. Hızlı çözersen itibarın düzelir." % PM.TYPE_NAMES[broken]}
+		"intro": DB.jobs.text("warranty_pc_intro")[0],
+		"goal": DB.jobs.text("warranty_pc_goal")[0] % PM.TYPE_NAMES[broken]}
 
 
 ## Laptop/telefon garanti dönüşü: aynı cihaz, muadil takılan parçanın yuvası arızalı.
 static func _device_job(w: Dictionary, dev: String) -> Dictionary:
 	var j := DJ.make({"name": w.name}, dev)
-	var table: Dictionary = DJ.LAPTOP_PARTS if dev == "laptop" else DJ.PHONE_PARTS
+	var table: Dictionary = DJ.slots(dev)
 	var slot_name := ""
 	for sl in table:
 		if table[sl] == w.type:
@@ -61,6 +61,6 @@ static func _device_job(w: Dictionary, dev: String) -> Dictionary:
 	j.kind = "warranty"
 	j.warranty = true
 	j.pay = 0
-	j.intro = "Usta geçen gün taktığın parça bozuldu, garantiden bakacaksın!"
-	j.goal = "GARANTİ: ücretsiz tamir. Takılan %s bozulmuş; değiştir." % PM.display_name(w.type, int(w.get("tier", 1)))
+	j.intro = DB.jobs.text("warranty_dev_intro")[0]
+	j.goal = DB.jobs.text("warranty_dev_goal")[0] % PM.display_name(w.type, int(w.get("tier", 1)))
 	return j
