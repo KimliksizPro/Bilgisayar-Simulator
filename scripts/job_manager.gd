@@ -6,6 +6,9 @@ const CUSTOMER := preload("res://scripts/customer.gd")
 const PM := preload("res://scripts/part_models.gd")
 const WARRANTY := preload("res://scripts/warranty.gd")
 const DJ := preload("res://scripts/device_jobs.gd")  # laptop / telefon işleri
+const DIRECTOR := preload("res://scripts/job_director.gd")  # iş seçici
+
+var _director := DIRECTOR.new()
 
 const SPAWN := Vector3(-0.3, 0, 9.0)
 const DOOR := Vector3(0, 0, 3.6)
@@ -35,6 +38,8 @@ const OVERHEAT_LINES := {
 }
 const SALE_LINES := ["Usta bir %s lazım, var mı sende?", "Merhaba, %s alacaktım. Stokta var mı?",
 	"Oğlana %s alacağım, en iyisinden ver usta.", "Kendim takacağım abi, bir %s versene."]
+const BASE_PARTS := [["psu", "psu", 1], ["cpu", "cpu", 1], ["ram1", "ram", 1], ["gpu", "gpu", 1], ["ssd", "ssd", 1]]
+const SALE_IDS := ["sale_ram1", "sale_ram2", "sale_ssd", "sale_psu", "sale_gpu1", "sale_gpu2", "sale_cpu"]
 const SALE_WANTS := [["ram", 1], ["ram", 2], ["ssd", 1], ["psu", 1], ["gpu", 1], ["gpu", 2], ["cpu", 1]]
 const VAGUE_LINES := ["Bozuldu abi, bi bakıver.", "Ne olduğunu anlamadım, bir sabah açılmadı.",
 	"Oğlan bişey yaptı, çalışmıyor artık.", "Abi bu bilgisayar bozuk, acil lazım."]
@@ -191,57 +196,80 @@ func _on_arrived() -> void:
 	hud.tip("talk", "Müşteriyle konuşmak için ona bakıp E'ye bas.")
 
 
+## Sıradaki işi seçici belirler (ağırlıklı torba + tekrar cezası).
 func _make_job() -> Dictionary:
-	var j := {"name": NAMES.pick_random()}
-	var roll := randf()
-	var base := [["psu", "psu", 1], ["cpu", "cpu", 1], ["ram1", "ram", 1], ["gpu", "gpu", 1], ["ssd", "ssd", 1]]
 	# garanti dönüşü (muadil parça bozuldu) her şeyden önce gelir
 	var due := WARRANTY.take_due()
 	if not due.is_empty():
-		return WARRANTY.make_job(due, base)
-	if roll < 0.85 and randf() < DJ.CHANCE:  # laptop / telefon tamiri
-		return DJ.make(j)
-	if roll >= 0.85:
-		# tezgahtan parça satışı
-		var w: Array = SALE_WANTS.pick_random()
-		j.kind = "sale"
-		j.want = w
-		j.intro = SALE_LINES.pick_random() % PM.display_name(w[0], w[1])
-		j.goal = "Raftan %s al, elinde tutarken müşteriyle konuş [E]." % PM.display_name(w[0], w[1])
-		j.pay = Game.retail_price(w[0], w[1])
-		j.parts = []
-		return j
-	if roll < 0.15 and Game.money >= 300:
-		j.kind = "build"
-		j.intro = "Sıfırdan bir bilgisayar topla abi. Kasa bende, parçaları sen al, toplayınca hakkını veririm."
-		j.goal = "Boş kasaya tüm parçaları tak ve çalıştır."
-		j.pay = 600
-		j.parts = []
-	elif roll < 0.3:
-		j.kind = "upgrade_gpu"
-		j.intro = "Oyunlar çok kasıyor usta. Bana iyi bir ekran kartı tak, parasını veririm."
-		j.goal = "Oyuncu (RGB) ekran kartı tak."
-		j.pay = PM.price("gpu", 2) + 140
-		j.parts = _with_broken(base, "")
-	elif roll < 0.4:
-		_overheat_job(j, base, "overheat_dust" if randf() < 0.5 else "overheat_paste")
-	elif roll < 0.5:
-		j.kind = "upgrade_ram"
-		j.intro = "Chrome açınca bilgisayar donuyor. RAM'i 32 GB yap abi."
-		j.goal = "Toplam RAM'i 32 GB'a çıkar (2 x 16 GB)."
-		j.pay = PM.price("ram", 2) * 2 + 110
-		j.parts = _with_broken(base, "")
-	else:
-		var broken: String = ["psu", "cpu", "ram", "gpu", "ssd"].pick_random()
-		j.kind = "repair"
-		j.broken = broken
-		j.intro = REPAIR_LINES[broken].pick_random() if randf() < 0.6 else VAGUE_LINES.pick_random()
-		j.goal = "Arızalı parçayı bul ve değiştir."
-		j.pay = randi_range(15, 26) * 10
-		var parts := _with_broken(base, broken)
-		if randf() < 0.5:
-			parts.append(["ram2", "ram", 1, false])
-		j.parts = parts
+		return WARRANTY.make_job(due, BASE_PARTS)
+	return _make_job_of(_director.next(Game.money, Game.job_history))
+
+
+## Verilen iş kimliğinden iş üretir (geçmişe dokunmaz; testler de bunu kullanır).
+## broken: laptop/telefon için arızalı yuvayı sabitler.
+func _make_job_of(id: String, broken := "") -> Dictionary:
+	var j := {"name": NAMES.pick_random()}
+	if id.begins_with("device_"):
+		return DJ.make(j, id.substr(7), broken)
+	if id.begins_with("sale_"):
+		return _job_sale(j, SALE_WANTS[SALE_IDS.find(id)])
+	if id.begins_with("repair_"):
+		return _job_repair(j, id.substr(7))
+	match id:
+		"build": _job_build(j)
+		"upgrade_gpu": _job_upgrade_gpu(j)
+		"upgrade_ram": _job_upgrade_ram(j)
+		_: _overheat_job(j, BASE_PARTS, id)
+	return j
+
+
+func _job_sale(j: Dictionary, w: Array) -> Dictionary:
+	# tezgahtan parça satışı
+	j.kind = "sale"
+	j.want = w
+	j.intro = SALE_LINES.pick_random() % PM.display_name(w[0], w[1])
+	j.goal = "Raftan %s al, elinde tutarken müşteriyle konuş [E]." % PM.display_name(w[0], w[1])
+	j.pay = Game.retail_price(w[0], w[1])
+	j.parts = []
+	return j
+
+
+func _job_build(j: Dictionary) -> void:
+	j.kind = "build"
+	j.intro = "Sıfırdan bir bilgisayar topla abi. Kasa bende, parçaları sen al, toplayınca hakkını veririm."
+	j.goal = "Boş kasaya tüm parçaları tak ve çalıştır."
+	j.pay = 600
+	j.parts = []
+
+
+func _job_upgrade_gpu(j: Dictionary) -> void:
+	j.kind = "upgrade_gpu"
+	j.intro = "Oyunlar çok kasıyor usta. Bana iyi bir ekran kartı tak, parasını veririm."
+	j.goal = "Oyuncu (RGB) ekran kartı tak."
+	j.pay = PM.price("gpu", 2) + 140
+	j.parts = _with_broken(BASE_PARTS, "")
+
+
+func _job_upgrade_ram(j: Dictionary) -> void:
+	j.kind = "upgrade_ram"
+	j.intro = "Chrome açınca bilgisayar donuyor. RAM'i 32 GB yap abi."
+	j.goal = "Toplam RAM'i 32 GB'a çıkar (2 x 16 GB)."
+	j.pay = PM.price("ram", 2) * 2 + 110
+	j.parts = _with_broken(BASE_PARTS, "")
+
+
+func _job_repair(j: Dictionary, broken: String) -> Dictionary:
+	j.kind = "repair"
+	j.broken = broken
+	j.intro = REPAIR_LINES[broken].pick_random() if randf() < 0.6 else VAGUE_LINES.pick_random()
+	j.goal = "Arızalı parçayı bul ve değiştir."
+	# ücret = parça bedeli + işçilik (işlemci/PSU teşhisi biraz daha pahalı)
+	var labor := randi_range(11, 16) * 10 if broken in ["cpu", "psu"] else randi_range(9, 14) * 10
+	j.pay = PM.price(broken, 1) + labor
+	var parts := _with_broken(BASE_PARTS, broken)
+	if randf() < 0.5:
+		parts.append(["ram2", "ram", 1, false])
+	j.parts = parts
 	return j
 
 

@@ -49,11 +49,11 @@ static func is_device(job: Dictionary) -> bool:
 
 
 ## Laptop veya telefon tamir işi üretir (j: içinde "name" olan iş sözlüğü).
-static func make(j: Dictionary, device := "") -> Dictionary:
+static func make(j: Dictionary, device := "", force_broken := "") -> Dictionary:
 	var dev := device if device != "" else ("laptop" if randf() < 0.55 else "phone")
 	var table: Dictionary = LAPTOP_PARTS if dev == "laptop" else PHONE_PARTS
 	var lines: Dictionary = LAPTOP_LINES if dev == "laptop" else PHONE_LINES
-	var broken: String = table.keys().pick_random()
+	var broken: String = force_broken if table.has(force_broken) else table.keys().pick_random()
 	j.kind = dev
 	j.device = dev
 	j.broken = broken

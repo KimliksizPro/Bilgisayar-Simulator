@@ -15,7 +15,7 @@ const PM := preload("res://scripts/part_models.gd")
 const FADER := preload("res://scripts/fader.gd")
 const MUSIC := preload("res://scripts/music.gd")
 const UM := preload("res://scripts/used_market.gd")
-const DEV_ARGS := ["--propshot", "--shot", "--uishot", "--perf", "--partshot", "--looptest"]
+const DEV_ARGS := ["--propshot", "--shot", "--uishot", "--perf", "--partshot", "--looptest", "--jobdisttest"]
 
 # --- Ayarlanabilir sabitler ---
 const OPEN_HOUR := 9.0
@@ -82,6 +82,7 @@ const RETAIL_MARKUP := 1.35       # tezgahtan parça satışında kâr marjı
 var stock := {}
 var orders: Array = []            # {id, items: {sku: adet}, eta: mutlak saat, express, cost, state}
 var next_order_id := 1
+var job_history: Array = []       # iş seçicinin son seçtikleri (tekrar cezası için, kayda girer)
 var market := 1.0                 # günlük piyasa çarpanı (kur)
 var market_prev := 1.0
 var shipping_today := 0
@@ -475,6 +476,7 @@ func new_game() -> void:
 	_reset_economy()
 	orders = []
 	next_order_id = 1
+	job_history = []
 	market = 1.0
 	market_prev = 1.0
 	_reset_staff()  # PERSONEL
@@ -579,7 +581,7 @@ func return_to_menu() -> void:
 func save_game() -> void:
 	var d := {"day": day, "clock": clock, "money": money, "rep": rep, "upgrades": upgrades.keys(),
 		"jobs_done": jobs_done, "rent_level": rent_level, "debt_days": debt_days, "stats": stats,
-		"stock": stock, "market": market, "market_prev": market_prev, "next_order_id": next_order_id}
+		"stock": stock, "market": market, "market_prev": market_prev, "next_order_id": next_order_id, "job_history": job_history}
 	# kapıdaki/yoldaki kargolar kayıtta "yolda" sayılır; kurye yeniden getirir
 	var ol := []
 	for o in orders:
@@ -624,6 +626,9 @@ func load_game() -> bool:
 	market = float(d.get("market", 1.0))
 	market_prev = float(d.get("market_prev", market))
 	next_order_id = int(d.get("next_order_id", 1))
+	job_history = []
+	for h in d.get("job_history", []):
+		job_history.append(str(h))
 	_load_economy(d)
 	orders = []
 	for o in d.get("orders", []):

@@ -13,9 +13,7 @@ func _ready() -> void:
 		while jobs.state != "waiting":
 			Game.clock = minf(Game.clock, 15.0)  # test sürerken dükkân kapanmasın
 			await get_tree().create_timer(0.2).timeout
-		var j: Dictionary = jobs._make_job()
-		while j.kind != "repair" or j.broken != type:
-			j = jobs._make_job()
+		var j: Dictionary = jobs._make_job_of("repair_" + type)
 		jobs.job = j
 		jobs._customer_talk(p)
 		var pc = jobs.pc
@@ -50,9 +48,7 @@ func _ready() -> void:
 		while jobs.state != "waiting":
 			Game.clock = minf(Game.clock, 15.0)  # test sürerken dükkân kapanmasın
 			await get_tree().create_timer(0.2).timeout
-		var j: Dictionary = jobs._make_job()
-		while j.kind != kind:
-			j = jobs._make_job()
+		var j: Dictionary = jobs._make_job_of(kind)
 		jobs.job = j
 		jobs._customer_talk(p)
 		var pc = jobs.pc
@@ -205,9 +201,7 @@ func _supply_tests(main, jobs, p) -> void:
 	while jobs.state != "waiting":
 		Game.clock = minf(Game.clock, 15.0)  # test sürerken dükkân kapanmasın
 		await get_tree().create_timer(0.2).timeout
-	var j: Dictionary = jobs._make_job()
-	while j.kind != "sale" or j.want != ["ram", 2]:
-		j = jobs._make_job()
+	var j: Dictionary = jobs._make_job_of("sale_ram2")
 	jobs.job = j
 	jobs._customer_talk(p)  # elinde parça yok -> satış olmaz
 	assert(jobs.state == "waiting", "eli boşken satış oldu")
@@ -251,9 +245,7 @@ func _eco_tests(main, jobs, p) -> void:
 	while jobs.state != "waiting":
 		Game.clock = minf(Game.clock, 15.0)
 		await get_tree().create_timer(0.2).timeout
-	var j: Dictionary = jobs._make_job()
-	while j.kind != "repair" or j.broken != "psu":
-		j = jobs._make_job()
+	var j: Dictionary = jobs._make_job_of("repair_psu")
 	jobs.job = j
 	jobs._customer_talk(p)
 	var pc = jobs.pc
@@ -375,9 +367,7 @@ func _staff_tests(main, jobs) -> void:
 	Game.add_stock("gpu", 1, 2)
 	var ok1 := await _wait_for(func(): return jobs.state == "waiting", 40.0)
 	assert(ok1, "müşteri gelmedi")
-	var j: Dictionary = jobs._make_job()
-	while j.kind != "repair" or j.broken != "gpu":
-		j = jobs._make_job()
+	var j: Dictionary = jobs._make_job_of("repair_gpu")
 	jobs.job = j
 	var m: int = Game.money
 	var ok2 := await _wait_for(func(): return jobs.state == "working", 20.0)
@@ -392,9 +382,7 @@ func _staff_tests(main, jobs) -> void:
 	Game.add_stock("ram", 2, 1)
 	var ok4 := await _wait_for(func(): return jobs.state == "waiting", 40.0)
 	assert(ok4, "müşteri gelmedi (satış)")
-	j = jobs._make_job()
-	while j.kind != "sale" or j.want != ["ram", 2]:
-		j = jobs._make_job()
+	j = jobs._make_job_of("sale_ram2")
 	jobs.job = j
 	var st := Game.stock_of("ram", 2)
 	var mm: int = Game.money
@@ -455,9 +443,7 @@ func _device_tests(main, jobs, p) -> void:
 		while jobs.state != "waiting":
 			Game.clock = minf(Game.clock, 15.0)  # test sürerken dükkân kapanmasın
 			await get_tree().create_timer(0.2).timeout
-		var j: Dictionary = jobs._make_job()
-		while j.get("device", "") != dev or j.broken != broken:
-			j = jobs._make_job()
+		var j: Dictionary = jobs._make_job_of("device_" + dev, broken)
 		jobs.job = j
 		jobs._customer_talk(p)  # kabul
 		var d = jobs.pc
