@@ -25,6 +25,12 @@ const REPAIR_LINES := {
 	"ssd": ["Açılıyor ama 'boot device' diye bi şey yazıyor, Windows gelmiyor.",
 		"Bilgisayar açılıyor ama işletim sistemi gelmiyor, siyah ekranda yazı var."],
 }
+const OVERHEAT_LINES := {
+	"overheat_dust": ["Oyun oynarken bilgisayar kendi kendine kapanıyor usta, fanlar da çok bağırıyor.",
+		"Fanlar jet gibi ötüyor abi, bir süre sonra da kapanıveriyor."],
+	"overheat_paste": ["Bilgisayar açılıyor ama biraz kullanınca kapanıyor usta. Kasa da sıcacık oluyor.",
+		"Yıllardır içine bakmadık abi, bir süredir kendi kendine kapanıp duruyor."],
+}
 const VAGUE_LINES := ["Bozuldu abi, bi bakıver.", "Ne olduğunu anlamadım, bir sabah açılmadı.",
 	"Oğlan bişey yaptı, çalışmıyor artık.", "Abi bu bilgisayar bozuk, acil lazım."]
 
@@ -181,7 +187,9 @@ func _make_job() -> Dictionary:
 		j.goal = "Oyuncu (RGB) ekran kartı tak."
 		j.pay = PM.price("gpu", 2) + 140
 		j.parts = _with_broken(base, "")
-	elif roll < 0.42:
+	elif roll < 0.4:
+		_overheat_job(j, base, "overheat_dust" if randf() < 0.5 else "overheat_paste")
+	elif roll < 0.5:
 		j.kind = "upgrade_ram"
 		j.intro = "Chrome açınca bilgisayar donuyor. RAM'i 32 GB yap abi."
 		j.goal = "Toplam RAM'i 32 GB'a çıkar (2 x 16 GB)."
@@ -241,6 +249,8 @@ func _accept() -> void:
 
 func _problem() -> String:
 	var code: String = pc.diagnose()
+	if code == "overheat":
+		return _overheat_problem()
 	if code != "ok":
 		return "Usta bu bilgisayar hâlâ düzgün çalışmıyor ki!"
 	match job.kind:
@@ -289,3 +299,26 @@ func _try_deliver() -> void:
 	c.walk([INSIDE, DOOR, SPAWN], func(): c.queue_free())
 	if g == _gen:
 		_next_customer(_arrival_delay())
+
+
+## Aşırı ısınma işi: kasa tozlu (overheat_dust) veya CPU macunu kurumuş (overheat_paste).
+func _overheat_job(j: Dictionary, base: Array, kind: String) -> void:
+	j.kind = kind
+	j.intro = OVERHEAT_LINES[kind].pick_random()
+	j.pay = randi_range(14, 24) * 10
+	var parts := _with_broken(base, "")
+	if kind == "overheat_dust":
+		j.goal = "Bilgisayar aşırı ısınıp kapanıyor. Nedenini bul ve gider."
+		parts.append(["dust", "", randf_range(0.75, 1.0), false])
+	else:
+		j.goal = "Bilgisayar aşırı ısınıp kapanıyor. Nedenini bul ve gider."
+		parts[1] = ["cpu", "cpu", 1, false, false]
+		if randf() < 0.3:  # biraz toz da olsun ama sorun macun
+			parts.append(["dust", "", randf_range(0.1, 0.3), false])
+	j.parts = parts
+
+
+func _overheat_problem() -> String:
+	if pc.dust > 0.5:
+		return "Usta kasanın içi hâlâ toz içinde, yine ısınıp kapanacak!"
+	return "Usta işlemcinin macunu kurumuş, yine aşırı ısınıp kapanacak!"

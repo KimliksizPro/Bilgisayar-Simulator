@@ -85,14 +85,16 @@ func pick_up(p) -> void:
 		return
 	if p.slot:
 		p.slot.detach()
+	p.linear_velocity = Vector3.ZERO
+	p.angular_velocity = Vector3.ZERO
 	held = p
 	p.freeze = true
 	p.collision_layer = 0
 	p.collision_mask = 0
 	p.reparent(hold, false)
-	var info: Dictionary = p.PM.INFO[p.part_type]
-	var b := Basis.from_euler(Vector3(deg_to_rad(15), deg_to_rad(-35), 0))
-	p.transform = Transform3D(b, -(b * info.center))
+	var e: Vector3 = p.hold_euler()
+	var b := Basis.from_euler(Vector3(deg_to_rad(e.x), deg_to_rad(e.y), deg_to_rad(e.z)))
+	p.transform = Transform3D(b, -(b * p.hold_center()))
 	Game.sfx.pickup()
 
 

@@ -61,6 +61,35 @@ func hum() -> AudioStreamWAV:
 	return w
 
 
+## Basınçlı hava tıslaması (filtrelenmiş beyaz gürültü).
+func hiss() -> void:
+	if not _cache.has("hiss"):
+		var n := int(RATE * 0.7)
+		var data := PackedByteArray()
+		data.resize(n * 2)
+		var rng := RandomNumberGenerator.new()
+		rng.seed = 5
+		var lp := 0.0
+		for i in n:
+			var env: float = min(1.0, i / (RATE * 0.03)) * pow(1.0 - float(i) / n, 1.5)
+			var w := rng.randf_range(-1.0, 1.0)
+			lp = lp * 0.35 + w * 0.65
+			data.encode_s16(i * 2, int(clamp((w - lp * 0.3) * 0.3 * env, -1.0, 1.0) * 32767.0))
+		var ws := AudioStreamWAV.new()
+		ws.format = AudioStreamWAV.FORMAT_16_BITS
+		ws.mix_rate = RATE
+		ws.data = data
+		_cache["hiss"] = ws
+	play(_cache["hiss"])
+
+
+## Macun sıkma sesi.
+func squish() -> void:
+	play(tone(260.0, 0.07, 0.18))
+	await get_tree().create_timer(0.06).timeout
+	play(tone(180.0, 0.1, 0.15))
+
+
 func play(stream: AudioStream, pitch := 1.0) -> void:
 	for p in _players:
 		if not p.playing:
