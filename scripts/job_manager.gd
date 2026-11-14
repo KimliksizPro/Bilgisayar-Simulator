@@ -38,6 +38,14 @@ const SALE_LINES := ["Usta bir %s lazım, var mı sende?", "Merhaba, %s alacakt�
 const SALE_WANTS := [["ram", 1], ["ram", 2], ["ssd", 1], ["psu", 1], ["gpu", 1], ["gpu", 2], ["cpu", 1]]
 const VAGUE_LINES := ["Bozuldu abi, bi bakıver.", "Ne olduğunu anlamadım, bir sabah açılmadı.",
 	"Oğlan bişey yaptı, çalışmıyor artık.", "Abi bu bilgisayar bozuk, acil lazım."]
+# Teslim reddedilince müşterinin belirtisi (teşhis koduna göre)
+const FAIL_LINES := {
+	"nopower": ["Usta düğmeye basıyorum, hiç ses yok, fanlar bile dönmüyor!", "Açmaya çalışıyorum abi, elektrik almıyor gibi, ses bile yok."],
+	"cpu": ["Fanlar dönüyor ama ekrana hiçbir şey gelmiyor, bip bip ötüyor.", "Dönüyor usta ama ekran boş, bi de garip sesler çıkarıyor."],
+	"ram": ["Uzun uzun bipliyor usta, açılmıyor.", "Açılmaya çalışıyor ama sürekli bip sesi veriyor abi."],
+	"gpu": ["Kasa çalışıyor ama monitör kapkara.", "Kasa açılıyor abi, ekrana görüntü hiç gelmiyor."],
+	"ssd": ["Açılıyor ama 'boot device not found' yazıyor abi.", "Windows'a girmiyor usta, siyah ekranda disk yok yazıyor."],
+}
 
 var world: Node3D
 var monitor
@@ -296,7 +304,8 @@ func _problem() -> String:
 	if code == "overheat":
 		return _overheat_problem()
 	if code != "ok":
-		return "Usta bu bilgisayar hâlâ düzgün çalışmıyor ki!"
+		var lines: Array = FAIL_LINES.get(code, [])
+		return lines.pick_random() if not lines.is_empty() else "Usta bu bilgisayar hâlâ düzgün çalışmıyor ki!"
 	match job.kind:
 		"upgrade_gpu":
 			var g = pc.part_in("gpu")
@@ -310,10 +319,27 @@ func _problem() -> String:
 	return ""
 
 
+## Teslim reddedilince oyuncuya HUD'da teknik ipucu (müşteri cümlesinden ayrı).
+func _problem_hint() -> String:
+	if DJ.is_device(job) or pc == null:
+		return ""
+	match pc.diagnose():
+		"nopower": return "İpucu: Güç gelmiyor — PSU'yu kontrol et."
+		"cpu": return "İpucu: İşlemci sorunlu olabilir — CPU'yu kontrol et."
+		"ram": return "İpucu: RAM hatalı ya da takılı değil — RAM'leri kontrol et."
+		"gpu": return "İpucu: Ekran kartı arızalı olabilir — GPU'yu kontrol et."
+		"ssd": return "İpucu: Açılış diski bulunamıyor — SSD'yi kontrol et."
+		"overheat": return "İpucu: Aşırı ısınma — kasa tozunu temizle ya da CPU macununu yenile."
+	return ""
+
+
 func _try_deliver() -> void:
 	var problem := _problem()
 	if problem != "":
 		customer.say(problem, true)
+		var hint := _problem_hint()
+		if hint != "":
+			Game.msg(hint, Color(1.0, 0.8, 0.4))
 		Game.sfx.error()
 		fail_count += 1
 		if fail_count <= 3:
