@@ -9,11 +9,17 @@ const PLAYER := preload("res://scripts/player.gd")
 const HUD := preload("res://scripts/hud.gd")
 const MONITOR := preload("res://scripts/monitor.gd")
 const JOBS := preload("res://scripts/job_manager.gd")
+const MENU := preload("res://scripts/menu.gd")
 
 const DESK_Y := 0.75
 
 var hud
 var monitor
+var player
+var menu
+var menu_cam: Camera3D
+var _menu_t := 0.0
+var sun: DirectionalLight3D
 
 
 func _ready() -> void:
@@ -32,7 +38,7 @@ func _ready() -> void:
 	_build_upgrades()  # birleştirmeden sonra: açılıp kapanan nesneler
 	hud = HUD.new()
 	add_child(hud)
-	var player = PLAYER.new()
+	player = PLAYER.new()
 	player.position = Vector3(0.9, 0, -0.9)
 	player.rotation_degrees.y = 15
 	add_child(player)
@@ -43,10 +49,17 @@ func _ready() -> void:
 	jobs.pc_spot = Transform3D(Basis.from_euler(Vector3(0, deg_to_rad(-90), 0)), Vector3(0.45, DESK_Y + 0.012, -2.52))
 	add_child(jobs)
 	jobs.start()
+	Settings.changed.connect(func(k): if k == "quality": _apply_quality())
+	if not Game.dev_mode:
+		_start_menu()
 	if "--shot" in OS.get_cmdline_user_args() and ResourceLoader.exists("res://dev/screenshot.gd"):
 		add_child(load("res://dev/screenshot.gd").new())
 	if "--uishot" in OS.get_cmdline_user_args() and ResourceLoader.exists("res://dev/ui_shot.gd"):
 		add_child(load("res://dev/ui_shot.gd").new())
+	if "--menushot" in OS.get_cmdline_user_args() and ResourceLoader.exists("res://dev/menu_shot.gd"):
+		add_child(load("res://dev/menu_shot.gd").new())
+	if "--flowtest" in OS.get_cmdline_user_args() and ResourceLoader.exists("res://dev/flow_test.gd"):
+		add_child(load("res://dev/flow_test.gd").new())
 	if "--perf" in OS.get_cmdline_user_args() and ResourceLoader.exists("res://dev/perf.gd"):
 		add_child(load("res://dev/perf.gd").new())
 	if "--partshot" in OS.get_cmdline_user_args() and ResourceLoader.exists("res://dev/parts_shot.gd"):
@@ -54,6 +67,52 @@ func _ready() -> void:
 	if "--looptest" in OS.get_cmdline_user_args() and ResourceLoader.exists("res://dev/loop_test.gd"):
 		Engine.time_scale = 4.0
 		add_child(load("res://dev/loop_test.gd").new())
+
+
+## Ana menü: oyuncunun kamerası yerine yavaşça süzülen sinematik kamera.
+func _start_menu() -> void:
+	menu_cam = Camera3D.new()
+	menu_cam.fov = 62.0
+	menu_cam.near = 0.05
+	add_child(menu_cam)
+	menu_cam.make_current()
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	menu = MENU.new()
+	menu.start_game.connect(_begin_game)
+	add_child(menu)
+	hud.visible = false
+	_drift_camera()
+
+
+func _drift_camera() -> void:
+	# ön sağ köşeden tezgah ve tamir masasına doğru yavaş yörünge
+	var a := _menu_t * 0.07
+	var pos := Vector3(-2.5 + sin(a) * 0.7, 1.55 + sin(a * 1.7) * 0.08, 0.2 + cos(a * 0.8) * 0.3)
+	var look := Vector3(1.5 + sin(a * 0.9) * 0.5, 0.95, -2.3)
+	menu_cam.look_at_from_position(pos, look)
+
+
+func _process(delta: float) -> void:
+	if is_instance_valid(menu_cam):
+		_menu_t += delta
+		_drift_camera()
+
+
+## Menüden oyuna geçiş: karart, oyunu başlat, oyuncu kamerasına geç, aç.
+func _begin_game(continue_game: bool) -> void:
+	await Game.fader.fade(1.0, 0.5)
+	if continue_game:
+		Game.continue_game()
+	else:
+		Game.new_game()
+	menu.queue_free()
+	menu = null
+	menu_cam.queue_free()
+	menu_cam = null
+	player.cam.make_current()
+	hud.visible = true
+	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	await Game.fader.fade(0.0, 0.7)
 
 
 func _setup_input() -> void:
@@ -79,9 +138,8 @@ func _setup_input() -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_F2:
-		Game.high_quality = not Game.high_quality
-		_apply_quality()
-		Game.msg("Grafik kalitesi: %s" % ("YÜKSEK" if Game.high_quality else "DÜŞÜK"), Color(0.6, 0.9, 1.0))
+		Settings.set_opt("quality", (Settings.quality + 1) % 3)
+		Game.msg("Grafik kalitesi: %s" % Settings.QUALITY_NAMES[Settings.quality].to_upper(), Color(0.6, 0.9, 1.0))
 
 
 var env: Environment
@@ -114,7 +172,7 @@ func _build_environment() -> void:
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
-	var sun := DirectionalLight3D.new()
+	sun = DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-34, 24, 0)
 	sun.light_energy = 1.6
 	sun.light_color = Color(1.0, 0.93, 0.8)
@@ -134,24 +192,31 @@ func _build_environment() -> void:
 	_apply_quality()
 
 
-## Yüksek: SDFGI (yansıyan ışık), SSIL, SSR yansımalar, hacimsel sis (ışık huzmeleri).
-## Düşük: zayıf ekran kartları için hepsi kapalı.
+## Yüksek: SDFGI (yansıyan ışık), SSIL, SSR yansımalar, hacimsel sis, SSAO.
+## Orta: sadece SSAO + SSR. Düşük: hepsi kapalı, gölgeler hafifletilmiş.
 func _apply_quality() -> void:
-	var hq: bool = Game.high_quality
-	env.sdfgi_enabled = hq
+	var q: int = Settings.quality
+	env.sdfgi_enabled = q == 2
 	env.sdfgi_use_occlusion = true
 	env.sdfgi_min_cell_size = 0.1
 	env.sdfgi_cascades = 3
 	env.sdfgi_energy = 1.1
-	env.ssil_enabled = hq
+	env.ssil_enabled = q == 2
 	env.ssil_intensity = 0.8
-	env.ssr_enabled = hq
-	env.ssr_max_steps = 48
-	env.volumetric_fog_enabled = hq
+	env.ssao_enabled = q >= 1
+	env.ssr_enabled = q >= 1
+	env.ssr_max_steps = 48 if q == 2 else 24
+	env.volumetric_fog_enabled = q == 2
 	env.volumetric_fog_density = 0.006
 	env.volumetric_fog_albedo = Color(1.0, 0.97, 0.92)
 	env.volumetric_fog_sky_affect = 0.0
 	env.volumetric_fog_ambient_inject = 0.0
+	env.glow_enabled = q >= 1
+	if sun:
+		sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS if q >= 1 else DirectionalLight3D.SHADOW_ORTHOGONAL
+		sun.directional_shadow_max_distance = 14.0 if q >= 1 else 9.0
+		sun.shadow_blur = 1.5 if q == 2 else 1.0
+	get_viewport().positional_shadow_atlas_size = 4096 if q == 2 else (2048 if q == 1 else 1024)
 
 
 func _build_room() -> void:

@@ -137,6 +137,7 @@ func _build() -> void:
 	_update_visuals()
 	hum = AudioStreamPlayer3D.new()
 	hum.stream = Game.sfx.hum()
+	hum.bus = "SFX"
 	hum.volume_db = -14.0
 	hum.position = Vector3(0, 0.2, 0)
 	add_child(hum)

@@ -20,10 +20,40 @@ yüzeylerde gerçek PBR dokular ve gökyüzü için gerçek bir şehir HDRI'si k
 | Shift | Koş |
 | E / Sol tık | Etkileşim (al, tak, sök, konuş, satın al) |
 | G / Sağ tık | Elindekini bırak |
-| Esc | Duraklat (yönetim panelini kapatır) |
-| Fare | Menü, yönetim paneli ve gün sonu ekranındaki düğmeler |
-| F2 | Grafik kalitesi (Yüksek/Düşük) — oyun kasarsa Düşük yap |
+| Esc | Duraklatma menüsü (yönetim panelini kapatır) |
+| Fare / yön tuşları / Enter | Menüler (klavye ve gamepad ile odak gezintisi de çalışır) |
+| F2 | Grafik kalitesi: Düşük → Orta → Yüksek (oyun kasarsa düşür) |
 | F3 | FPS ve draw call sayacı |
+| H | Öğretici ipucunu gizle |
+
+## Menüler ve arayüz
+
+- **Ana menü:** oyun açılınca gerçek dükkânın üzerinde yavaşça süzülen sinematik kamera, solda başlık ve düğmeler:
+  *Devam Et* (kayıt varsa gün ve kasa gösterilir), *Yeni Oyun* (kayıt varsa onay sorar), *Ayarlar*,
+  *Nasıl Oynanır*, *Emeği Geçenler*, *Çıkış*. Düğmelerde üstüne gelme/tıklama sesi ve animasyonu, oyuna
+  geçerken kararma geçişi vardır.
+- **Duraklatma (Esc):** arka plan bulanıklaşır, oyun gerçekten durur (saat, müşteri sabrı, fizik).
+  *Devam Et, Ayarlar, Nasıl Oynanır, Ana Menüye Dön* (önce kaydeder), *Oyundan Çık*.
+  Pencere odağı kaybolunca oyun kendiliğinden duraklar.
+- **HUD:** sol üstte para (değişince sayarak güncellenir), gün/saat ve gün ilerleme çubuğu, itibar yıldızları;
+  sağ üstte aktif iş kartı (müşteri, ücret, hedef, yeşilden kırmızıya kayan sabır çubuğu); ortada hedefe bakınca
+  büyüyüp amber olan nişangah ve `[E] Eylem` etkileşim ipucu; solda kayarak giren para/uyarı/bilgi bildirimleri;
+  ödemede yükselen "+TL"; ilk günlerde üstte kısa öğretici ipuçları.
+- **Gün sonu özeti, Yönetim Paneli, iflas** ekranları aynı temayla, açılış/kapanış animasyonlu.
+
+## Ayarlar
+
+Ana menüden ve duraklatma menüsünden açılır, `user://settings.cfg` dosyasına kaydedilir ve açılışta uygulanır.
+
+| Sekme | Ayarlar |
+| --- | --- |
+| Grafik | Kalite (Düşük/Orta/Yüksek), pencere modu (pencere/tam ekran/kenarsız), VSync, FPS sınırı, çözünürlük ölçeği (%50-100), FSR 1.0, FOV |
+| Ses | Ana / Efekt / Müzik (ses kanalları `Master`, `SFX`, `Music`) |
+| Kontroller | Fare hassasiyeti, Y eksenini ters çevir, tuş listesi |
+| Oyun | FPS sayacı, ipuçlarını göster, ipuçlarını sıfırla |
+
+Kalite: **Yüksek** SDFGI + SSIL + SSR + SSAO + hacimsel sis; **Orta** sadece SSAO + SSR; **Düşük** hepsi kapalı,
+MSAA kapalı, gölgeler hafifletilmiş.
 
 ## Oynanış
 
@@ -68,21 +98,32 @@ scripts/slot.gd         Kasa içindeki parça yuvaları
 scripts/monitor.gd      Monitör (BIOS / masaüstü ekranı)
 scripts/customer.gd     Müşteri modeli ve yürüme
 scripts/job_manager.gd  Müşteri/iş akışı
-scripts/hud.gd          Ekran arayüzü
+scripts/hud.gd          HUD, gün sonu / yönetim paneli / iflas ekranları, öğretici ipuçları
+scripts/menu.gd         Ana menü (+ emeği geçenler, onay penceresi)
+scripts/pause_menu.gd   Duraklatma menüsü (bulanık arka plan)
+scripts/settings.gd     Ayarlar (autoload): kayıt, uygulama, ses kanalları
+scripts/settings_panel.gd  Ayarlar ekranı (Grafik/Ses/Kontroller/Oyun)
+scripts/howto_panel.gd  Nasıl Oynanır ekranı
+scripts/ui_theme.gd     Ortak tema (renkler, font, stiller); assets/ui/theme.tres bundan üretilir
+scripts/ui_kit.gd       Arayüz yardımcıları (düğme, tuş kapağı, modal, animasyonlar)
+scripts/music.gd        Kodla üretilen fon müziği
+assets/fonts/           Exo 2 yazı tipi + OFL.txt
+assets/ui/theme.tres    Proje varsayılan teması (`dev/make_theme.gd` ile yeniden üretilir)
 scripts/mesh_util.gd    Prosedürel model ve doku yardımcıları
-scripts/sfx.gd          Kodla üretilen sesler
+scripts/sfx.gd          Kodla üretilen sesler (SFX kanalı)
 assets/                 Dokular ve HDRI (Poly Haven, CC0)
 dev/                    Geliştirici araçları (ekran görüntüsü, otomatik test)
 ```
 
 Otomatik test (tamir döngüsü + gün/itibar/kayıt/iflas): `godot --headless -- --looptest`
-Arayüz görüntüleri: `godot -- --uishot`  
+Arayüz görüntüleri: `godot -- --uishot` (oyun içi), `godot -- --menushot` (ana menü); menü akışı testi: `godot --headless -- --flowtest`  
+Dev argümanları (`--shot`, `--uishot`, `--perf`, `--partshot`, `--looptest`) ana menüyü atlayıp doğrudan oyuna girer.  
 Performans ölçümü: `godot -- --perf`  ·  Parça vitrini görseli: `godot -- --partshot`
 
 ## Grafik
 
 - **Yüksek kalite:** SDFGI (dolaylı ışık), SSIL, SSR yansımaları, hacimsel sis (ışık huzmeleri).
-- **Düşük kalite:** bunlar kapalı, zayıf ekran kartlarında akıcı çalışır.
+- **Orta kalite:** SSAO + SSR. **Düşük kalite:** hepsi kapalı, zayıf ekran kartlarında akıcı çalışır.
 - Optimizasyon: sabit nesneler malzemeye göre tek mesh'te birleştirilir (`MU.merge_static`),
   sadece 3 ışık gölge düşürür, monitör ekranı sadece değişince yeniden çizilir.
 - Tonlama: AgX. Kenarlar yuvarlatılmış özel mesh'ler (`MU.rbox`) ile yapılıyor.
@@ -92,3 +133,6 @@ Performans ölçümü: `godot -- --perf`  ·  Parça vitrini görseli: `godot --
 Doku ve HDRI dosyaları [Poly Haven](https://polyhaven.com)'dan alınmıştır ve **CC0** (kamu malı) lisanslıdır:
 floor_tiles_06, painted_plaster_wall, wood_table_001, laminate_floor_02, rectangular_paving,
 asphalt_02, painted_brick, buikslotermeerplein (HDRI).
+
+Yazı tipi: **Exo 2** (The Exo 2 Project Authors), [SIL Open Font License 1.1](assets/fonts/OFL.txt).
+Oyun motoru: [Godot Engine](https://godotengine.org) (MIT). Ses efektleri ve fon müziği oyun içinde kodla üretilir.

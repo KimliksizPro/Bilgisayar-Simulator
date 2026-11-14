@@ -10,6 +10,9 @@ signal game_over(summary: Dictionary)
 
 const SFX := preload("res://scripts/sfx.gd")
 const PM := preload("res://scripts/part_models.gd")
+const FADER := preload("res://scripts/fader.gd")
+const MUSIC := preload("res://scripts/music.gd")
+const DEV_ARGS := ["--shot", "--uishot", "--perf", "--partshot", "--looptest"]
 
 # --- Ayarlanabilir sabitler ---
 const OPEN_HOUR := 9.0
@@ -33,10 +36,13 @@ const UPGRADE_LIST := [
 
 var money := START_MONEY
 var jobs_done := 0
-var high_quality := true
 var hud = null
 var player = null
 var sfx = null
+var fader = null
+var dev_mode := false         # dev araçları (--shot vb.) menüsüz doğrudan oyuna girer
+var paused := false           # duraklatma menüsü açık
+var ui_modal := false         # özet/yönetim paneli/duraklatma gibi tam ekran arayüz açık
 
 var day := 1
 var clock := OPEN_HOUR
@@ -58,8 +64,20 @@ var save_path := SAVE_PATH
 
 
 func _ready() -> void:
+	process_mode = Node.PROCESS_MODE_PAUSABLE
+	var args := OS.get_cmdline_user_args()
+	for a in DEV_ARGS:
+		if a in args:
+			dev_mode = true
 	sfx = SFX.new()
 	add_child(sfx)
+	fader = FADER.new()
+	add_child(fader)
+	if DisplayServer.get_name() != "headless":
+		add_child(MUSIC.new())
+	if not dev_mode:
+		fader.rect.modulate.a = 1.0
+		fader.fade(0.0, 0.9)
 
 
 func _process(delta: float) -> void:
@@ -225,6 +243,31 @@ func end_day() -> void:
 # --- Kayıt ---
 func has_save() -> bool:
 	return FileAccess.file_exists(save_path)
+
+
+## Kayıt dosyasının özeti (ana menüde göstermek için); kayıt yoksa boş sözlük.
+func peek_save() -> Dictionary:
+	if not has_save():
+		return {}
+	var parsed = JSON.parse_string(FileAccess.get_file_as_string(save_path))
+	if typeof(parsed) != TYPE_DICTIONARY:
+		return {}
+	return {"day": int(parsed.get("day", 1)), "money": int(parsed.get("money", 0)), "rep": float(parsed.get("rep", 3.0))}
+
+
+## Ana menüye dön: kaydet, kararıp sahneyi yeniden yükle.
+func return_to_menu() -> void:
+	if started and (phase == "day" or phase == "summary"):
+		save_game()
+	await fader.fade(1.0, 0.45)
+	started = false
+	phase = "menu"
+	paused = false
+	ui_modal = false
+	running = false
+	get_tree().paused = false
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	get_tree().reload_current_scene()
 
 
 func save_game() -> void:

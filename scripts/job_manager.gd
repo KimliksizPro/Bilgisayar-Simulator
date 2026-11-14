@@ -169,6 +169,7 @@ func _on_arrived() -> void:
 	wait_t = 0.0
 	hud.set_job("Yeni müşteri: %s" % job.name, "Tezgahtaki müşteriyle konuş [E]")
 	Game.msg("Bir müşteri geldi!", Color(0.6, 0.9, 1.0))
+	hud.tip("talk", "Müşteriyle konuşmak için ona bakıp E'ye bas.")
 
 
 func _make_job() -> Dictionary:
@@ -245,6 +246,9 @@ func _accept() -> void:
 	customer.say("Tamamdır usta, ben burada bekliyorum. Ücreti %d TL." % job.pay)
 	hud.set_job("%s — %d TL" % [job.name, job.pay], job.goal + "\n\nBitince müşteriyle konuş [E]")
 	Game.msg("Bilgisayar masana kondu. Kapağı açıp incele!", Color(0.6, 0.9, 1.0))
+	hud.dismiss_tip("talk")
+	hud.tip("glass", "Kapağı açmak için bilgisayarın camına bakıp E'ye bas.")
+	hud.tip("leds", "Güç düğmesine bas; bip seslerini ve anakartın hata LED'lerini izle. Duvardaki Arıza Rehberi yardımcı olur.")
 
 
 func _problem() -> String:

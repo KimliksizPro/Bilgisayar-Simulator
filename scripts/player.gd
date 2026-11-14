@@ -31,25 +31,32 @@ func _ready() -> void:
 	hold.position = Vector3(0.24, -0.2, -0.45)
 	cam.add_child(hold)
 	Game.player = self
+	apply_settings()
+	Settings.changed.connect(func(k): if k == "fov": apply_settings())
+
+
+## Ayarlardan görüş alanını uygular (hassasiyet/ters Y her harekette okunur).
+func apply_settings() -> void:
+	cam.fov = Settings.fov
 
 
 func _unhandled_input(event: InputEvent) -> void:
 	if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
-		if event is InputEventMouseButton and event.pressed:
+		if event is InputEventMouseButton and event.pressed and Game.started and not Game.ui_modal:
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 			get_viewport().set_input_as_handled()
 		return
 	if event is InputEventMouseMotion:
-		rotate_y(-event.relative.x * sensitivity)
-		_pitch = clamp(_pitch - event.relative.y * sensitivity, deg_to_rad(-85), deg_to_rad(85))
+		var sens: float = sensitivity * Settings.sensitivity
+		rotate_y(-event.relative.x * sens)
+		var dy: float = event.relative.y * (-1.0 if Settings.invert_y else 1.0)
+		_pitch = clamp(_pitch - dy * sens, deg_to_rad(-85), deg_to_rad(85))
 		cam.rotation.x = _pitch
 	elif event.is_action_pressed("interact"):
 		if target:
 			target.interact(self)
 	elif event.is_action_pressed("drop"):
 		drop()
-	elif event.is_action_pressed("ui_cancel"):
-		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 
 func _physics_process(delta: float) -> void:

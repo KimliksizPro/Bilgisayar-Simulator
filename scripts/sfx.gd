@@ -8,8 +8,10 @@ var _cache := {}
 
 
 func _ready() -> void:
+	process_mode = Node.PROCESS_MODE_ALWAYS  # menü sesleri duraklatmada da çalsın
 	for i in 8:
 		var p := AudioStreamPlayer.new()
+		p.bus = "SFX"
 		add_child(p)
 		_players.append(p)
 
@@ -101,6 +103,21 @@ func play(stream: AudioStream, pitch := 1.0) -> void:
 
 func click() -> void:
 	play(tone(1800.0, 0.03, 0.2, true))
+
+
+## Menü sesleri: hafif üstüne gelme tıkı, tıklama, geri.
+func ui_hover() -> void:
+	play(tone(1500.0, 0.025, 0.05))
+
+
+func ui_click() -> void:
+	play(tone(660.0, 0.04, 0.16))
+	await get_tree().create_timer(0.04, true).timeout
+	play(tone(990.0, 0.07, 0.14))
+
+
+func ui_back() -> void:
+	play(tone(520.0, 0.07, 0.14))
 
 
 func pickup() -> void:
