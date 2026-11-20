@@ -81,21 +81,21 @@ geçiyor. Bu faz oyunu "prototip"ten "oynanabilir oyun"a taşıyan en önemli ad
 | 1.5.14 ✅ | Teslim: müşteri tezgâha gelir, fiş numarasını söyler, raftan doğru kasayı verirsin; yanlış kasa = rezalet 😄 — **yapıldı** (yanlış cihaz = şikâyet + itibar −0.1) | S |
 | 1.5.15 ✅ | HUD'da aktif işler listesi (fiş no, kalan süre, durum); servis fişi tek iş yerine liste olsun — **yapıldı** (HUD'da Açık İşler listesi) | M |
 
-## Faz 2 — Gerçek parça çeşitliliği ve uyumluluk
+## Faz 2 — Gerçek parça çeşitliliği ve uyumluluk ✅ TAMAMLANDI
 
 Hayali markalarla (lisans derdi yok; PCBS1 de bütçe parçalarda hayali marka kullanıyor), gerçek dünya kurallarıyla.
 
 | # | İş | Boyut |
 | --- | --- | --- |
-| 2.1 | **Anakart** parça + yuvası: `soket` (AM4, AM5, LGA1700, LGA1851), `ram_tipi` DDR4/DDR5, `ram_yuva`, `form_faktör` ATX/mATX/ITX, `m2_yuva`, `pcie_nesli`, çipset | L |
-| 2.2 | CPU çeşitleri (soket, çekirdek, TDP, dahili grafik var/yok — dahili grafiksiz CPU + GPU'suz kasa = görüntü yok arızası) | M |
-| 2.3 | RAM: DDR4/DDR5, kapasite 8/16/32, hız; **çentik farkı** → yanlış nesil yuvaya fiziksel olarak girmesin; tek/çift kanal | M |
-| 2.4 | Depolama: SATA SSD, NVMe M.2, HDD (SMART sağlığı) | M |
-| 2.5 | PSU watt (450/550/750/1000) + konnektörler (6/8-pin, 12VHPWR); **toplam watt hesabı** | M |
-| 2.6 | Yeni yuvalar: CPU soğutucu (hava/AIO, yükseklik), kasa fanları, CMOS pili | M |
-| 2.7 | Kasa çeşitleri: form faktör, maks. GPU uzunluğu, maks. soğutucu yüksekliği | M |
-| 2.8 | `Compatibility.check(slot, parça, sistem)` → `{ok, sebep}`; yuvaya bakınca ipucu: "Bu anakart AM5, işlemci AM4" · ParçaNet'te "Uyumluluk" düğmesi · canlı watt göstergesi | M |
-| 2.9 | İş üretici asla uyumsuz başlangıç sistemi yaratmasın (PCBS2 v1.6 dersi) — ama bazı işler **bilerek** uyumsuzluk içersin (müşteri yanlış RAM almış vb.) | S |
+| 2.1 ✅ | **Anakart** parça + yuvası: `soket` (AM4, AM5, LGA1700, LGA1851), `ram_tipi` DDR4/DDR5, `ram_yuva`, `form_faktör` ATX/mATX/ITX, `m2_yuva`, `pcie_nesli`, çipset | L |
+| 2.2 ✅ | CPU çeşitleri (soket, çekirdek, TDP, dahili grafik var/yok — dahili grafiksiz CPU + GPU'suz kasa = görüntü yok arızası) | M |
+| 2.3 ✅ | RAM: DDR4/DDR5, kapasite 8/16/32, hız; **çentik farkı** → yanlış nesil yuvaya fiziksel olarak girmesin; tek/çift kanal | M |
+| 2.4 ✅ | Depolama: SATA SSD, NVMe M.2, HDD (SMART sağlığı) | M |
+| 2.5 ✅ | PSU watt (450/550/750/1000) + konnektörler (6/8-pin, 12VHPWR); **toplam watt hesabı** | M |
+| 2.6 ✅ | Yeni yuvalar: CPU soğutucu (hava/AIO, yükseklik), kasa fanları, CMOS pili | M |
+| 2.7 ✅ | Kasa çeşitleri: form faktör, maks. GPU uzunluğu, maks. soğutucu yüksekliği | M |
+| 2.8 ✅ | `Compatibility.check(slot, parça, sistem)` → `{ok, sebep}`; yuvaya bakınca ipucu: "Bu anakart AM5, işlemci AM4" · ParçaNet'te "Uyumluluk" düğmesi · canlı watt göstergesi | M |
+| 2.9 ✅ | İş üretici asla uyumsuz başlangıç sistemi yaratmasın (PCBS2 v1.6 dersi) — ama bazı işler **bilerek** uyumsuzluk içersin (müşteri yanlış RAM almış vb.) | S |
 
 ## Faz 3 — Arıza ve teşhis derinliği
 
