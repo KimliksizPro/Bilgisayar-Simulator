@@ -2,8 +2,9 @@ class_name PartDef
 extends RefCounted
 ## Tek bir parça (SKU) tanımı: data/parts.json içindeki bir kayıt.
 
-var id := ""             # SKU. Eski parçalarda "tür:seviye" (örn. "ram:2"); stok/kayıt anahtarı budur
-var category := ""       # parça türü: cpu, ram, gpu, psu, ssd, lap_ram ...
+var id := ""             # SKU kimliği (snake_case, örn. "ram_ddr4_16g_rgb"); stok/kayıt anahtarı budur
+var legacy_id := ""      # eski "tür:seviye" anahtarı (kayıt göçü ve geriye dönük uyumluluk için)
+var category := ""       # parça türü: mobo, cpu, cooler, ram, gpu, psu, ssd, nvme, hdd, fan, cmos, lap_ram ...
 var tier := 1            # eski (tür, seviye) araması için
 var name := ""           # oyunda görünen Türkçe ad
 var brand := ""          # kurgusal marka (boş olabilir)
@@ -21,6 +22,7 @@ var hold := {}           # isteğe bağlı elde tutuş ezmesi: {"euler": Vector3
 static func from_dict(d: Dictionary) -> PartDef:
 	var p := PartDef.new()
 	p.id = str(d.get("id", ""))
+	p.legacy_id = str(d.get("legacy_id", ""))
 	p.category = str(d.get("category", ""))
 	p.tier = int(d.get("tier", 1))
 	p.name = str(d.get("name", ""))

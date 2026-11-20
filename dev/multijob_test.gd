@@ -181,7 +181,7 @@ func _save_load(_main, jobs, _p) -> void:
 	var recs_before := Game.jobs_active.map(func(r): return [int(r.ticket), str(r.status), str(r.location), snappedf(float(r.due_abs), 0.01), int(r.pay)])
 	Game.save_game()
 	var d: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(Game.save_path))
-	_check(int(d.version) == 3 and d.jobs.size() == 3 and int(d.next_ticket) == 104, "kayıt dosyası jobs/next_ticket/versiyon")
+	_check(int(d.version) == Game.SAVE_VERSION and d.jobs.size() == 3 and int(d.next_ticket) == 104, "kayıt dosyası jobs/next_ticket/versiyon")
 	Game.jobs_active = []
 	Game.next_ticket = 1
 	_check(Game.load_game(), "yükleme")

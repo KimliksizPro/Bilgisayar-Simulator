@@ -14,14 +14,24 @@ static func type_name(type: String) -> String:
 	return DB.parts.type_name(type)
 
 
+static func display_name_sku(sku: String) -> String:
+	var d := DB.parts.get_def(sku)
+	return d.name if d else sku
+
+
 static func display_name(type: String, tier: int) -> String:
-	var d := DB.parts.def_for(type, tier)
-	return d.name if d else type
+	var id := DB.parts.id_for(type, tier)
+	return display_name_sku(id) if not id.is_empty() else type
+
+
+static func price_sku(sku: String) -> int:
+	var d := DB.parts.get_def(sku)
+	return d.price if d else 0
 
 
 static func price(type: String, tier: int) -> int:
-	var d := DB.parts.def_for(type, tier)
-	return d.price if d else 0
+	var id := DB.parts.id_for(type, tier)
+	return price_sku(id) if not id.is_empty() else 0
 
 
 static func ram_gb(tier: int) -> int:
@@ -31,20 +41,38 @@ static func ram_gb(tier: int) -> int:
 
 ## Dönüş: {"node": Node3D, "rotors": [Node3D], "rgb": [StandardMaterial3D]}
 ## Model parametreleri (etiket, RGB ...) parça tanımının "model" alanından gelir.
-static func build(type: String, tier: int) -> Dictionary:
+static func build_sku(sku: String) -> Dictionary:
 	var out := {"node": Node3D.new(), "rotors": [], "rgb": []}
-	var d := DB.parts.def_for(type, tier)
-	var m: Dictionary = d.model if d else {"builder": type}
-	match str(m.get("builder", type)):
+	var d := DB.parts.get_def(sku)
+	var cat := d.category if d else sku
+	var m: Dictionary = d.model if d else {"builder": cat}
+	match str(m.get("builder", cat)):
 		"cpu": _cpu(out)
 		"ram": _ram(out, m)
 		"gpu": _gpu(out, m)
 		"psu": _psu(out, m)
 		"ssd": _ssd(out, m)
+		"mobo", "cooler", "nvme", "hdd", "fan", "cmos":
+			_placeholder(out, cat)
 		var b:  # laptop / telefon parçaları
 			DP.build(out, b, m)
 	MU.merge_static(out.node)
 	return out
+
+
+static func build(type: String, tier: int) -> Dictionary:
+	var id := DB.parts.id_for(type, tier)
+	if not id.is_empty():
+		return build_sku(id)
+	return build_sku(type)
+
+
+## Aşama A geçici model: yeni kategoriler Aşama B'de ayrıntılı modellenecek.
+static func _placeholder(out: Dictionary, cat: String) -> void:
+	var info: Dictionary = DB.parts.category_info(cat)
+	var sz: Vector3 = info.get("size", Vector3(0.06, 0.06, 0.06))
+	var ctr: Vector3 = info.get("center", Vector3.ZERO)
+	MU.rbox(out.node, sz, ctr, _black(), minf(sz.x, minf(sz.y, sz.z)) * 0.15)
 
 
 # ---------------------------------------------------------------- ortak malzemeler

@@ -37,6 +37,7 @@ const DEV_ARGS := [
 	"--benchshot",
 	"--multijobtest",
 	"--jobshot",
+	"--compattest",
 ]
 
 # --- Ayarlanabilir sabitler ---
@@ -51,7 +52,7 @@ const RENT_RAISE_EVERY := 3               # kaç günde bir kira seviyesi artar
 const START_REP := 3.0
 const BANKRUPT_DAYS := 2                  # üst üste kaç gün eksi bakiye = iflas
 const SAVE_PATH := "user://save.json"
-const SAVE_VERSION := 3                   # kayıt şeması sürümü (eski kayıtlar _migrate ile çevrilir)
+const SAVE_VERSION := 4                   # kayıt şeması sürümü (eski kayıtlar _migrate ile çevrilir)
 
 const UPGRADE_LIST := [
 	{"id": "sign", "name": "Reklam Tabelası", "price": 400, "desc": "Müşteriler daha sık gelir."},
@@ -224,9 +225,9 @@ func has_upgrade(id: String) -> bool:
 	return upgrades.has(id)
 
 
-## Bugünkü ParçaNet alış fiyatı: piyasa çarpanı ve toptan anlaşma uygulanır.
-func price_of(type: String, tier: int, cheap := false) -> int:
-	var p := PM.price(type, tier) * market
+## Bugünkü ParçaNet alış fiyatı (SKU): piyasa çarpanı ve toptan anlaşma uygulanır.
+func price_of_sku(sku_id: String, cheap := false) -> int:
+	var p := PM.price_sku(sku_id) * market
 	if has_upgrade("wholesale"):
 		p *= 0.85
 	if cheap:
@@ -234,67 +235,107 @@ func price_of(type: String, tier: int, cheap := false) -> int:
 	return roundi(p)
 
 
-## Müşteriye tezgahtan satış fiyatı (piyasa fiyatı + kâr).
+func price_of(type: String, tier: int, cheap := false) -> int:
+	return price_of_sku(sku(type, tier), cheap)
+
+
+## Müşteriye tezgahtan satış fiyatı (SKU, piyasa fiyatı + kâr).
+func retail_price_sku(sku_id: String) -> int:
+	return roundi(PM.price_sku(sku_id) * market * RETAIL_MARKUP / 5.0) * 5
+
+
 func retail_price(type: String, tier: int) -> int:
-	return roundi(PM.price(type, tier) * market * RETAIL_MARKUP / 5.0) * 5
+	return retail_price_sku(sku(type, tier))
 
 
 # --- Stok ---
+## (tür, seviye) -> kanonik SKU kimliği.
 static func sku(type: String, tier: int) -> String:
-	return "%s:%d" % [type, tier]
+	var id: String = DB.parts.id_for(type, tier)
+	return id if not id.is_empty() else "%s:%d" % [type, tier]
 
 
-func stock_of(type: String, tier: int) -> int:
-	return int(stock.get(sku(type, tier), 0))
+## Sepet/sipariş anahtarını çözer: "<sku>" veya "<sku>:c" (eski "tür:seviye[:c]" biçimi dahil).
+static func parse_cart_key(k: String) -> Dictionary:
+	var cheap := k.ends_with(":c")
+	var base := k.substr(0, k.length() - 2) if cheap else k
+	return {"sku": DB.parts.resolve_id(base), "cheap": cheap}
 
 
-func add_stock(type: String, tier: int, n := 1) -> void:
-	var k := sku(type, tier)
+func stock_of_sku(sku_id: String) -> int:
+	return int(stock.get(DB.parts.resolve_id(sku_id), 0))
+
+
+func add_stock_sku(sku_id: String, n := 1) -> void:
+	var k: String = DB.parts.resolve_id(sku_id)
 	stock[k] = maxi(0, int(stock.get(k, 0)) + n)
 	stock_changed.emit()
 
 
-func take_stock(type: String, tier: int) -> bool:
-	var n := stock_of(type, tier)
+func take_stock_sku(sku_id: String) -> bool:
+	var k: String = DB.parts.resolve_id(sku_id)
+	var n := int(stock.get(k, 0))
 	if n <= 0:
 		return false
 	# ikinci elden gelen gizli arızalılar stoğun içinde rastgele çıkar
-	var k := sku(type, tier)
 	var d := int(stock_dud.get(k, 0))
 	take_was_dud = d > 0 and randi_range(1, n) <= d
 	if take_was_dud:
 		stock_dud[k] = d - 1
-	add_stock(type, tier, -1)
-	stock_dud[k] = mini(int(stock_dud.get(k, 0)), stock_of(type, tier))
+	add_stock_sku(k, -1)
+	stock_dud[k] = mini(int(stock_dud.get(k, 0)), int(stock.get(k, 0)))
 	return true
 
 
+func stock_of(type: String, tier: int) -> int:
+	return stock_of_sku(sku(type, tier))
+
+
+func add_stock(type: String, tier: int, n := 1) -> void:
+	add_stock_sku(sku(type, tier), n)
+
+
+func take_stock(type: String, tier: int) -> bool:
+	return take_stock_sku(sku(type, tier))
+
+
 # --- Muadil (ucuz) parça stoğu ---
-func stock_cheap_of(type: String, tier: int) -> int:
-	return int(stock_cheap.get(sku(type, tier), 0))
+func stock_cheap_of_sku(sku_id: String) -> int:
+	return int(stock_cheap.get(DB.parts.resolve_id(sku_id), 0))
 
 
-func add_stock_cheap(type: String, tier: int, n := 1) -> void:
-	var k := sku(type, tier)
+func add_stock_cheap_sku(sku_id: String, n := 1) -> void:
+	var k: String = DB.parts.resolve_id(sku_id)
 	stock_cheap[k] = maxi(0, int(stock_cheap.get(k, 0)) + n)
 	stock_changed.emit()
 
 
-func take_stock_cheap(type: String, tier: int) -> bool:
-	if stock_cheap_of(type, tier) <= 0:
+func take_stock_cheap_sku(sku_id: String) -> bool:
+	var k: String = DB.parts.resolve_id(sku_id)
+	if int(stock_cheap.get(k, 0)) <= 0:
 		return false
-	add_stock_cheap(type, tier, -1)
+	add_stock_cheap_sku(k, -1)
 	return true
+
+
+func stock_cheap_of(type: String, tier: int) -> int:
+	return stock_cheap_of_sku(sku(type, tier))
+
+
+func add_stock_cheap(type: String, tier: int, n := 1) -> void:
+	add_stock_cheap_sku(sku(type, tier), n)
+
+
+func take_stock_cheap(type: String, tier: int) -> bool:
+	return take_stock_cheap_sku(sku(type, tier))
 
 
 func stock_value() -> int:
 	var v := 0
 	for k in stock:
-		var a: PackedStringArray = k.split(":")
-		v += PM.price(a[0], int(a[1])) * int(stock[k])
+		v += PM.price_sku(str(k)) * int(stock[k])
 	for k in stock_cheap:
-		var a: PackedStringArray = k.split(":")
-		v += roundi(PM.price(a[0], int(a[1])) * CHEAP_FACTOR) * int(stock_cheap[k])
+		v += roundi(PM.price_sku(str(k)) * CHEAP_FACTOR) * int(stock_cheap[k])
 	return v
 
 
@@ -330,9 +371,9 @@ func ship_fee(express: bool, subtotal: int) -> int:
 func cart_subtotal(items: Dictionary) -> int:
 	var t := 0
 	for k in items:
-		var a: PackedStringArray = k.split(":")
+		var pk := parse_cart_key(str(k))
 		var q := int(items[k])
-		var line := price_of(a[0], int(a[1]), a.size() > 2) * q  # "tür:seviye:c" = muadil
+		var line := price_of_sku(pk.sku, pk.cheap) * q  # "<sku>:c" = muadil
 		if q >= BULK_QTY:
 			line = roundi(line * (1.0 - BULK_DISCOUNT))
 		t += line
@@ -389,11 +430,11 @@ func receive_order(id: int) -> Dictionary:
 			var o: Dictionary = orders[i]
 			orders.remove_at(i)
 			for k in o.items:
-				var a: PackedStringArray = k.split(":")
-				if a.size() > 2:
-					add_stock_cheap(a[0], int(a[1]), int(o.items[k]))
+				var pk := parse_cart_key(str(k))
+				if pk.cheap:
+					add_stock_cheap_sku(pk.sku, int(o.items[k]))
 				else:
-					add_stock(a[0], int(a[1]), int(o.items[k]))
+					add_stock_sku(pk.sku, int(o.items[k]))
 			orders_changed.emit()
 			return o
 	return {}
@@ -402,8 +443,8 @@ func receive_order(id: int) -> Dictionary:
 static func items_text(items: Dictionary) -> String:
 	var parts := []
 	for k in items:
-		var a: PackedStringArray = k.split(":")
-		parts.append("%d x %s%s" % [int(items[k]), PM.display_name(a[0], int(a[1])), " (muadil)" if a.size() > 2 else ""])
+		var pk := parse_cart_key(str(k))
+		parts.append("%d x %s%s" % [int(items[k]), PM.display_name_sku(pk.sku), " (muadil)" if pk.cheap else ""])
 	return ", ".join(parts)
 
 
@@ -457,8 +498,11 @@ func _load_economy(d: Dictionary) -> void:
 	for k in d.get("stock_dud", {}):
 		stock_dud[str(k)] = int(d.stock_dud[k])
 	for w in d.get("warranty", []):
+		var wt := str(w.get("type", "ram"))
+		var wtier := int(w.get("tier", 1))
+		var wsku := str(w.get("sku", DB.parts.id_for(wt, wtier)))
 		warranty_list.append({"due": int(w.get("due", day)), "name": str(w.get("name", "Müşteri")),
-			"type": str(w.get("type", "ram")), "tier": int(w.get("tier", 1))})
+			"type": wt, "tier": wtier, "sku": wsku})
 
 
 func patience_mult() -> float:
@@ -648,7 +692,82 @@ func _migrate(d: Dictionary, from_version: int) -> Dictionary:
 		# v2 -> v3: çoklu iş. Eski kayıtlarda bırakılmış iş yoktu: boş liste, fiş numarası baştan.
 		d["jobs"] = []
 		d["next_ticket"] = 101
+	if from_version < 4:
+		# v3 -> v4: stok/sipariş/garanti/iş anahtarları "tür:seviye" -> kanonik SKU kimliğine çevrilir
+		for field in ["stock", "stock_cheap", "stock_dud"]:
+			if d.has(field) and d[field] is Dictionary:
+				var mapped := {}
+				for k in d[field]:
+					var nk: String = DB.parts.resolve_id(str(k))
+					mapped[nk] = int(mapped.get(nk, 0)) + int(d[field][k])
+				d[field] = mapped
+		if d.has("orders") and d["orders"] is Array:
+			for o in d["orders"]:
+				if o is Dictionary and o.has("items") and o["items"] is Dictionary:
+					var mapped_items := {}
+					for k in o["items"]:
+						var pk := parse_cart_key(str(k))
+						var nk: String = str(pk.sku) + (":c" if pk.cheap else "")
+						mapped_items[nk] = int(mapped_items.get(nk, 0)) + int(o["items"][k])
+					o["items"] = mapped_items
+		if d.has("warranty") and d["warranty"] is Array:
+			for w in d["warranty"]:
+				if w is Dictionary and not w.has("sku"):
+					w["sku"] = DB.parts.id_for(str(w.get("type", "ram")), int(w.get("tier", 1)))
+		if d.has("jobs") and d["jobs"] is Array:
+			for j in d["jobs"]:
+				if j is Dictionary:
+					_migrate_job_v4(j)
 	return d
+
+
+func _migrate_job_v4(j: Dictionary) -> void:
+	var is_pc := str(j.get("device", "pc")) == "pc" or str(j.get("device", "")) == ""
+	if is_pc and not j.has("case_id"):
+		j["case_id"] = "atx_mid"
+	var inject := is_pc and str(j.get("kind", "")) != "build"
+	if j.has("parts") and j["parts"] is Array:
+		j["parts"] = _migrate_parts_v4(j["parts"], inject)
+	var st = j.get("state", null)
+	if st is Dictionary and st.has("parts") and st["parts"] is Array:
+		st["parts"] = _migrate_parts_v4(st["parts"], inject)
+
+
+func _migrate_parts_v4(parts: Array, inject_pc_defaults: bool) -> Array:
+	var out := []
+	var seen := {}
+	for p in parts:
+		if p is Dictionary:
+			var np: Dictionary = p.duplicate()
+			if np.has("sku"):
+				np["sku"] = DB.parts.resolve_id(str(np["sku"]))
+			if not np.has("health"):
+				np["health"] = 100
+			seen[str(np.get("slot", ""))] = true
+			out.append(np)
+		elif p is Array and p.size() >= 4:
+			var sl := str(p[0])
+			if sl == "dust":
+				continue
+			var t := str(p[1])
+			var tier := int(p[2])
+			var sku_id: String = DB.parts.id_for(t, tier)
+			if sku_id.is_empty():
+				sku_id = DB.parts.resolve_id("%s:%d" % [t, tier])
+			seen[sl] = true
+			out.append({
+				"slot": sl,
+				"sku": sku_id,
+				"broken": bool(p[3]),
+				"paste_ok": bool(p[4]) if p.size() > 4 else true,
+				"cheap": bool(p[5]) if p.size() > 5 else false,
+				"health": 100,
+			})
+	if inject_pc_defaults and not out.is_empty():
+		for pair in [["mobo", "mobo_am4_matx"], ["cooler", "cooler_stock"], ["fan1", "fan_120_std"], ["cmos", "cmos_cr2032"]]:
+			if not seen.has(pair[0]):
+				out.append({"slot": pair[0], "sku": pair[1], "broken": false, "paste_ok": true, "cheap": false, "health": 100})
+	return out
 
 
 ## Kayıt sözlüğünü geçici dosyaya yazar, doğrular, eski kaydı yedekler ve yerine koyar.

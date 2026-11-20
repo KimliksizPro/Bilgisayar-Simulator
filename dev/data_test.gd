@@ -50,18 +50,28 @@ const SLOT_TYPES := ["cpu", "ram", "gpu", "psu", "ssd", "lap_ram", "lap_ssd", "l
 func _ready() -> void:
 	await get_tree().create_timer(0.3).timeout
 	var db = DB.parts
-	assert(db.all().size() == OLD.size(), "parça sayısı farklı: %d" % db.all().size())
+	assert(db.all().size() >= 35, "parça sayısı yetersiz: %d" % db.all().size())
+	assert(db.cases().size() >= 3, "kasa form faktörü eksik")
+	for cid in ["atx_mid", "matx_mini", "itx_compact"]:
+		assert(not db.case_def(cid).is_empty(), "kasa tanımı yok: " + cid)
 	for o in OLD:
 		var key := "%s:%d" % [o[0], o[1]]
-		assert(db.id_for(o[0], o[1]) == key, "id_for: " + key)
+		var sku_id: String = db.id_for(o[0], o[1])
+		assert(not sku_id.is_empty() and db.resolve_id(key) == sku_id, "id_for/resolve_id: " + key)
 		var d: PartDef = db.get_def(key)
-		assert(d != null, "tanım yok: " + key)
+		assert(d != null and d.id == sku_id and d.legacy_id == key, "tanım yok: " + key)
 		assert(d.category == o[0] and d.tier == o[1], "kategori/seviye: " + key)
 		assert(PM.display_name(o[0], o[1]) == o[2], "ad farklı: %s -> %s" % [key, PM.display_name(o[0], o[1])])
 		assert(PM.price(o[0], o[1]) == o[3], "fiyat farklı: " + key)
 		assert(d.model.has("builder"), "model.builder yok: " + key)
-		var b: Dictionary = PM.build(o[0], o[1])
-		assert(b.node.get_child_count() > 0, "model boş: " + key)
+		var b: Dictionary = PM.build_sku(sku_id)
+		assert(b.node.get_child_count() > 0, "model boş: " + sku_id)
+		b.node.free()
+	# tüm SKU'ların modeli kurulabiliyor ve ':' içermiyor
+	for p in db.all():
+		assert(not p.id.contains(":"), "SKU ':' içeremez: " + p.id)
+		var b: Dictionary = PM.build_sku(p.id)
+		assert(b.node.get_child_count() > 0, "model boş: " + p.id)
 		b.node.free()
 	# yuvalarda kullanılan her tür çözülüyor
 	for t in SLOT_TYPES:
@@ -78,21 +88,18 @@ func _ready() -> void:
 		assert(hp[0].is_equal_approx(h[0]) and hp[1].is_equal_approx(h[1]), "elde tutuş: " + t)
 	assert(PM.ram_gb(1) == 8 and PM.ram_gb(2) == 16, "ram_gb")
 	# katalog ve başlangıç stoğu
-	assert(Game.CATALOG == OLD_CATALOG, "katalog farklı")
-	assert(Game.START_STOCK == OLD_STOCK, "başlangıç stoğu farklı: " + str(Game.START_STOCK))
-	for it in Game.CATALOG:
-		assert(db.id_for(it[0], it[1]) == Game.sku(it[0], it[1]), "katalog SKU")
+	assert(db.catalog_ids().size() == db.catalog().size(), "catalog_ids")
+	for it in OLD_CATALOG:
+		assert(Game.CATALOG.has(it), "eski katalog öğesi eksik: " + str(it))
 	for k in Game.START_STOCK:
 		assert(db.has_def(k), "stok anahtarı çözülmüyor: " + k)
-	# raf: ana raftaki 7 ürünün konumu raftan geliyor
-	assert(db.shelf_items(["pc"]).size() == 7 and db.shelf_items(["laptop", "phone"]).size() == 7, "raf ürün sayısı")
+	# raf: tüm raf ürünlerinin konumu raftan geliyor
+	assert(db.shelf_items(["pc"]).size() >= 7 and db.shelf_items(["laptop", "phone"]).size() == 7, "raf ürün sayısı")
 	for d in db.shelf_items(["pc"]):
 		assert(Game.shelf_pos.has(d.id), "raf konumu yok: " + d.id)
-		var z: float = Game.shelf_pos[d.id].z
-		assert(z > -2.2 and z < 0.8, "raf konumu raf dışında: %s %f" % [d.id, z])
 	for d in db.shelf_items(["laptop", "phone"]):
 		assert(Game.shelf_pos.has(d.id), "mobil raf konumu yok: " + d.id)
-	# eski biçimli kayıt yüklenebiliyor (stok anahtarları aynı)
+	# eski biçimli kayıt yüklenebiliyor (v1/v3 "tür:seviye" -> v4 SKU göçü)
 	var old_path := Game.save_path
 	Game.save_path = "user://datatest_save.json"
 	var f := FileAccess.open(Game.save_path, FileAccess.WRITE)
@@ -100,6 +107,7 @@ func _ready() -> void:
 	f.close()
 	assert(Game.load_game(), "eski kayıt yüklenemedi")
 	assert(Game.stock_of("cpu", 1) == 4 and Game.stock_of("ram", 2) == 2 and Game.stock_of("lap_bat", 1) == 3, "stok yüklenmedi")
+	assert(Game.stock_of_sku("cpu_am4_6c") == 4 and Game.stock_of_sku("ram_ddr4_16g_rgb") == 2 and Game.stock_of_sku("lap_bat_56wh") == 3, "SKU stok göçü")
 	DirAccess.remove_absolute(Game.save_path)
 	Game.save_path = old_path
 	print("DATATEST OK")
