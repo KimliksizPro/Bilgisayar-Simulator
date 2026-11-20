@@ -22,7 +22,8 @@ static func fault_of(dev: String, slot: String):
 
 
 static func is_device(job: Dictionary) -> bool:
-	return job.get("device", "") != ""
+	var dev := str(job.get("device", ""))
+	return dev == "laptop" or dev == "phone"
 
 
 ## Laptop veya telefon tamir işi üretir (j: içinde "name" olan iş sözlüğü).

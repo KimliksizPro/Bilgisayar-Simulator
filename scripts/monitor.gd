@@ -182,12 +182,12 @@ func boot(pc) -> void:
 		"BilgiOS başlatılıyor...",
 	]
 	for l in lines:
-		await get_tree().create_timer(0.16).timeout
+		await get_tree().create_timer(0.12).timeout
 		if my != _token:
 			return
 		text.text += l + "\n"
 		_refresh()
-	await get_tree().create_timer(0.8).timeout
+	await get_tree().create_timer(0.7).timeout
 	if my != _token:
 		return
 	text.text = ""
