@@ -4,6 +4,20 @@ extends Control
 const T := preload("res://scripts/ui_theme.gd")
 const K := preload("res://scripts/ui_kit.gd")
 const PM := preload("res://scripts/part_models.gd")
+const PC_SCRIPT := preload("res://scripts/pc_case.gd")
+const BENCH := preload("res://scripts/bench_mode.gd")
+
+const SHOP_CATS := [
+	{"id": "all", "label": "Tümü", "cats": []},
+	{"id": "mobo", "label": "Anakart", "cats": ["mobo"]},
+	{"id": "cpu", "label": "CPU", "cats": ["cpu"]},
+	{"id": "ram", "label": "RAM", "cats": ["ram"]},
+	{"id": "gpu", "label": "GPU", "cats": ["gpu"]},
+	{"id": "storage", "label": "Depolama", "cats": ["ssd", "nvme", "hdd"]},
+	{"id": "psu", "label": "PSU", "cats": ["psu"]},
+	{"id": "other", "label": "Soğutma/Diğer", "cats": ["cooler", "fan", "cmos"]},
+	{"id": "mobile", "label": "Mobil", "cats": ["lap_ram", "lap_ssd", "lap_bat", "lap_scr", "tel_bat", "tel_scr", "tel_port"]},
+]
 
 signal back
 
@@ -12,12 +26,20 @@ var _panel: Control
 var _pages: Array[Control] = []
 var _tabs: Array[Button] = []
 var _money: Label
-var _cart := {}             # sku -> adet
+var _cart := {}             # "<sku>" veya "<sku>:c" -> adet
 var _express := false
 var _cheap := false         # ParçaNet kalite seçimi: false = orijinal, true = muadil
+var _cat_id := "all"        # ParçaNet kategori filtresi
+var _cat_btns := {}         # cat_id -> Button
+var _compat_on := false     # ParçaNet "Uyumluluk" rozetleri açık mı
+var _compat_only := false   # Yalnızca uyumlu parçaları göster
+var _compat_btn: Button
+var _compat_only_btn: Button
+var _bench_watt_l: Label
+var _bench_info_l: Label
 var _qual_btns: Array[Button] = []
 var _qual_note: Label
-# ParçaNet satırları: sku -> {stock, price, qty, line}
+# ParçaNet satırları: sku -> {panel, def, stock, price, qty, line, retail, compat}
 var _rows := {}
 var _market: Label
 var _sub_l: Label
@@ -94,6 +116,7 @@ func _ready() -> void:
 	Game.upgrade_bought.connect(func(_id): refresh())
 	Game.day_started.connect(refresh)
 	Game.staff_changed.connect(refresh)  # PERSONEL
+	Game.bench_changed.connect(func(_d): refresh())
 	_show_page(0)
 
 
@@ -157,57 +180,94 @@ func _build_shop(p: Control) -> void:
 	var mk := K.lcd(top, "", 26, Vector2(12, 0))
 	mk[0].size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	_market = mk[1]
+	# kategori filtre sekmeleri
+	var cat_bar := HFlowContainer.new()
+	cat_bar.add_theme_constant_override("h_separation", 4)
+	cat_bar.add_theme_constant_override("v_separation", 4)
+	p.add_child(cat_bar)
+	var cg := ButtonGroup.new()
+	for c in SHOP_CATS:
+		var cid: String = c.id
+		var cb := K.button(cat_bar, c.label, func():
+			_cat_id = cid
+			refresh(), "SegButton", 14, Vector2(0, 32))
+		cb.toggle_mode = true
+		cb.button_group = cg
+		_cat_btns[cid] = cb
+	# tezgâh PC uyumluluk düğmesi + canlı watt göstergesi
+	var cbar := HBoxContainer.new()
+	cbar.add_theme_constant_override("separation", 10)
+	p.add_child(cbar)
+	_compat_btn = K.button(cbar, "Uyumluluk", func():
+		_compat_on = _compat_btn.button_pressed
+		if not _compat_on:
+			_compat_only = false
+		refresh(), "SegButton", 14, Vector2(0, 32))
+	_compat_btn.toggle_mode = true
+	_compat_only_btn = K.button(cbar, "Sadece uyumlu", func():
+		_compat_only = _compat_only_btn.button_pressed
+		refresh(), "SegButton", 14, Vector2(0, 32))
+	_compat_only_btn.toggle_mode = true
+	_compat_only_btn.visible = false
+	_bench_info_l = K.label(cbar, "", 14, T.MUTED, "MutedLabel")
+	_bench_info_l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_bench_info_l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_bench_watt_l = K.label(cbar, "", 15, T.GOOD, "BoldLabel")
+	_bench_watt_l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	# başlık satırı
 	var hdr := _grid_row(p)
-	for t in [["ÜRÜN", 310], ["STOK", 100], ["BİRİM FİYAT", 150], ["ADET", 170], ["TUTAR", 110]]:
+	for t in [["ÜRÜN", 330], ["STOK", 90], ["BİRİM FİYAT", 130], ["ADET", 160], ["TUTAR", 105]]:
 		var l := K.label(hdr, t[0], 12, T.MUTED, "SmallCaps")
 		l.custom_minimum_size.x = t[1]
 	var list := VBoxContainer.new()
 	list.add_theme_constant_override("separation", 4)
-	# katalog uzun (laptop/telefon parçaları): kaydırılabilir liste
+	# katalog uzun (PC + mobil SKU'lar): kaydırılabilir liste
 	var lsc := ScrollContainer.new()
-	lsc.custom_minimum_size = Vector2(0, 330)
+	lsc.custom_minimum_size = Vector2(0, 270)
 	lsc.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	lsc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	p.add_child(lsc)
 	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	lsc.add_child(list)
-	for it in Game.CATALOG:
-		var type: String = it[0]
-		var tier: int = it[1]
-		var k := Game.sku(type, tier)
+	for d in DB.parts.catalog():
+		var k: String = d.id
 		var ip := K.panel(list, "InsetPanel")
 		ip.add_theme_stylebox_override("panel", T.flat(Color(0, 0, 0, 0.25), 5, Color(1, 1, 1, 0.04), 1, Vector2(12, 5)))
 		var r := HBoxContainer.new()
 		r.add_theme_constant_override("separation", 0)
 		ip.add_child(r)
 		var nm := VBoxContainer.new()
-		nm.add_theme_constant_override("separation", -3)
-		nm.custom_minimum_size.x = 310
+		nm.add_theme_constant_override("separation", -2)
+		nm.custom_minimum_size.x = 330
 		r.add_child(nm)
-		K.label(nm, PM.display_name(type, tier), 18, T.TEXT, "BoldLabel")
-		var retail := K.label(nm, "", 14, T.MUTED, "MutedLabel")
-		var st := K.label(r, "", 20, T.TEXT, "BoldLabel")
-		st.custom_minimum_size.x = 100
+		K.label(nm, PM.display_name_sku(k), 17, T.TEXT, "BoldLabel")
+		var spec_s := BENCH._spec_text(d)
+		if spec_s != "":
+			K.label(nm, spec_s, 13, T.INFO)
+		var retail := K.label(nm, "", 13, T.MUTED, "MutedLabel")
+		var compat_l := K.label(nm, "", 13, T.GOOD, "BoldLabel")
+		compat_l.visible = false
+		var st := K.label(r, "", 19, T.TEXT, "BoldLabel")
+		st.custom_minimum_size.x = 90
 		st.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		var pr := K.label(r, "", 20, T.ACCENT_HI, "BoldLabel")
-		pr.custom_minimum_size.x = 150
+		var pr := K.label(r, "", 19, T.ACCENT_HI, "BoldLabel")
+		pr.custom_minimum_size.x = 130
 		pr.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		var step := HBoxContainer.new()
 		step.add_theme_constant_override("separation", 6)
-		step.custom_minimum_size.x = 170
+		step.custom_minimum_size.x = 160
 		step.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		r.add_child(step)
-		K.button(step, "−", func(): _add(k, -1), "SegButton", 20, Vector2(40, 38))
-		var lq := K.lcd(step, "0", 26, Vector2(10, 0))
-		lq[1].custom_minimum_size.x = 28
+		K.button(step, "−", func(): _add(k, -1), "SegButton", 20, Vector2(38, 36))
+		var lq := K.lcd(step, "0", 24, Vector2(8, 0))
+		lq[1].custom_minimum_size.x = 26
 		lq[1].horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		K.button(step, "+", func(): _add(k, 1), "SegButton", 20, Vector2(40, 38))
-		var ln := K.label(r, "", 19, T.TEXT, "BoldLabel")
-		ln.custom_minimum_size.x = 110
+		K.button(step, "+", func(): _add(k, 1), "SegButton", 20, Vector2(38, 36))
+		var ln := K.label(r, "", 18, T.TEXT, "BoldLabel")
+		ln.custom_minimum_size.x = 105
 		ln.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		ln.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		_rows[k] = {"stock": st, "price": pr, "qty": lq[1], "line": ln, "retail": retail, "type": type, "tier": tier}
+		_rows[k] = {"panel": ip, "def": d, "stock": st, "price": pr, "qty": lq[1], "line": ln, "retail": retail, "compat": compat_l}
 	K.spacer(p, 2)
 	# sepet özeti + kargo seçimi
 	var bottom := HBoxContainer.new()
@@ -425,8 +485,15 @@ func _refresh_used() -> void:
 		nm.add_theme_constant_override("separation", -3)
 		nm.custom_minimum_size.x = 300
 		r.add_child(nm)
-		K.label(nm, PM.display_name(l.type, l.tier), 18, T.TEXT, "BoldLabel")
-		K.label(nm, "Yeni fiyatı: %d TL" % Game.price_of(l.type, l.tier), 14, T.MUTED, "MutedLabel")
+		var sku_id := str(l.get("sku", ""))
+		if sku_id.is_empty():
+			sku_id = Game.sku(str(l.get("type", "")), int(l.get("tier", 1)))
+		else:
+			sku_id = DB.parts.resolve_id(sku_id)
+		var ldef: PartDef = DB.parts.get_def(sku_id)
+		var sp_txt := BENCH._spec_text(ldef)
+		K.label(nm, PM.display_name_sku(sku_id), 18, T.TEXT, "BoldLabel")
+		K.label(nm, "Yeni fiyatı: %d TL%s" % [Game.price_of_sku(sku_id), ("  ·  " + sp_txt) if sp_txt != "" else ""], 14, T.MUTED, "MutedLabel")
 		var cond: int = l.cond
 		var cl := K.label(r, "Durum %%%d" % cond, 19, T.GOOD if cond >= 70 else (T.ACCENT if cond >= 50 else T.BAD), "BoldLabel")
 		cl.custom_minimum_size.x = 130
@@ -464,21 +531,101 @@ func refresh() -> void:
 		_refresh_staff()
 
 
+## Tezgâhta PC kasası varsa onu, yoksa null döndürür.
+func _bench_pc():
+	var d = Game.bench_device
+	return d if is_instance_valid(d) and d.get_script() == PC_SCRIPT else null
+
+
+## Tezgâhtaki PC'nin standart kasa durumu (anakart yuvasız eski kasalarda yerleşik AM4 varsayılır).
+func _bench_case_state() -> Dictionary:
+	var pc = _bench_pc()
+	if pc == null:
+		return {}
+	var st := Compatibility.case_state_of(pc)
+	if st.mobo == null and "slots" in pc and not pc.slots.has("mobo"):
+		st.mobo = DB.parts.get_def("mobo_am4_matx")
+	return st
+
+
+func _active_cat_list() -> Array:
+	for c in SHOP_CATS:
+		if c.id == _cat_id:
+			return c.cats
+	return []
+
+
 func _refresh_shop() -> void:
 	var ch := (Game.market / maxf(Game.market_prev, 0.01) - 1.0) * 100.0
 	var arrow := "▲" if ch > 0.5 else ("▼" if ch < -0.5 else "■")
 	_market.text = "KUR %.2f %s%+.0f%%" % [Game.market, arrow, ch]
 	_market.add_theme_color_override("font_color", T.BAD if ch > 0.5 else (T.LCD if ch < -0.5 else T.LCD_DIM))
+	for cid in _cat_btns:
+		_cat_btns[cid].set_pressed_no_signal(cid == _cat_id)
+	# tezgâhtaki PC uyumluluk ve watt durumu
+	var bench_st := _bench_case_state()
+	var has_pc := not bench_st.is_empty()
+	if not has_pc:
+		_compat_on = false
+		_compat_only = false
+	_compat_btn.disabled = not has_pc
+	_compat_btn.set_pressed_no_signal(_compat_on)
+	_compat_btn.tooltip_text = "Tezgâhtaki PC ile uyumluluk rozetlerini göster" if has_pc else "Tezgâhta PC yok"
+	_compat_only_btn.visible = has_pc and _compat_on
+	_compat_only_btn.set_pressed_no_signal(_compat_only)
+	if has_pc:
+		var cdef: Dictionary = bench_st.get("case_def", {})
+		var mobo: PartDef = bench_st.get("mobo", null)
+		var mtxt := "%s · %s" % [str(mobo.compat.get("socket", "")), str(mobo.compat.get("ram_type", ""))] if mobo != null else "Anakart yok"
+		_bench_info_l.text = "Tezgâh: %s · %s" % [str(cdef.get("name", "PC")), mtxt]
+		var w := Compatibility.calc_watts(bench_st)
+		var w_col := T.GOOD
+		if w.psu <= 0 or w.draw > w.psu:
+			w_col = T.BAD
+		elif w.psu < w.recommended or float(w.draw) / float(w.psu) > 0.85:
+			w_col = T.ACCENT
+		_bench_watt_l.text = "Güç: %dW / %s" % [w.draw, ("%dW" % w.psu) if w.psu > 0 else "PSU yok"]
+		_bench_watt_l.add_theme_color_override("font_color", w_col)
+		_bench_watt_l.tooltip_text = "Önerilen PSU: %dW+" % w.recommended
+		_bench_watt_l.visible = true
+	else:
+		_bench_info_l.text = "Tezgâhta PC yok"
+		_bench_watt_l.visible = false
+	var cat_list := _active_cat_list()
 	for k in _rows:
 		var r: Dictionary = _rows[k]
-		var n := Game.stock_of(r.type, r.tier)
-		var cn := Game.stock_cheap_of(r.type, r.tier)
+		var d: PartDef = r.def
+		var cat_ok := cat_list.is_empty() or cat_list.has(d.category)
+		var compat_ok := true
+		var compat_lbl: Label = r.compat
+		var row_panel: Control = r.panel
+		if has_pc and _compat_on and d.device == "pc":
+			var res := Compatibility.check_catalog_part(d, bench_st)
+			compat_lbl.visible = true
+			if not res.ok:
+				compat_ok = false
+				compat_lbl.text = "✕ Uyumsuz: %s" % str(res.reason)
+				compat_lbl.add_theme_color_override("font_color", T.BAD)
+				row_panel.tooltip_text = str(res.reason)
+			elif str(res.get("severity", "ok")) == "warn":
+				compat_lbl.text = "⚠ %s" % str(res.reason)
+				compat_lbl.add_theme_color_override("font_color", T.ACCENT)
+				row_panel.tooltip_text = str(res.reason)
+			else:
+				compat_lbl.text = "✓ Uyumlu"
+				compat_lbl.add_theme_color_override("font_color", T.GOOD)
+				row_panel.tooltip_text = "Tezgâhtaki PC ile uyumlu"
+		else:
+			compat_lbl.visible = false
+			row_panel.tooltip_text = ""
+		row_panel.visible = cat_ok and (not _compat_only or compat_ok)
+		var n := Game.stock_of_sku(k)
+		var cn := Game.stock_cheap_of_sku(k)
 		r.stock.text = ((str(n) if n > 0 else "0") + (" +%dM" % cn if cn > 0 else "")) if n + cn > 0 else "YOK"
 		r.stock.add_theme_color_override("font_color", T.TEXT if n + cn > 1 else (T.ACCENT if n + cn == 1 else T.BAD))
-		var pr := Game.price_of(r.type, r.tier, _cheap)
+		var pr := Game.price_of_sku(k, _cheap)
 		r.price.text = "%d TL" % pr
 		r.price.add_theme_color_override("font_color", T.GOOD if _cheap else T.ACCENT_HI)
-		r.retail.text = "Tezgahta satış: %d TL" % Game.retail_price(r.type, r.tier)
 		var q := int(_cart.get(k + (":c" if _cheap else ""), 0))
 		r.qty.text = str(q)
 		# satır tutarı: iki kalitenin toplamı (diğer kalite sepetteyse küçük not)
@@ -492,12 +639,12 @@ func _refresh_shop() -> void:
 		r.line.text = ("%d TL" % line) if q + (qc if not _cheap else qo) > 0 else "—"
 		r.line.add_theme_color_override("font_color", T.GOOD if (qo >= Game.BULK_QTY or qc >= Game.BULK_QTY) else T.TEXT)
 		var other := qo if _cheap else qc
-		r.retail.text = "Tezgahta satış: %d TL" % Game.retail_price(r.type, r.tier) + ("   ·   sepette %d %s" % [other, "orijinal" if _cheap else "muadil"] if other > 0 else "")
+		r.retail.text = "Tezgahta satış: %d TL" % Game.retail_price_sku(k) + ("   ·   sepette %d %s" % [other, "orijinal" if _cheap else "muadil"] if other > 0 else "")
 	var sub := Game.cart_subtotal(_cart)
 	var raw := 0
-	for k in _cart:
-		var pk: PackedStringArray = k.split(":")
-		raw += Game.price_of(pk[0], int(pk[1]), pk.size() > 2) * int(_cart[k])
+	for ck in _cart:
+		var pk := Game.parse_cart_key(str(ck))
+		raw += Game.price_of_sku(pk.sku, pk.cheap) * int(_cart[ck])
 	_qual_btns[0].set_pressed_no_signal(not _cheap)
 	_qual_btns[1].set_pressed_no_signal(_cheap)
 	_qual_note.text = "ucuz ama garanti riski var" if _cheap else "güvenilir, garanti sorunu yok"
