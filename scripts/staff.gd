@@ -144,12 +144,14 @@ func _go_home(e) -> void:
 ## Ayrılmış stok ve eldeki parça geri rafa.
 func _release(e) -> void:
 	for r in e.reserved:
-		Game.add_stock(r[0], int(r[1]), 1)
+		var rsku: String = Game.sku(str(r[0]), int(r[1])) if r is Array else str(r)
+		Game.add_stock_sku(rsku, 1)
 	e.reserved = []
 	if e.held:
 		var h = e.release_held()
 		if is_instance_valid(h):
-			Game.add_stock(h.part_type, h.tier, 1)
+			var hsku: String = h.sku if not h.sku.is_empty() else Game.sku(h.part_type, h.tier)
+			Game.add_stock_sku(hsku, 1)
 			h.queue_free()
 	if not e.rec.is_empty():
 		jobs.busy.erase(int(e.rec.ticket))
@@ -313,9 +315,10 @@ func _clerk_pickup(e, c) -> bool:
 
 ## Parça müşterisi: stokta varsa raftan alıp getirir ve satar; yoksa bir kez haber verir.
 func _clerk_sale(e, c) -> bool:
-	var w: Array = jobs.job.want
-	var dname := PM.display_name(w[0], w[1])
-	if not Game.take_stock(w[0], w[1]):
+	var w = jobs.job.want
+	var sku_id: String = DB.parts.resolve_id(str(w)) if w is String else (Game.sku(str(w[0]), int(w[1])) if w is Array and w.size() >= 2 else DB.parts.resolve_id(str(w[0])))
+	var dname := PM.display_name_sku(sku_id)
+	if not Game.take_stock_sku(sku_id):
 		if e.noted != c:
 			e.noted = c
 			e.say_for("Usta stokta %s kalmamış! ParçaNet'ten ekspres sipariş versen?" % dname, 4.0, true)
@@ -323,14 +326,14 @@ func _clerk_sale(e, c) -> bool:
 		return false
 	e.task = "sell"
 	e.noted = c
-	e.reserved = [[w[0], w[1]]]
-	var sp: Vector3 = Game.shelf_pos.get(Game.sku(w[0], w[1]), Vector3(SHELF_X, 0, -1.2))  # raf kurulurken main.gd yazar
+	e.reserved = [sku_id]
+	var sp: Vector3 = Game.shelf_pos.get(sku_id, Vector3(SHELF_X, 0, -1.2))  # raf kurulurken main.gd yazar
 	var shelf := Vector3(SHELF_X, 0, sp.z)
 	e.say_for("Hemen getiriyorum, bir saniye.", 2.0)
 	e.walk([shelf], func():
 		e.face_angle = -PI * 0.5
 		e.reserved = []
-		var part = PART.new().setup(w[0], w[1], false)
+		var part = PART.new().setup_sku(sku_id, false)
 		e.carry(part)
 		Game.sfx.click()
 		e.walk([SERVE_CLERK], func():
@@ -404,17 +407,18 @@ func assign(id: int, quiet := false) -> String:
 		if p == null or not is_instance_valid(p):
 			continue
 		var pl := make_plan(p, rec)
-		# gereken parçaları stoktan ayır
+		# gereken parçaları stoktan ayır (SKU kimliğiyle)
 		var res := []
 		var missing := ""
 		for it in pl.parts:
-			if not Game.take_stock(it[1], int(it[2])):
-				missing = PM.display_name(it[1], int(it[2]))
+			var sku_id: String = str(it[1])
+			if not Game.take_stock_sku(sku_id):
+				missing = PM.display_name_sku(sku_id)
 				break
-			res.append([it[1], int(it[2])])
+			res.append(sku_id)
 		if missing != "":
 			for r in res:
-				Game.add_stock(r[0], int(r[1]), 1)
+				Game.add_stock_sku(str(r), 1)
 			if e.noted != p:
 				e.noted = p
 				e.say_for("Usta stokta %s yok! ParçaNet'ten getirtmek lazım." % missing, 4.0, true)
@@ -452,30 +456,144 @@ func _start_repair(e, rec: Dictionary, p, pl: Dictionary, res: Array) -> void:
 			e.pc.toggle_panel())
 
 
-## Bilgisayarın şu anki hâline ve işe göre yapılacaklar: değişecek parçalar, toz, macun.
+## Bilgisayarın şu anki hâline ve işe göre yapılacaklar: değişecek SKU'lar, toz, macun.
+## Stoktaki uyumlu parçayı Compatibility.check() ile seçer.
 static func make_plan(p, job: Dictionary) -> Dictionary:
 	var parts := []
-	var need := {"psu": ["psu", 1], "cpu": ["cpu", 1], "ram1": ["ram", 1], "gpu": ["gpu", 1], "ssd": ["ssd", 1]}
-	for s in ["psu", "cpu", "ram1", "ram2", "gpu", "ssd"]:
-		var part = p.part_in(s)
+	var planned_counts := {}
+	var hyp := Compatibility.case_state_of(p)
+	if not p.slots.has("mobo") and hyp.mobo == null:
+		hyp["mobo"] = DB.parts.get_def("mobo_am4_matx")  # anakart yuvası olmayan eski kasalar için yedek
+	var order := ["mobo", "psu", "cpu", "cooler", "ram1", "ram2", "ram3", "ram4", "gpu", "ssd", "m2", "fan1", "fan2", "cmos"]
+	for sn in p.slots.keys():
+		if not order.has(sn):
+			order.append(sn)
+	var essentials := ["mobo", "psu", "cpu", "cooler", "ram1", "gpu", "ssd"]
+	for sn in order:
+		if not p.slots.has(sn):
+			continue
+		var slot = p.slots[sn]
+		var part = slot.part
+		var need_replace := false
+		var pref_sku := ""
 		if part and part.broken:
-			parts.append([s, part.part_type, part.tier])
-		elif part == null and need.has(s):
-			parts.append([s, need[s][0], need[s][1]])
+			need_replace = true
+			pref_sku = DB.parts.resolve_id(part.sku if not part.sku.is_empty() else Game.sku(part.part_type, part.tier))
+		elif part == null and essentials.has(sn):
+			if sn == "ssd" and not hyp.storage.is_empty():
+				continue
+			if sn == "gpu" and hyp.cpu != null and Compatibility.check_display(hyp.cpu, null).ok:
+				continue
+			need_replace = true
+		if need_replace:
+			var picked := _pick_compatible_sku(slot, sn, pref_sku, 1, hyp, planned_counts)
+			if not picked.is_empty():
+				parts.append([sn, picked])
+				planned_counts[picked] = int(planned_counts.get(picked, 0)) + 1
+				_apply_hyp(hyp, sn, DB.parts.get_def(picked))
 	match job.get("kind", ""):
 		"upgrade_gpu":
 			var g = p.part_in("gpu")
 			if g == null or g.tier < 2:
-				parts = parts.filter(func(it): return it[0] != "gpu")
-				parts.append(["gpu", "gpu", 2])
+				parts = _drop_slot_plan(parts, planned_counts, "gpu")
+				if p.slots.has("gpu"):
+					var gsku := _pick_compatible_sku(p.slots["gpu"], "gpu", "gpu_gamer_12g", 2, hyp, planned_counts)
+					if not gsku.is_empty():
+						parts.append(["gpu", gsku])
+						planned_counts[gsku] = int(planned_counts.get(gsku, 0)) + 1
+						_apply_hyp(hyp, "gpu", DB.parts.get_def(gsku))
 		"upgrade_ram":
 			if p.total_ram() < 32:
-				parts = parts.filter(func(it): return it[0] != "ram1" and it[0] != "ram2")
-				parts.append(["ram1", "ram", 2])
-				parts.append(["ram2", "ram", 2])
+				parts = _drop_slot_plan(parts, planned_counts, "ram1")
+				parts = _drop_slot_plan(parts, planned_counts, "ram2")
+				for rslot in ["ram1", "ram2"]:
+					if not p.slots.has(rslot):
+						continue
+					var rsku := _pick_compatible_sku(p.slots[rslot], rslot, "ram_ddr4_16g_rgb", 2, hyp, planned_counts)
+					if not rsku.is_empty():
+						parts.append([rslot, rsku])
+						planned_counts[rsku] = int(planned_counts.get(rsku, 0)) + 1
+						_apply_hyp(hyp, rslot, DB.parts.get_def(rsku))
 	var cpu = p.part_in("cpu")
 	var cpu_new := parts.any(func(it): return it[0] == "cpu")
 	return {"parts": parts, "dust": p.dust > 0.02, "paste": cpu != null and not cpu_new and not cpu.paste_ok}
+
+
+## Verilen yuva için stoktan uyumlu bir SKU seçer (yoksa ilk uyumlu SKU'yu eksik bildirimi için döner).
+static func _pick_compatible_sku(slot, slot_name: String, pref_sku: String, min_tier: int, hyp: Dictionary, planned: Dictionary) -> String:
+	var accepts := str(slot.accepts)
+	var extra: Array = slot.get("accepts_extra") if "accepts_extra" in slot else []
+	var mock_slot := {"accepts": accepts, "accepts_extra": extra, "part": null, "name": slot_name}
+	# tercih edilen SKU stokta ve uyumluysa doğrudan onu seç
+	if not pref_sku.is_empty():
+		var pd: PartDef = DB.parts.get_def(pref_sku)
+		if pd != null and pd.tier >= min_tier and Game.stock_of_sku(pd.id) - int(planned.get(pd.id, 0)) > 0:
+			var r := Compatibility.check(mock_slot, pd, hyp)
+			if r.ok and r.severity == "ok":
+				return pd.id
+	# aksi halde stoktaki tüm uyumlu adaylardan en ucuzunu (önce uyarısız) seç
+	var cats := [accepts] + extra
+	var cands: Array = []
+	for c in cats:
+		for d in DB.parts.by_category(str(c)):
+			if d.tier >= min_tier:
+				cands.append(d)
+	cands.sort_custom(func(a, b): return a.price < b.price)
+	var warn_match := ""
+	var first_compat := ""
+	for d in cands:
+		var r := Compatibility.check(mock_slot, d, hyp)
+		if not r.ok:
+			continue
+		if first_compat.is_empty():
+			first_compat = d.id
+		if Game.stock_of_sku(d.id) - int(planned.get(d.id, 0)) > 0:
+			if r.severity == "ok":
+				return d.id
+			if warn_match.is_empty():
+				warn_match = d.id
+	if not warn_match.is_empty():
+		return warn_match
+	if not pref_sku.is_empty():
+		var pd2: PartDef = DB.parts.get_def(pref_sku)
+		if pd2 != null and Compatibility.check(mock_slot, pd2, hyp).ok:
+			return pd2.id
+	return first_compat if not first_compat.is_empty() else DB.parts.id_for(accepts, min_tier)
+
+
+static func _apply_hyp(hyp: Dictionary, slot_name: String, d: PartDef) -> void:
+	if d == null:
+		return
+	hyp.slots_occupied[slot_name] = d
+	match d.category:
+		"mobo": hyp["mobo"] = d
+		"cpu": hyp["cpu"] = d
+		"cooler": hyp["cooler"] = d
+		"ram":
+			var rs: Array = hyp.rams.duplicate()
+			rs.append(d)
+			hyp["rams"] = rs
+		"gpu": hyp["gpu"] = d
+		"psu": hyp["psu"] = d
+		"ssd", "hdd", "nvme":
+			var st: Array = hyp.storage.duplicate()
+			st.append(d)
+			hyp["storage"] = st
+		"fan":
+			var fs: Array = hyp.fans.duplicate()
+			fs.append(d)
+			hyp["fans"] = fs
+		"cmos": hyp["cmos"] = d
+
+
+static func _drop_slot_plan(parts: Array, planned: Dictionary, slot_name: String) -> Array:
+	var out := []
+	for it in parts:
+		if it[0] == slot_name:
+			planned[it[1]] = maxi(0, int(planned.get(it[1], 0)) - 1)
+		else:
+			out.append(it)
+	return out
 
 
 func _finish(e) -> void:
@@ -491,16 +609,17 @@ func _finish(e) -> void:
 			Game.msg("%s hata yaptı, iş uzadı (itibar düştü)." % d.name, Color(1, 0.6, 0.4))
 			e.need += e.need * 0.4
 			return
-		var lost: Array = pl.parts[0]
-		var dname := PM.display_name(lost[1], int(lost[2]))
-		if Game.take_stock(lost[1], int(lost[2])):
+		var lost_sku: String = str(pl.parts[0][1])
+		var dname := PM.display_name_sku(lost_sku)
+		if Game.take_stock_sku(lost_sku):
 			e.say_for("Eyvah, %s ters taktım, yandı! Yenisini takıyorum." % dname, 3.5, true)
 			Game.msg("%s hata yaptı: 1 %s yandı (itibar düştü)." % [d.name, dname], Color(1, 0.6, 0.4))
 			e.need += e.need * 0.4
 			return
 		# yanan parçanın yenisi stokta yok: ayrılanın biri gitti, kalanı rafa döner
 		for i in e.reserved.size():
-			if e.reserved[i][0] == lost[1] and int(e.reserved[i][1]) == int(lost[2]):
+			var rsku: String = Game.sku(str(e.reserved[i][0]), int(e.reserved[i][1])) if e.reserved[i] is Array else str(e.reserved[i])
+			if rsku == lost_sku:
 				e.reserved.remove_at(i)
 				break
 		_abort(e, "%s yaktım usta, stokta yenisi yok! Gerisi sende." % dname)
@@ -514,9 +633,10 @@ func _finish(e) -> void:
 		if old:
 			slot.detach()
 			if not old.broken:
-				Game.add_stock(old.part_type, old.tier, 1)  # sağlam eski parça rafa
+				var osku: String = old.sku if not old.sku.is_empty() else Game.sku(old.part_type, old.tier)
+				Game.add_stock_sku(osku, 1)  # sağlam eski parça rafa
 			old.queue_free()
-		slot.install(PART.new().setup(it[1], int(it[2]), false))
+		slot.install(PART.new().setup_sku(str(it[1]), false))
 	e.reserved = []
 	if pl.dust:
 		p.clean_dust()
