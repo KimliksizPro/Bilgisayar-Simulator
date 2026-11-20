@@ -166,10 +166,10 @@ func _compute_slot_positions() -> Dictionary:
 		"cmos": Vector3(bx + 0.002, 0.268 + dy, clampf(0.092, -z_lim, z_lim)),
 		"psu": Vector3(0.0, 0.0475, -case_d / 2.0 + 0.09),
 		"ssd": Vector3(0.02, 0.015, case_d / 2.0 - 0.10),
-		"fan1": Vector3(0.02, case_h - 0.10, -case_d / 2.0 + 0.02),
+		"fan1": Vector3(case_w * 0.5 - 0.070, case_h - 0.085, -case_d / 2.0 + 0.019),
 	}
 	if int(case_def.get("fan_slots", 2)) >= 2:
-		pos["fan2"] = Vector3(0.0, case_h * 0.55, case_d / 2.0 - 0.022)
+		pos["fan2"] = Vector3(0.0, case_h * 0.55, case_d / 2.0 - 0.019)
 	return pos
 
 
@@ -231,6 +231,10 @@ func _build_slots() -> void:
 		s.name = sn
 		MU.no_merge(s)
 		s.position = slot_pos[sn]
+		if sn == "fan1":
+			s.rotation_degrees = Vector3(0, -90, 0)  # arka egzoz: kasa içine (+Z) bakar
+		elif sn == "fan2":
+			s.rotation_degrees = Vector3(0, 90, 0)   # ön giriş: kasa içine (-Z) bakar
 		add_child(s)
 		s.setup(d[1], self, d[2], d[3])
 		slots[sn] = s

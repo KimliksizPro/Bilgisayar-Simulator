@@ -15,10 +15,12 @@ const DEVICE_RACK := preload("res://scripts/device_rack.gd")  # laptop / telefon
 const PROPS := preload("res://scripts/props.gd")
 const BENCH := preload("res://scripts/bench_mode.gd")  # tezgâh modu (yörünge kamera)
 const JOB_RACK := preload("res://scripts/job_rack.gd")  # bekleyen işler rafı
+const INV_PANEL := preload("res://scripts/inventory_panel.gd")  # Parça Dolabı seçici
 
 const DESK_Y := 0.75
 
 var hud
+var inv_panel
 var bench
 var delivery
 var monitor
@@ -52,6 +54,10 @@ func _ready() -> void:
 	_build_upgrades()  # birleştirmeden sonra: açılıp kapanan nesneler
 	hud = HUD.new()
 	add_child(hud)
+	inv_panel = INV_PANEL.new()
+	inv_panel.pick_requested.connect(_on_cabinet_pick)
+	inv_panel.return_requested.connect(_on_cabinet_return)
+	add_child(inv_panel)
 	player = PLAYER.new()
 	player.position = Vector3(0.9, 0, -0.9)
 	player.rotation_degrees.y = 15
@@ -209,9 +215,19 @@ func _setup_input() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_F2:
-		Settings.set_opt("quality", (Settings.quality + 1) % 3)
-		Game.msg("Grafik kalitesi: %s" % Settings.QUALITY_NAMES[Settings.quality].to_upper(), Color(0.6, 0.9, 1.0))
+	if event is InputEventKey and event.pressed and not event.echo:
+		if event.physical_keycode == KEY_F2:
+			Settings.set_opt("quality", (Settings.quality + 1) % 3)
+			Game.msg("Grafik kalitesi: %s" % Settings.QUALITY_NAMES[Settings.quality].to_upper(), Color(0.6, 0.9, 1.0))
+		elif event.physical_keycode == KEY_I and inv_panel != null:
+			if inv_panel.is_open():
+				Game.sfx.ui_back()
+				inv_panel.close()
+				get_viewport().set_input_as_handled()
+			elif Game.started and Game.phase == "day" and not Game.ui_modal and not Game.bench_active and not Game.paused:
+				Game.sfx.ui_click()
+				inv_panel.open()
+				get_viewport().set_input_as_handled()
 
 
 var env: Environment
@@ -606,79 +622,147 @@ func _bin_use(p) -> void:
 
 
 func _build_shelf() -> void:
-	var x0 := -3.75
-	var wood := MU.pbr("laminate", 1.0)
+	# Kompakt atölye Parça Dolabı (~1.55m genişlik, çekmeceler + camlı vitrin)
+	var x0 := -3.72
 	var zc := -0.85
-	var length := 4.0
-	var shelf_h := 2.24
-	for z in [zc - length / 2, zc + length / 2]:
-		MU.static_box(self, Vector3(0.42, shelf_h, 0.04), Vector3(x0, shelf_h / 2.0, z), null)
-		MU.rbox(self, Vector3(0.42, shelf_h, 0.04), Vector3(x0, shelf_h / 2.0, z), wood, 0.008)
-	MU.box(self, Vector3(0.02, shelf_h, length), Vector3(x0 - 0.2, shelf_h / 2.0, zc), MU.pbr("wall", 0.5, Color(0.85, 0.88, 0.92), 0.3))
-	var rows_y := [1.83, 1.46, 1.09, 0.72, 0.35]
-	var levels := [0.35, 0.72, 1.09, 1.46, 1.83, 2.20]
-	for y in levels:
-		MU.static_box(self, Vector3(0.42, 0.03, length), Vector3(x0, y, zc), null)
-		MU.rbox(self, Vector3(0.42, 0.03, length), Vector3(x0, y, zc), wood, 0.006)
-		# raf altı LED şerit
-		MU.box(self, Vector3(0.01, 0.004, length - 0.1), Vector3(x0 + 0.18, y - 0.017, zc), MU.mat(Color(1.0, 0.95, 0.85), 0, 0.5, 3.0))
-	for y in [0.65, 1.35, 2.0]:
-		var sl := OmniLight3D.new()
-		sl.position = Vector3(x0 + 0.15, y, zc)
-		sl.omni_range = 2.0
-		sl.light_energy = 0.7
-		sl.light_color = Color(1.0, 0.95, 0.88)
-		add_child(sl)
-	var title := MU.label(self, "STOK RAFI", Vector3(x0 + 0.05, 2.66, zc), 90, Color(0.15, 0.2, 0.3), Vector3(0, 90, 0), 0.0025)
+	var cab_w := 1.54   # Z boyunca genişlik
+	var cab_d := 0.46   # X boyunca derinlik
+	var cab_h := 2.12
+	var body_m := MU.mat(Color(0.14, 0.16, 0.19), 0.55, 0.42)
+	var trim_m := MU.mat(Color(0.22, 0.24, 0.28), 0.7, 0.35)
+	var accent_m := MU.mat(Color(0.92, 0.64, 0.14), 0.35, 0.4)
+	var drawer_m := MU.mat(Color(0.20, 0.22, 0.26), 0.45, 0.45)
+	var handle_m := MU.mat(Color(0.76, 0.78, 0.82), 0.9, 0.25)
+	var wood := MU.pbr("laminate", 1.0)
+
+	# ana çarpışma + gövde (arka, yanlar, alt, üst, orta tezgâh)
+	MU.static_box(self, Vector3(cab_d, cab_h, cab_w), Vector3(x0, cab_h * 0.5, zc), null)
+	MU.rbox(self, Vector3(0.03, cab_h, cab_w), Vector3(x0 - cab_d * 0.5 + 0.015, cab_h * 0.5, zc), body_m, 0.006)
+	for sz in [-1.0, 1.0]:
+		MU.rbox(self, Vector3(cab_d, cab_h, 0.035), Vector3(x0, cab_h * 0.5, zc + sz * (cab_w * 0.5 - 0.0175)), body_m, 0.008)
+	MU.rbox(self, Vector3(cab_d, 0.05, cab_w), Vector3(x0, 0.025, zc), trim_m, 0.008)
+	MU.rbox(self, Vector3(cab_d + 0.02, 0.04, cab_w + 0.02), Vector3(x0 + 0.01, 1.04, zc), wood, 0.008)
+	MU.rbox(self, Vector3(cab_d + 0.02, 0.04, cab_w + 0.02), Vector3(x0 + 0.01, cab_h - 0.02, zc), trim_m, 0.008)
+
+	# alt bölüm: 2 sütun x 4 satır etiketli atölye çekmeceleri
+	var drawer_labels := [
+		["ANAKART", "CPU"],
+		["RAM", "GPU"],
+		["DEPOLAMA", "PSU"],
+		["SOĞUTMA", "DİĞER"],
+	]
+	var col_w := (cab_w - 0.11) * 0.5
+	var row_h := 0.21
+	for row in 4:
+		var dy := 0.90 - row * 0.235
+		for col in 2:
+			var dz := zc + (-col_w * 0.5 - 0.012 if col == 0 else col_w * 0.5 + 0.012)
+			MU.rbox(self, Vector3(0.03, row_h, col_w), Vector3(x0 + cab_d * 0.5 - 0.01, dy, dz), drawer_m, 0.006)
+			# alüminyum kulp
+			MU.rbox(self, Vector3(0.02, 0.016, 0.16), Vector3(x0 + cab_d * 0.5 + 0.012, dy + 0.045, dz), handle_m, 0.004)
+			# çekmece etiket plakası
+			MU.box(self, Vector3(0.004, 0.052, 0.24), Vector3(x0 + cab_d * 0.5 + 0.006, dy - 0.025, dz), MU.mat(Color(0.95, 0.92, 0.82), 0, 0.6))
+			var dl := MU.label(self, drawer_labels[row][col], Vector3(x0 + cab_d * 0.5 + 0.010, dy - 0.025, dz), 32, Color(0.12, 0.12, 0.14), Vector3(0, 90, 0), 0.001)
+			dl.double_sided = false
+
+	# üst bölüm: camlı vitrin + 2 iç raf + LED şerit + seçkin vitrin modelleri
+	var inner_back := MU.mat(Color(0.11, 0.13, 0.16), 0.2, 0.6)
+	MU.box(self, Vector3(0.01, 1.0, cab_w - 0.08), Vector3(x0 - cab_d * 0.5 + 0.036, 1.56, zc), inner_back)
+	for sy in [1.42, 1.76]:
+		MU.rbox(self, Vector3(cab_d - 0.08, 0.022, cab_w - 0.08), Vector3(x0 - 0.01, sy, zc), wood, 0.004)
+		MU.box(self, Vector3(0.008, 0.004, cab_w - 0.14), Vector3(x0 + 0.16, sy - 0.013, zc), MU.mat(Color(1.0, 0.94, 0.82), 0, 0.5, 3.2))
+	MU.box(self, Vector3(0.008, 0.004, cab_w - 0.14), Vector3(x0 + 0.16, cab_h - 0.045, zc), MU.mat(Color(1.0, 0.94, 0.82), 0, 0.5, 3.2))
+	# vitrin içi dekoratif seçkin parçalar (statik sergileme)
+	var showcase := [
+		["mobo_am5_atx", Vector3(x0 + 0.02, 1.24, zc - 0.48), 0.92],
+		["gpu_gamer_12g", Vector3(x0 + 0.02, 1.18, zc + 0.04), 1.05],
+		["psu_750w", Vector3(x0 + 0.03, 1.13, zc + 0.48), 1.0],
+		["cooler_tower", Vector3(x0 + 0.01, 1.56, zc - 0.42), 1.05],
+		["ram_ddr5_32g_rgb", Vector3(x0 + 0.03, 1.55, zc - 0.06), 1.15],
+		["fan_120_rgb", Vector3(x0 + 0.04, 1.56, zc + 0.36), 1.1],
+	]
+	for sc_item in showcase:
+		var built := PM.build_sku(sc_item[0])
+		var sn: Node3D = built.node
+		sn.scale = Vector3.ONE * float(sc_item[2])
+		sn.position = sc_item[1]
+		add_child(sn)
+	# camlı kapak çerçevesi
+	var gx := x0 + cab_d * 0.5 - 0.006
+	MU.box(self, Vector3(0.004, 0.98, cab_w - 0.10), Vector3(gx, 1.57, zc), MU.glass())
+	MU.rbox(self, Vector3(0.016, 1.02, 0.026), Vector3(gx + 0.004, 1.57, zc), trim_m, 0.004)
+	for sz in [-0.04, 0.04]:
+		MU.rbox(self, Vector3(0.018, 0.12, 0.014), Vector3(gx + 0.016, 1.48, zc + sz), handle_m, 0.004)
+
+	# üst tabela panosu + sıcak vitrin ışığı
+	MU.rbox(self, Vector3(0.06, 0.20, cab_w + 0.02), Vector3(x0 + cab_d * 0.5 - 0.02, cab_h + 0.10, zc), body_m, 0.008)
+	MU.box(self, Vector3(0.064, 0.018, cab_w + 0.02), Vector3(x0 + cab_d * 0.5 - 0.02, cab_h + 0.01, zc), accent_m)
+	var title := MU.label(self, "PARÇA DOLABI", Vector3(x0 + cab_d * 0.5 + 0.015, cab_h + 0.12, zc), 72, Color(1.0, 0.78, 0.25), Vector3(0, 90, 0), 0.0018)
 	title.double_sided = false
-	# raftaki ürünler data/parts.json'dan; 5 satıra otomatik dizilir (üstten alta)
-	var min_w := 0.24
-	var entries := []
-	for d in DB.parts.shelf_items(["pc"]):
-		var sz: Vector3 = PM.info(d.category).size
-		var k := _shelf_scale(sz)
-		entries.append({"def": d, "w": maxf(sz.z * k + 0.06, min_w)})
-	var rows: Array = DB.parts.flow_rows(entries, length - 0.2, rows_y.size())
+	var sub := MU.label(self, "E: Parça Seç / İade  ·  I: Hızlı Aç", Vector3(x0 + cab_d * 0.5 + 0.015, cab_h + 0.045, zc), 28, Color(0.85, 0.87, 0.9), Vector3(0, 90, 0), 0.0012)
+	sub.double_sided = false
+	var sl := OmniLight3D.new()
+	sl.position = Vector3(x0 + 0.32, 1.65, zc)
+	sl.omni_range = 2.2
+	sl.light_energy = 0.85
+	sl.light_color = Color(1.0, 0.94, 0.84)
+	add_child(sl)
+
+	# tek etkileşim alanı: dolabı aç veya eldeki parçayı geri koy
+	MU.interactable(self, Vector3(cab_d + 0.12, cab_h, cab_w), Vector3(x0 + 0.04, cab_h * 0.5, zc),
+		_cabinet_hint, _cabinet_use)
+
+	# personel ve testler için tüm PC SKU konumlarını dolap önüne kaydet
 	Game.shelf_pos = {}
-	for r in rows.size():
-		for e in rows[r].items:
-			var z: float = zc - length / 2 + 0.1 + e.c
-			_shelf_item(x0, rows_y[r] + 0.015, z, e.def)
-			Game.shelf_pos[e.def.id] = Vector3(x0 + 0.06, rows_y[r] + 0.015, z)
-	# en üst rafta süs kutuları
-	var box_cols := [Color(0.15, 0.3, 0.7), Color(0.75, 0.2, 0.2), Color(0.1, 0.1, 0.12), Color(0.9, 0.6, 0.1)]
-	for i in 7:
-		var bs := Vector3(0.3, randf_range(0.18, 0.28), randf_range(0.2, 0.35))
-		var bx := MU.rbox(self, bs, Vector3(x0, 2.215 + bs.y / 2, zc - 1.65 + i * 0.55), MU.mat(box_cols[i % 4], 0, 0.5), 0.008)
-		MU.box(bx, Vector3(0.01, bs.y * 0.4, bs.z * 0.7), Vector3(0.15, 0, 0), MU.mat(Color(0.95, 0.95, 0.95), 0, 0.5))
+	for d in DB.parts.shelf_items(["pc"]):
+		Game.shelf_pos[d.id] = Vector3(x0 + cab_d * 0.5 + 0.12, 1.0, zc)
 
 
-## Raftaki parça ölçeği: yüksek parçalar (anakart vb.) satır yüksekliğine sığsın.
-func _shelf_scale(sz: Vector3) -> float:
-	return minf(1.35, 0.28 / maxf(sz.y, 0.01))
+func _cabinet_hint(p) -> String:
+	if Game.is_carrying():
+		return "Parça Dolabı (cihaz taşıyorsun)"
+	if p.held:
+		if p.held.is_tool() or p.held.broken:
+			return "Parça Dolabı (bu parça dolaba konmaz)"
+		return "Dolaba geri koy: %s  [E]" % p.held.display_name
+	return "Parça Dolabı  [E]"
 
 
-func _shelf_item(x0: float, shelf_y: float, z: float, d: PartDef) -> void:
-	var sku_id: String = d.id
-	var info: Dictionary = PM.info(d.category)
-	var built := PM.build_sku(sku_id)
-	var n: Node3D = built.node
-	var c: Vector3 = info.center
-	var k := _shelf_scale(info.size)
-	n.scale = Vector3.ONE * k
-	n.position = Vector3(x0 + 0.06 - c.x * k, shelf_y + (info.size.y / 2 - c.y) * k, z - c.z * k)
-	add_child(n)
-	MU.no_merge(n)  # stok bitince gizlenebilsin
-	var dname := PM.display_name_sku(sku_id)
-	var it = MU.interactable(self, info.size * k + Vector3(0.04, 0.04, 0.04), Vector3(x0 + 0.06, shelf_y + info.size.y * k * 0.5, z),
-		func(p): return _shelf_hint_sku(p, sku_id, dname),
-		func(p): _shelf_use_sku(p, sku_id))
-	it.action_alt = func(p): _buy_sku(p, sku_id, true)  # F: muadil (ucuz) parça al
-	var l := MU.label(self, "", Vector3(x0 + 0.214, shelf_y - 0.04, z), 24, Color(0.1, 0.1, 0.1), Vector3(0, 90, 0), 0.001)
-	l.double_sided = false
-	_price_labels.append([l, dname, d.category, sku_id, n])
-	var tag := MU.box(self, Vector3(0.002, 0.055, 0.22), Vector3(x0 + 0.212, shelf_y - 0.04, z), MU.mat(Color(1.0, 0.92, 0.4)))
-	tag.name = "PriceTag"
+func _cabinet_use(p) -> void:
+	if Game.is_carrying():
+		return
+	if p.held:
+		_return_held_to_stock(p)
+		return
+	if inv_panel != null:
+		Game.sfx.ui_click()
+		inv_panel.open()
+
+
+func _on_cabinet_pick(sku_id: String, cheap: bool) -> void:
+	if player != null:
+		_buy_sku(player, sku_id, cheap)
+
+
+func _on_cabinet_return() -> void:
+	if player != null:
+		_return_held_to_stock(player)
+
+
+## Eldeki sağlam parçayı stoğa geri koyar.
+func _return_held_to_stock(p) -> void:
+	if p.held == null or p.held.is_tool() or p.held.broken:
+		return
+	var id: String = DB.parts.resolve_id(p.held.sku if not p.held.sku.is_empty() else Game.sku(p.held.part_type, p.held.tier))
+	var part = p.release_held()
+	var was_cheap: bool = part.cheap
+	part.queue_free()
+	if was_cheap:
+		Game.add_stock_cheap_sku(id, 1)
+	else:
+		Game.add_stock_sku(id, 1)
+	Game.sfx.click()
+	Game.msg("%s dolaba kondu (stok %d)." % [PM.display_name_sku(id) + (" (muadil)" if was_cheap else ""), Game.stock_cheap_of_sku(id) if was_cheap else Game.stock_of_sku(id)])
 
 
 func _shelf_hint_sku(p, sku_id: String, dname: String) -> String:
