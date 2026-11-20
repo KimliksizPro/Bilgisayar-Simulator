@@ -108,7 +108,7 @@ func _build_screen() -> void:
 	text = Label.new()
 	text.position = Vector2(20, 16)
 	text.size = Vector2(600, 330)
-	text.add_theme_font_size_override("font_size", 18)
+	text.add_theme_font_size_override("font_size", 16)
 	text.add_theme_color_override("font_color", Color(0.85, 0.85, 0.85))
 	root.add_child(text)
 	center_box = PanelContainer.new()
@@ -153,32 +153,79 @@ func show_no_boot() -> void:
 	text.text = "BilgiBIOS v2.6\n\nReboot and Select proper Boot device\nor Insert Boot Media in selected Boot device\nand press a key_"
 
 
+## Dinamik BIOS POST ekranı: takılı anakart, CPU, RAM, GPU/iGPU, depolama, PSU ve watt bilgisi.
 func boot(pc) -> void:
 	_reset(Color(0, 0, 0))
 	var my := _token
+	var mobo = pc.part_in("mobo")
+	var cpu = pc.part_in("cpu")
 	var gpu = pc.part_in("gpu")
+	var psu = pc.part_in("psu")
+	var mobo_txt := _part_label(mobo, "Bilinmiyor")
+	var cpu_txt := _part_label(cpu, "Yok")
+	var ram_type := _ram_type(pc)
+	var ram_txt := "%d GB%s" % [pc.total_ram(), (" " + ram_type) if ram_type != "" else ""]
+	var gpu_txt := _gpu_label(gpu, cpu)
+	var disk_txt := _storage_label(pc)
+	var watts: Dictionary = pc.watt_summary() if pc.has_method("watt_summary") else Compatibility.calc_watts(Compatibility.case_state_of(pc))
+	var psu_txt := "%s (%dW / %dW)" % [_part_label(psu, "Yok"), int(watts.get("draw", 0)), int(watts.get("psu", 0))]
 	var lines := [
-		"BilgiBIOS v2.6  (C) Mahalle Bilgisayar",
+		"BilgiBIOS v3.0  (C) Mahalle Bilgisayar",
 		"",
-		"CPU: 6 Çekirdek @ 3.8 GHz ........ OK",
-		"RAM: %d GB ......................... OK" % pc.total_ram(),
-		"GPU: %s ...... OK" % gpu.display_name,
-		"Disk: SSD 512 GB .................. OK",
+		"Anakart: %s ... OK" % mobo_txt,
+		"CPU: %s ... OK" % cpu_txt,
+		"RAM: %s ... OK" % ram_txt,
+		"Görüntü: %s ... OK" % gpu_txt,
+		"Disk: %s ... OK" % disk_txt,
+		"Güç: %s ... %s" % [psu_txt, "OK" if watts.get("ok", false) else "UYARI"],
 		"",
 		"BilgiOS başlatılıyor...",
 	]
 	for l in lines:
-		await get_tree().create_timer(0.18).timeout
+		await get_tree().create_timer(0.16).timeout
 		if my != _token:
 			return
 		text.text += l + "\n"
 		_refresh()
-	await get_tree().create_timer(0.9).timeout
+	await get_tree().create_timer(0.8).timeout
 	if my != _token:
 		return
 	text.text = ""
 	desktop.visible = true
 	_refresh()
+
+
+func _part_label(part, fallback: String) -> String:
+	return part.display_name if part != null else fallback
+
+
+func _ram_type(pc) -> String:
+	for n in ["ram1", "ram2", "ram3", "ram4"]:
+		var r = pc.part_in(n)
+		if r != null and not r.broken:
+			var d: PartDef = r.def()
+			if d != null:
+				return str(d.specs.get("type", ""))
+	return ""
+
+
+func _gpu_label(gpu, cpu) -> String:
+	if gpu != null:
+		return gpu.display_name
+	if cpu != null:
+		var cdef: PartDef = cpu.def()
+		if cdef != null and bool(cdef.specs.get("igpu", false)):
+			return "Dahili Grafik (iGPU)"
+	return "Yok"
+
+
+func _storage_label(pc) -> String:
+	var names: Array = []
+	for n in ["m2", "ssd"]:
+		var st = pc.part_in(n)
+		if st != null and not st.broken:
+			names.append(st.display_name)
+	return " + ".join(names) if not names.is_empty() else "Yok"
 
 
 ## CPU sıcaklığı göstergesi (masaüstünde sağ üst): yeşil/sarı/kırmızı.
