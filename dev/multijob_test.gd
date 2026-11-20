@@ -170,7 +170,11 @@ func _states() -> Dictionary:
 		var d = Game.job_mgr.devices[t]
 		var st: Dictionary = ST.snapshot(d)
 		var parts: Array = st.parts.duplicate(true)
-		parts.sort_custom(func(a, b): return str(a[0]) < str(b[0]))
+		parts.sort_custom(func(a, b):
+			var ka := str(a.get("slot", "")) if a is Dictionary else str(a[0])
+			var kb := str(b.get("slot", "")) if b is Dictionary else str(b[0])
+			return ka < kb
+		)
 		out[t] = {"parts": parts, "dust": snappedf(st.dust, 0.01), "paste": st.socket_paste}
 	return out
 
