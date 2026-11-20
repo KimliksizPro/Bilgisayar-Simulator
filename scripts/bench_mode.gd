@@ -19,6 +19,7 @@ const TRAY_W := 0.64
 const TRAY_D := 0.26
 const TRAY_TOP := 0.006      # tepsi zemini (tepsi düğümüne göre y)
 const GREEN := Color(0.2, 1.0, 0.35, 0.32)
+const AMBER := Color(1.0, 0.72, 0.15, 0.35)
 const RED := Color(1.0, 0.2, 0.15, 0.32)
 
 var state := "off"           # off, entering, on, leaving
@@ -56,6 +57,7 @@ var _stash_tool = null       # moda girerken elde olan alet
 var _tint_cur = null
 var _mat_neutral: StandardMaterial3D
 var _mat_ok: StandardMaterial3D
+var _mat_warn: StandardMaterial3D
 var _mat_bad: StandardMaterial3D
 var _ever_open := false
 var _ever_power := false
@@ -71,6 +73,7 @@ var _side: PanelContainer
 var _side_vb: VBoxContainer
 var _tip: PanelContainer
 var _tip_title: Label
+var _tip_spec: Label
 var _tip_sub: Label
 var _keys: PanelContainer
 
@@ -194,6 +197,7 @@ func _build_tray() -> void:
 func _build_materials() -> void:
 	_mat_neutral = _tint_mat(Color(0.55, 0.8, 1.0, 0.6))
 	_mat_ok = _tint_mat(Color(0.25, 1.0, 0.4, 0.6))
+	_mat_warn = _tint_mat(Color(1.0, 0.72, 0.15, 0.6))
 	_mat_bad = _tint_mat(Color(1.0, 0.25, 0.2, 0.6))
 
 
@@ -228,6 +232,7 @@ func _build_ui() -> void:
 	tv.add_theme_constant_override("separation", 1)
 	_tip.add_child(tv)
 	_tip_title = K.label(tv, "", 18, T.TEXT, "BoldLabel")
+	_tip_spec = K.label(tv, "", 13, T.MUTED)
 	_tip_sub = K.label(tv, "", 15, T.ACCENT)
 	# alt tuş ipuçları
 	_keys = K.panel(_ui_root, "HudCard")
@@ -579,9 +584,11 @@ func _update_hover() -> void:
 		_tip.visible = false
 		return
 	_tip_title.text = txt[0]
-	_tip_sub.text = txt[1]
-	_tip_sub.add_theme_color_override("font_color", txt[2])
-	_tip_sub.visible = txt[1] != ""
+	_tip_spec.text = txt[1]
+	_tip_spec.visible = txt[1] != ""
+	_tip_sub.text = txt[2]
+	_tip_sub.add_theme_color_override("font_color", txt[3])
+	_tip_sub.visible = txt[2] != ""
 	_tip.visible = true
 	_tip.reset_size()
 	var vs := get_viewport().get_visible_rect().size
@@ -608,6 +615,97 @@ func _set_hl(node) -> void:
 	_hl.visible = true
 
 
+## Parçanın teknik özelliklerini tek satırda özetler (soket, DDR, watt, uzunluk, TDP, kapasite).
+static func _spec_text(d: PartDef) -> String:
+	if d == null:
+		return ""
+	var s := d.specs
+	var c := d.compat
+	var out: Array[String] = []
+	match d.category:
+		"mobo":
+			if c.has("socket"): out.append(str(c.socket))
+			if c.has("ram_type"): out.append(str(c.ram_type))
+			if c.has("form_factor"): out.append(str(c.form_factor))
+			if c.has("ram_slots"): out.append("%d RAM" % int(c.ram_slots))
+			if c.has("m2_slots"): out.append("%d M.2" % int(c.m2_slots))
+		"cpu":
+			if s.has("socket"): out.append(str(s.socket))
+			if s.has("cores"): out.append("%d Çekirdek" % int(s.cores))
+			if s.has("tdp"): out.append("%dW TDP" % int(s.tdp))
+			out.append("iGPU" if bool(s.get("igpu", false)) else "GPU gerekir")
+		"cooler":
+			if str(s.get("type", "")) == "aio" and int(s.get("radiator_mm", 0)) > 0:
+				out.append("%dmm AIO" % int(s.radiator_mm))
+			elif s.has("height_mm"):
+				out.append("%dmm" % int(s.height_mm))
+			if s.has("tdp"): out.append("%dW TDP" % int(s.tdp))
+		"ram":
+			if s.has("gb"): out.append("%d GB" % int(s.gb))
+			if s.has("type"): out.append(str(s.type))
+			if s.has("mhz"): out.append("%d MHz" % int(s.mhz))
+		"gpu":
+			if s.has("vram"): out.append("%d GB VRAM" % int(s.vram))
+			if s.has("tdp"): out.append("%dW" % int(s.tdp))
+			if s.has("length_mm"): out.append("%dmm" % int(s.length_mm))
+			var pins: Array = c.get("pcie_pins", [])
+			if not pins.is_empty():
+				out.append("+".join(pins.map(func(x): return str(x).to_upper())))
+		"psu":
+			if s.has("watts"): out.append("%dW" % int(s.watts))
+			if s.has("efficiency"): out.append(str(s.efficiency))
+			var conns: Dictionary = c.get("connectors", {})
+			if int(conns.get("12vhpwr", 0)) > 0:
+				out.append("12VHPWR")
+			elif int(conns.get("8pin", 0)) > 0:
+				out.append("%d×8PIN" % int(conns.get("8pin", 0)))
+		"ssd", "hdd", "nvme":
+			var gb := int(s.get("gb", 0))
+			if gb >= 1000:
+				out.append("%d TB" % roundi(gb / 1000.0))
+			elif gb > 0:
+				out.append("%d GB" % gb)
+			if s.has("iface"): out.append(str(s.iface))
+			if s.has("pcie_gen"): out.append("Gen%d" % int(s.pcie_gen))
+			if s.has("rpm"): out.append("%d RPM" % int(s.rpm))
+		"fan":
+			if s.has("size_mm"): out.append("%dmm" % int(s.size_mm))
+			if s.has("rpm"): out.append("%d RPM" % int(s.rpm))
+			if bool(s.get("rgb", false)): out.append("RGB")
+		"cmos":
+			if s.has("code"): out.append(str(s.code))
+			if s.has("volt"): out.append("%.1fV" % float(s.volt))
+		"lap_ram":
+			if s.has("gb"): out.append("%d GB" % int(s.gb))
+			if s.has("type"): out.append(str(s.type))
+			if s.has("form"): out.append(str(s.form))
+		"lap_ssd":
+			if s.has("gb"): out.append("%d GB" % int(s.gb))
+			if s.has("iface"): out.append(str(s.iface))
+		"lap_bat":
+			if s.has("wh"): out.append("%d Wh" % int(s.wh))
+			if s.has("volt"): out.append("%.1fV" % float(s.volt))
+		"lap_scr":
+			if s.has("inch"): out.append("%.1f\"" % float(s.inch))
+			if s.has("res"): out.append(str(s.res))
+			if s.has("panel"): out.append(str(s.panel))
+		"tel_bat":
+			if s.has("mah"): out.append("%d mAh" % int(s.mah))
+			if s.has("volt"): out.append("%.2fV" % float(s.volt))
+		"tel_scr":
+			if s.has("panel"): out.append(str(s.panel))
+		"tel_port":
+			if s.has("port"): out.append(str(s.port))
+	return " · ".join(out)
+
+
+func _part_spec_text(part) -> String:
+	if part == null:
+		return ""
+	var d: PartDef = part.def() if part.has_method("def") else DB.parts.def_for(part.part_type, part.tier)
+	return _spec_text(d)
+
+
 func _tooltip_for(res: Dictionary) -> Array:
 	var k: String = res.get("kind", "")
 	if k == "":
@@ -617,29 +715,35 @@ func _tooltip_for(res: Dictionary) -> Array:
 		match k:
 			"slot", "installed":
 				var r := can_install(res.slot, selected)
-				return ["%s" % PM.type_name(res.slot.accepts), ("Tak: %s  %s" % [selected.display_name, click]) if r.ok else str(r.reason), T.GOOD if r.ok else T.BAD]
+				var sp := _part_spec_text(selected)
+				var title := "%s" % PM.type_name(res.slot.accepts)
+				if r.ok:
+					if str(r.get("severity", "ok")) == "warn" and str(r.get("reason", "")) != "":
+						return [title, sp, "⚠ %s  ·  Tak %s" % [str(r.reason), click], T.ACCENT]
+					return [title, sp, "Tak: %s  %s" % [selected.display_name, click], T.GOOD]
+				return [title, sp, str(r.reason), T.BAD]
 			"tray":
-				return [res.part.display_name, "Seçimi bunla değiştir  " + click, T.ACCENT]
+				return [res.part.display_name, _part_spec_text(res.part), "Seçimi bunla değiştir  " + click, T.ACCENT]
 		return []
 	if tool != null:
 		var target = res.get("slot")
 		if k in ["slot", "installed", "widget", "body"]:
-			return [tool.display_name, str(device.tool_hint(tool, target)).replace("[E]", click).replace("  ", " "), T.ACCENT]
+			return [tool.display_name, "", str(device.tool_hint(tool, target)).replace("[E]", click).replace("  ", " "), T.ACCENT]
 		return []
 	match k:
 		"installed":
 			if not _slot_open(res.slot):
 				return []
-			return [res.part.display_name, "Sök  " + click, T.ACCENT]
+			return [res.part.display_name, _part_spec_text(res.part), "Sök  " + click, T.ACCENT]
 		"slot":
-			return ["Boş yuva: %s" % PM.type_name(res.slot.accepts), "Tepsiden parça seç, sonra tıkla", T.MUTED]
+			return ["Boş yuva: %s" % PM.type_name(res.slot.accepts), "", "Tepsiden parça seç, sonra tıkla", T.MUTED]
 		"tray":
-			return [res.part.display_name, "Seç  " + click, T.ACCENT]
+			return [res.part.display_name, _part_spec_text(res.part), "Seç  " + click, T.ACCENT]
 		"widget":
 			var h := str(res.node.get_hint(self))
 			if h == "":
 				return []
-			return [h.replace("[E]", "").strip_edges(), click, T.ACCENT]
+			return [h.replace("[E]", "").strip_edges(), "", click, T.ACCENT]
 	return []
 
 
@@ -679,15 +783,29 @@ func _slot_open(slot) -> bool:
 	return d.slot_open(slot) if d.has_method("slot_open") else d.panel_open
 
 
-## Faz 2 uyumluluk kuralları için kanca: {ok: bool, reason: String}. Şimdilik yalnızca yuva türü ve doluluk.
+## PC için standart kasa durumu. Anakart yuvası henüz eklenmemiş eski kasalarda yerleşik AM4 anakart varsayılır.
+func _pc_case_state() -> Dictionary:
+	var st := Compatibility.case_state_of(device)
+	if st.mobo == null and device != null and "slots" in device and not device.slots.has("mobo"):
+		st.mobo = DB.parts.get_def("mobo_am4_matx")
+	return st
+
+
+## Uyumluluk kontrolü: PC için Compatibility.check(), laptop/telefon için yuva türü denetimi.
 func can_install(slot, part) -> Dictionary:
+	if slot == null or part == null:
+		return {"ok": false, "reason": "Geçersiz hedef", "code": "invalid", "severity": "block"}
 	if slot.part != null:
-		return {"ok": false, "reason": "Yuva dolu"}
+		return {"ok": false, "reason": "Yuva dolu", "code": "occupied", "severity": "block"}
 	if not _slot_open(slot):
-		return {"ok": false, "reason": "Yuvaya erişemiyorsun: önce kapağı aç"}
-	if slot.accepts != part.part_type:
-		return {"ok": false, "reason": "Uyumsuz: bu yuva %s ister" % PM.type_name(slot.accepts)}
-	return {"ok": true, "reason": ""}
+		return {"ok": false, "reason": "Yuvaya erişemiyorsun: önce kapağı aç", "code": "closed", "severity": "block"}
+	if kind == "pc":
+		var pdef: PartDef = part.def() if part.has_method("def") else DB.parts.def_for(part.part_type, part.tier)
+		return Compatibility.check(slot, pdef, _pc_case_state())
+	var extra: Array = slot.get("accepts_extra") if "accepts_extra" in slot else []
+	if slot.accepts != part.part_type and not extra.has(part.part_type):
+		return {"ok": false, "reason": "Uyumsuz: bu yuva %s ister" % PM.type_name(slot.accepts), "code": "wrong_slot", "severity": "block"}
+	return {"ok": true, "reason": "", "code": "ok", "severity": "ok"}
 
 
 ## Takılı parçayı yuvadan söküp tepsiye koyar. Parçayı döndürür (olmadıysa null).
@@ -775,6 +893,8 @@ func install_selected(slot) -> bool:
 	_clear_glow()
 	slot.install(part)
 	_ever_installed = true
+	if str(r.get("severity", "ok")) == "warn" and str(r.get("reason", "")) != "":
+		Game.msg(str(r.reason), Color(1.0, 0.78, 0.3))
 	Game.sfx.click()
 	_layout_tray()
 	_sig = ""
@@ -836,10 +956,10 @@ func _prune_tray() -> void:
 			_sig = ""
 
 
-## Parçanın tepsiye yatış yönü: kart parçaları (işlemci, RAM, GPU) bileşen yüzü yukarı; en uzun kenar x'e.
+## Parçanın tepsiye yatış yönü: dikey takılan parçalar bileşen yüzü yukarı yatay konur; en uzun kenar x'e.
 func _flat_basis(part) -> Basis:
 	var b := Basis.IDENTITY
-	if part.part_type in ["cpu", "ram", "gpu"]:
+	if part.part_type in ["mobo", "cpu", "cooler", "ram", "gpu", "nvme", "fan", "cmos"]:
 		b = Basis.from_euler(Vector3(0, 0, PI / 2.0))
 	var info: Dictionary = PM.info(part.part_type)
 	var bb: AABB = Transform3D(b, Vector3.ZERO) * AABB(info.center - info.size / 2.0, info.size)
@@ -901,7 +1021,7 @@ func _update_selected() -> void:
 		var r := can_install(hovered.slot, selected)
 		if r.ok:
 			selected.global_transform = hovered.slot.global_transform
-			tint = _mat_ok
+			tint = _mat_warn if str(r.get("severity", "ok")) == "warn" else _mat_ok
 			snapped_to_slot = true
 		else:
 			tint = _mat_bad
@@ -924,8 +1044,8 @@ func _update_glow() -> void:
 		return
 	for s in device.slots.values():
 		if selected != null and s.part == null and _slot_open(s):
-			var ok: bool = can_install(s, selected).ok
-			var c := GREEN if ok else RED
+			var r := can_install(s, selected)
+			var c := (AMBER if str(r.get("severity", "ok")) == "warn" else GREEN) if r.ok else RED
 			if hovered.get("slot") == s:
 				c.a = 0.6
 			s.bench_tint = c
@@ -1001,8 +1121,13 @@ func _refresh_side(force: bool) -> void:
 	for t in tools:
 		tn.append(t.tool_type)
 	var rec := _job_rec()
+	var pc_sig := ""
+	if kind == "pc":
+		var cs := _pc_case_state()
+		var w := Compatibility.calc_watts(cs)
+		pc_sig = "%s|%s|%d|%d" % [str(cs.get("case_id", "")), cs.mobo.id if cs.mobo != null else "", int(w.draw), int(w.psu)]
 	var sig := str([_looks_fixed(rec), str(rec.get("status", "")), ids, selected.get_instance_id() if selected else 0, tool.tool_type if tool else "", tn,
-		device.panel_open, device.powered, _ever_open, _ever_power, _ever_removed, _ever_installed, str(_job_dict().get("name", ""))])
+		device.panel_open, device.powered, _ever_open, _ever_power, _ever_removed, _ever_installed, str(_job_dict().get("name", "")), pc_sig])
 	if sig == _sig and not force:
 		return
 	_sig = sig
@@ -1035,6 +1160,8 @@ func _rebuild_side(tools: Array) -> void:
 			var l := K.label(vb, intro, 14, T.MUTED)
 			l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			l.custom_minimum_size = Vector2(250, 0)
+	if kind == "pc":
+		_build_pc_summary(vb)
 	K.hsep(vb)
 	K.label(vb, "YAPILACAKLAR", 12, T.MUTED, "SmallCaps")
 	for it in _checklist():
@@ -1075,6 +1202,47 @@ func _rebuild_side(tools: Array) -> void:
 		pb.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	_side.reset_size()
 	_side.call_deferred("reset_size")  # otomatik satır kaydırmalı etiketler yerleşince yeniden boyutla
+
+
+## Yan panelde PC kasa/anakart özeti ve canlı watt çubuğu.
+func _build_pc_summary(vb: VBoxContainer) -> void:
+	var cs := _pc_case_state()
+	var cdef: Dictionary = cs.get("case_def", {})
+	var w := Compatibility.calc_watts(cs)
+	K.hsep(vb)
+	K.label(vb, "SİSTEM", 12, T.MUTED, "SmallCaps")
+	var cname := str(cdef.get("name", "Mid-Tower ATX"))
+	var cl := K.label(vb, "%s · GPU≤%dmm · Soğ.≤%dmm" % [cname, int(cdef.get("max_gpu_mm", 330)), int(cdef.get("max_cooler_mm", 165))], 13, T.MUTED)
+	cl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	cl.custom_minimum_size = Vector2(250, 0)
+	var mobo: PartDef = cs.get("mobo", null)
+	if mobo != null:
+		var ml := K.label(vb, "%s · %s · %s · %d RAM" % [str(mobo.compat.get("socket", "")), str(mobo.compat.get("ram_type", "")),
+			str(mobo.compat.get("form_factor", "")), int(mobo.compat.get("ram_slots", 2))], 13, T.INFO)
+		ml.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		ml.custom_minimum_size = Vector2(250, 0)
+	else:
+		K.label(vb, "Anakart takılı değil", 13, T.BAD)
+	# canlı watt çubuğu
+	var w_col := T.GOOD
+	if w.psu <= 0 or w.draw > w.psu:
+		w_col = T.BAD
+	elif w.psu < w.recommended or float(w.draw) / float(w.psu) > 0.85:
+		w_col = T.ACCENT
+	var wh := HBoxContainer.new()
+	vb.add_child(wh)
+	K.label(wh, "GÜÇ", 11, T.MUTED, "SmallCaps").size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var w_txt := "%d W / %s" % [w.draw, ("%d W" % w.psu) if w.psu > 0 else "PSU yok"]
+	K.label(wh, w_txt, 14, w_col, "BoldLabel")
+	var bar := ProgressBar.new()
+	bar.show_percentage = false
+	bar.custom_minimum_size = Vector2(250, 10)
+	bar.max_value = float(maxi(w.psu, maxi(w.draw, 100)))
+	bar.value = float(w.draw)
+	bar.add_theme_stylebox_override("fill", T.seg_box(w_col))
+	vb.add_child(bar)
+	if not w.ok:
+		K.label(vb, "Önerilen PSU: %d W+" % w.recommended, 12, w_col)
 
 
 ## Tezgâh modunu zorla kapatan durum (boş = devam). Kendiliğinden kapanma şikâyetinin teşhisi için ayrı tutuldu.
