@@ -3,6 +3,7 @@ extends CharacterBody3D
 
 const REACH := 2.2
 const VM_LAYER := 1 << 19  # 20. görsel katman: elde tutulan eşya (viewmodel)
+const TOUCH_CONTROLS := preload("res://scripts/touch_controls.gd")
 
 const SAFE_POS := Vector3(0.9, 0.1, -0.9)  # dükkân içi güvenli nokta (main.gd başlangıç konumu)
 
@@ -16,6 +17,7 @@ var _pitch := 0.0
 var vm_cam: Camera3D
 var vm_vp: SubViewport
 var vm_rect: TextureRect
+var touch_controls
 var _held_layers := {}  # elde tutulan eşyanın orijinal görsel katmanları
 
 
@@ -39,6 +41,10 @@ func _ready() -> void:
 	cam.add_child(hold)
 	Game.player = self
 	_build_viewmodel()
+	touch_controls = TOUCH_CONTROLS.new()
+	touch_controls.interact_pressed.connect(_on_touch_interact)
+	touch_controls.interact_alt_pressed.connect(_on_touch_interact_alt)
+	add_child(touch_controls)
 	apply_settings()
 	Settings.changed.connect(func(k): if k == "fov": apply_settings())
 
@@ -108,6 +114,51 @@ func _process(_delta: float) -> void:
 		_sync_viewmodel_vp()
 		vm_cam.global_transform = cam.global_transform
 		vm_cam.fov = cam.fov
+	if _is_touch_active():
+		if _is_mobile_os() and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+		if Game.started and not Game.paused and not Game.ui_modal:
+			Game.running = true
+			if not Game.bench_active:
+				var look_delta: Vector2 = touch_controls.consume_look_delta()
+				if look_delta != Vector2.ZERO:
+					_apply_look(look_delta, 1.8)
+
+
+func _is_mobile_os() -> bool:
+	return OS.has_feature("mobile") or OS.has_feature("android") or OS.has_feature("ios")
+
+
+func _is_touch_active() -> bool:
+	return touch_controls != null and touch_controls.is_touch_active()
+
+
+func _apply_look(delta_px: Vector2, mult := 1.0) -> void:
+	var sens: float = sensitivity * Settings.sensitivity * mult
+	rotate_y(-delta_px.x * sens)
+	var dy: float = delta_px.y * (-1.0 if Settings.invert_y else 1.0)
+	_pitch = clamp(_pitch - dy * sens, deg_to_rad(-85), deg_to_rad(85))
+	cam.rotation.x = _pitch
+
+
+func _on_touch_interact() -> void:
+	if Game.bench_active or Game.ui_modal or not Game.started or Game.paused:
+		return
+	if target:
+		target.interact(self)
+
+
+func _on_touch_interact_alt() -> void:
+	if Game.bench_active or Game.ui_modal or not Game.started or Game.paused:
+		return
+	if target and target.has_method("interact_alt"):
+		target.interact_alt(self)
+	elif held != null:
+		drop()
+	elif Game.is_carrying():
+		var carry = Game.get("carry")
+		if carry != null and carry.get("jobs") != null:
+			carry.jobs.return_carried()
 
 
 ## Ayarlardan görüş alanını uygular (hassasiyet/ters Y her harekette okunur).
@@ -121,16 +172,12 @@ func _unhandled_input(event: InputEvent) -> void:
 	if Game.bench_active:  # tezgâh modunda fareyi bench_mode yönetir
 		return
 	if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
-		if event is InputEventMouseButton and event.pressed and Game.started and not Game.ui_modal:
+		if not _is_touch_active() and event is InputEventMouseButton and event.pressed and Game.started and not Game.ui_modal:
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 			get_viewport().set_input_as_handled()
 		return
 	if event is InputEventMouseMotion:
-		var sens: float = sensitivity * Settings.sensitivity
-		rotate_y(-event.relative.x * sens)
-		var dy: float = event.relative.y * (-1.0 if Settings.invert_y else 1.0)
-		_pitch = clamp(_pitch - dy * sens, deg_to_rad(-85), deg_to_rad(85))
-		cam.rotation.x = _pitch
+		_apply_look(event.relative)
 	elif event.is_action_pressed("interact"):
 		if target:
 			target.interact(self)
@@ -144,8 +191,13 @@ func _unhandled_input(event: InputEvent) -> void:
 func _physics_process(delta: float) -> void:
 	if not is_on_floor():
 		velocity.y -= 9.8 * delta
-	var active := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
+	var touch_on := _is_touch_active() and Game.started and not Game.paused and not Game.ui_modal and not Game.bench_active
+	var active := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED or touch_on
 	var input := Input.get_vector("move_left", "move_right", "move_forward", "move_back") if active else Vector2.ZERO
+	if touch_on:
+		input += touch_controls.move_vector
+		if input.length() > 1.0:
+			input = input.normalized()
 	var dir := (transform.basis * Vector3(input.x, 0, input.y)).normalized()
 	var speed := 4.5 if Input.is_action_pressed("sprint") else 2.8
 	velocity.x = move_toward(velocity.x, dir.x * speed, 30.0 * delta)
