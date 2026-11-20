@@ -44,16 +44,25 @@ const OLD_HOLD := {
 }
 const OLD_DEFAULT_HOLD := [Vector3(15, -35, 0), Vector3.ZERO]
 # yuvalarda kullanılan türler (pc_case / laptop_device / phone_device)
-const SLOT_TYPES := ["cpu", "ram", "gpu", "psu", "ssd", "lap_ram", "lap_ssd", "lap_bat", "lap_scr", "tel_bat", "tel_scr", "tel_port"]
+const SLOT_TYPES := ["mobo", "cpu", "cooler", "ram", "gpu", "psu", "ssd", "nvme", "hdd", "fan", "cmos",
+	"lap_ram", "lap_ssd", "lap_bat", "lap_scr", "tel_bat", "tel_scr", "tel_port"]
 
 
 func _ready() -> void:
 	await get_tree().create_timer(0.3).timeout
 	var db = DB.parts
-	assert(db.all().size() >= 35, "parça sayısı yetersiz: %d" % db.all().size())
-	assert(db.cases().size() >= 3, "kasa form faktörü eksik")
+	# Faz 2 katalog sayıları: 41 SKU (34 PC + 7 mobil) ve 3 kasa form faktörü
+	assert(db.all().size() == 41, "toplam SKU 41 olmalı: %d" % db.all().size())
+	var pc_parts: Array = db.all().filter(func(p): return p.device == "pc")
+	var mob_parts: Array = db.all().filter(func(p): return p.device != "pc")
+	assert(pc_parts.size() == 34, "PC SKU sayısı 34 olmalı: %d" % pc_parts.size())
+	assert(mob_parts.size() == 7, "mobil SKU sayısı 7 olmalı: %d" % mob_parts.size())
+	assert(db.cases().size() == 3, "kasa form faktörü 3 olmalı: %d" % db.cases().size())
 	for cid in ["atx_mid", "matx_mini", "itx_compact"]:
-		assert(not db.case_def(cid).is_empty(), "kasa tanımı yok: " + cid)
+		var cdef: Dictionary = db.case_def(cid)
+		assert(not cdef.is_empty(), "kasa tanımı yok: " + cid)
+		assert(not cdef.get("form_factors", []).is_empty(), "kasa form_factors boş: " + cid)
+		assert(int(cdef.get("max_gpu_mm", 0)) > 0 and int(cdef.get("max_cooler_mm", 0)) > 0, "kasa ölçüleri eksik: " + cid)
 	for o in OLD:
 		var key := "%s:%d" % [o[0], o[1]]
 		var sku_id: String = db.id_for(o[0], o[1])
@@ -67,9 +76,12 @@ func _ready() -> void:
 		var b: Dictionary = PM.build_sku(sku_id)
 		assert(b.node.get_child_count() > 0, "model boş: " + sku_id)
 		b.node.free()
-	# tüm SKU'ların modeli kurulabiliyor ve ':' içermiyor
+	# tüm SKU'ların modeli kurulabiliyor, ':' içermiyor ve legacy_id çözümlemesi tutarlı
 	for p in db.all():
 		assert(not p.id.contains(":"), "SKU ':' içeremez: " + p.id)
+		assert(db.resolve_id(p.id) == p.id, "resolve_id(sku) tutarsız: " + p.id)
+		if not p.legacy_id.is_empty():
+			assert(db.resolve_id(p.legacy_id) == p.id, "legacy_id çözülmedi: " + p.legacy_id)
 		var b: Dictionary = PM.build_sku(p.id)
 		assert(b.node.get_child_count() > 0, "model boş: " + p.id)
 		b.node.free()
@@ -88,14 +100,27 @@ func _ready() -> void:
 		assert(hp[0].is_equal_approx(h[0]) and hp[1].is_equal_approx(h[1]), "elde tutuş: " + t)
 	assert(PM.ram_gb(1) == 8 and PM.ram_gb(2) == 16, "ram_gb")
 	# katalog ve başlangıç stoğu
-	assert(db.catalog_ids().size() == db.catalog().size(), "catalog_ids")
+	assert(db.catalog_ids().size() == 41 and db.catalog_ids().size() == db.catalog().size(), "catalog_ids")
 	for it in OLD_CATALOG:
 		assert(Game.CATALOG.has(it), "eski katalog öğesi eksik: " + str(it))
 	for k in Game.START_STOCK:
 		assert(db.has_def(k), "stok anahtarı çözülmüyor: " + k)
-	# raf: tüm raf ürünlerinin konumu raftan geliyor
-	assert(db.shelf_items(["pc"]).size() >= 7 and db.shelf_items(["laptop", "phone"]).size() == 7, "raf ürün sayısı")
-	for d in db.shelf_items(["pc"]):
+	# raf: tüm 34 PC SKU'su 5 satırlı rafa taşmadan sığmalı (main.gd: length=4.0, max_w=3.8, min_w=0.24)
+	var pc_shelf: Array = db.shelf_items(["pc"])
+	assert(pc_shelf.size() == 34 and db.shelf_items(["laptop", "phone"]).size() == 7, "raf ürün sayısı")
+	var shelf_entries := []
+	for d in pc_shelf:
+		var sz: Vector3 = PM.info(d.category).size
+		var k := minf(1.35, 0.28 / maxf(sz.y, 0.01))
+		shelf_entries.append({"def": d, "w": maxf(sz.z * k + 0.06, 0.24)})
+	var rows: Array = db.flow_rows(shelf_entries, 3.8, 5)
+	assert(rows.size() == 5, "PC raf satır sayısı 5 olmalı")
+	var placed := 0
+	for r in rows:
+		assert(float(r.width) <= 3.8 + 0.001, "PC rafı taştı: %.3f > 3.8" % float(r.width))
+		placed += r.items.size()
+	assert(placed == 34, "raftaki PC parça sayısı 34 olmalı: %d" % placed)
+	for d in pc_shelf:
 		assert(Game.shelf_pos.has(d.id), "raf konumu yok: " + d.id)
 	for d in db.shelf_items(["laptop", "phone"]):
 		assert(Game.shelf_pos.has(d.id), "mobil raf konumu yok: " + d.id)
