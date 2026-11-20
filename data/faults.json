@@ -269,6 +269,118 @@
    "paste_dry": true
   },
   {
+   "id": "incompat_ram_ddr",
+   "device": "pc",
+   "part": "ram",
+   "diag_code": "ddr_notch",
+   "kind": "incompat",
+   "symptoms": {
+    "led": "DRAM",
+    "beep": [
+     0.12,
+     0.12,
+     0.12,
+     0.12
+    ],
+    "screen": "no_signal",
+    "msg": "RAM çentiği anakartla uyumsuz (DDR4/DDR5)! Sistem açılmıyor.",
+    "msg_color": [
+     1,
+     0.6,
+     0.4
+    ]
+   },
+   "customer_lines": [
+    "İnternetten RAM alıp taktım usta ama bilgisayar hiç açılmıyor, galiba DDR uyuşmadı.",
+    "Yeni RAM taktım abi, zor oturdu zaten... Şimdi ekrana hiçbir şey gelmiyor."
+   ],
+   "fail_lines": [
+    "Usta RAM hâlâ anakarta uymuyor, bilgisayar açılmıyor!",
+    "DDR nesli yanlış demiştim abi, hâlâ görüntü yok."
+   ],
+   "hint": "İpucu: Anakart ile RAM'in DDR nesli uyuşmuyor — uyumlu DDR4/DDR5 RAM tak.",
+   "difficulty": 2,
+   "labor": [
+    110,
+    170
+   ],
+   "min_day": 0,
+   "min_rep": 0.0
+  },
+  {
+   "id": "incompat_psu_gpu",
+   "device": "pc",
+   "part": "psu",
+   "diag_code": "psu_connectors",
+   "kind": "incompat",
+   "symptoms": {
+    "led": "",
+    "beep": [],
+    "screen": "none",
+    "msg": "Güç kaynağı ekran kartı için yetersiz veya konnektörü uyumsuz!",
+    "msg_color": [
+     1,
+     0.55,
+     0.35
+    ]
+   },
+   "customer_lines": [
+    "Canavar gibi ekran kartı aldım usta ama eski güç kaynağının kablosu uymuyor, açılmıyor da!",
+    "Yeni ekran kartı taktım abi, güç kaynağı yetmiyor herhalde, kasa hiç tepki vermiyor."
+   ],
+   "fail_lines": [
+    "Usta güç kaynağı hâlâ bu ekran kartına yetmiyor!",
+    "Güç kablosu uymuyor abi, yüksek wattlı uyumlu bir PSU lazım."
+   ],
+   "hint": "İpucu: PSU yetersiz veya 12VHPWR kablosu yok — daha güçlü uyumlu bir PSU tak.",
+   "difficulty": 2,
+   "labor": [
+    120,
+    180
+   ],
+   "min_day": 0,
+   "min_rep": 0.0
+  },
+  {
+   "id": "incompat_no_igpu",
+   "device": "pc",
+   "part": "gpu",
+   "diag_code": "no_display",
+   "kind": "incompat",
+   "symptoms": {
+    "led": "VGA",
+    "beep": [
+     0.7,
+     0.13,
+     0.13,
+     0.13
+    ],
+    "screen": "no_signal",
+    "msg": "Ekrana görüntü gelmiyor: bu işlemcide dahili grafik yok, ekran kartı gerekli.",
+    "msg_color": [
+     1,
+     0.6,
+     0.4
+    ]
+   },
+   "customer_lines": [
+    "Ofis bilgisayarı topladım ekran kartsız ama ekrana hiç görüntü gelmiyor usta!",
+    "Monitörü anakarta taktım abi, fanlar dönüyor ama ekran kapkara. İşlemcide grafik yok muymuş?"
+   ],
+   "fail_lines": [
+    "Usta hâlâ ekrana görüntü gelmiyor, monitör sinyal yok diyor!",
+    "Görüntü çıkışı hâlâ yok abi, ya ekran kartı ya dahili grafikli işlemci lazım."
+   ],
+   "hint": "İpucu: İşlemcide dahili grafik (iGPU) yok — uyumlu bir ekran kartı veya iGPU'lu CPU tak.",
+   "difficulty": 2,
+   "labor": [
+    100,
+    160
+   ],
+   "min_day": 0,
+   "min_rep": 0.0
+  },
+  {
    "id": "laptop_ram",
    "device": "laptop",
    "part": "lap_ram",

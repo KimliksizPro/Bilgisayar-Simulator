@@ -457,6 +457,12 @@ func drop_off(j: Dictionary) -> Dictionary:
 ## Kayıttan cihaz düğümünü kurar: bench ise tezgâha, değilse rafa (kayıtlı göz doluysa ilk boşa).
 func _spawn_device(rec: Dictionary, fresh := false):
 	var dev = DJ.new_device(rec) if DJ.is_device(rec) else PC.new()
+	if not DJ.is_device(rec):
+		var cid := str(rec.get("case_id", ""))
+		if rec.state is Dictionary and not str(rec.state.get("case_id", "")).is_empty():
+			cid = str(rec.state.get("case_id", ""))
+		if not cid.is_empty():
+			dev.case_id = cid
 	dev.monitor = monitor
 	var t := int(rec.ticket)
 	var loc := str(rec.location)
@@ -984,6 +990,7 @@ func _make_job_of(id: String, broken := "") -> Dictionary:
 		"sale": return _job_sale(j, t)
 		"repair": return _job_repair(j, t)
 		"overheat": return _job_overheat(j, t)
+		"incompat": return _job_incompat(j, t)
 	return _job_plain(j, t)  # upgrade / build
 
 
@@ -1018,13 +1025,28 @@ func _job_sale(j: Dictionary, t) -> Dictionary:
 	return j
 
 
-## Yükseltme ve sıfırdan toplama: sabit metin, formül ücret, isteğe bağlı teslim koşulu.
+## Yükseltme ve sıfırdan toplama: uyumlu PC profili (veya boş kasa), formül ücret, isteğe bağlı teslim koşulu.
 func _job_plain(j: Dictionary, t) -> Dictionary:
 	j.kind = t.job_kind
 	j.intro = t.intro
 	j.goal = t.goal
 	j.pay = _template_pay(t)
-	j.parts = _with_broken(DB.jobs.base_parts(), "") if t.with_base_parts else []
+	if t.with_base_parts:
+		var prof := _progression_profile(t.profile.duplicate(true))
+		if t.job_kind == "upgrade_gpu":
+			prof["cases"] = ["atx_mid", "matx_mini"]
+			prof["need_gpu"] = true
+			prof["max_gpu_tier"] = 1
+			prof["min_psu_watts"] = 550
+		elif t.job_kind == "upgrade_ram":
+			prof["ram_count"] = 1
+			prof["max_ram_gb"] = 16
+		var built := _build_compatible_pc(prof)
+		j.case_id = built.case_id
+		j.parts = built.parts
+	else:
+		j.case_id = "atx_mid" if Game.day <= 2 else ["atx_mid", "matx_mini", "itx_compact"].pick_random()
+		j.parts = []
 	if not t.target.is_empty():
 		j.target = t.target
 	if t.hours > 0.0:
@@ -1038,31 +1060,359 @@ func _job_repair(j: Dictionary, t) -> Dictionary:
 	j.broken = f.part
 	j.intro = _intro_of(t, f)
 	j.goal = t.goal
-	# ücret = parça bedeli + işçilik (arıza tanımından)
-	j.pay = PM.price(f.part, 1) + f.roll_labor()
-	var parts := _with_broken(DB.jobs.base_parts(), f.part)
-	if randf() < t.ram2_chance:
-		parts.append(["ram2", "ram", 1, false])
+	var prof := _progression_profile(t.profile.duplicate(true))
+	prof["ram2_chance"] = t.ram2_chance
+	if f.part == "gpu":
+		prof["need_gpu"] = true
+	if f.part == "ssd":
+		prof["need_sata"] = true
+		prof["sata_sku"] = "ssd_sata_512"
+	var built := _build_compatible_pc(prof)
+	var parts: Array = built.parts
+	var broken_sku := DB.parts.id_for(f.part, 1)
+	var target_slots := []
+	for p in parts:
+		var d: PartDef = DB.parts.get_def(str(p.sku))
+		if d != null and d.category == f.part:
+			target_slots.append(p)
+	if not target_slots.is_empty():
+		var chosen: Dictionary = target_slots.pick_random()
+		chosen["broken"] = true
+		broken_sku = str(chosen.sku)
+	j.case_id = built.case_id
 	j.parts = parts
+	# ücret = arızalı SKU bedeli + işçilik (arıza tanımından)
+	j.pay = PM.price_sku(broken_sku) + f.roll_labor()
 	return j
 
 
-## Aşırı ısınma işi: kasa tozlu veya CPU macunu kurumuş (arıza tanımındaki dust/paste_dry).
+## Aşırı ısınma işi: uyumlu PC + kasa tozu veya kurumuş CPU macunu.
 func _job_overheat(j: Dictionary, t) -> Dictionary:
 	var f = DB.jobs.fault(t.fault)
 	j.kind = t.job_kind
 	j.intro = _intro_of(t, f)
 	j.goal = t.goal
 	j.pay = f.roll_labor()
-	var parts := _with_broken(DB.jobs.base_parts(), "")
+	var prof := _progression_profile(t.profile.duplicate(true))
+	if f.paste_dry and Game.day <= 2:
+		prof["socket"] = "AM4"
+	var built := _build_compatible_pc(prof)
+	var parts: Array = built.parts
 	if f.paste_dry:
-		for i in parts.size():
-			if parts[i][0] == "cpu":
-				parts[i] = ["cpu", "cpu", 1, false, false]
+		for p in parts:
+			if str(p.slot) == "cpu":
+				p["paste_ok"] = false
 	if randf() < f.dust_chance:
-		parts.append(["dust", "", randf_range(f.dust.x, f.dust.y), false])
+		parts.append({"slot": "dust", "amount": randf_range(f.dust.x, f.dust.y)})
+	j.case_id = built.case_id
 	j.parts = parts
 	return j
+
+
+## Bilerek uyumsuz PC işleri (2.9): DDR çentiği, PSU/GPU güç/konnektör, iGPU'suz işlemci.
+func _job_incompat(j: Dictionary, t) -> Dictionary:
+	var f = DB.jobs.fault(t.fault)
+	j.kind = t.job_kind
+	j.broken = f.part
+	j.intro = _intro_of(t, f)
+	j.goal = t.goal
+	var built := {}
+	var ref_sku := DB.parts.id_for(f.part, 1)
+	match t.fault:
+		"incompat_ram_ddr":
+			var want_ddr5 := randf() < 0.5
+			built = _build_compatible_pc({
+				"ram_type": "DDR5" if want_ddr5 else "DDR4",
+				"ram_count": 1,
+			})
+			var wrong_ram := "ram_ddr4_8g" if want_ddr5 else "ram_ddr5_16g"
+			ref_sku = "ram_ddr5_16g" if want_ddr5 else "ram_ddr4_8g"
+			for p in built.parts:
+				if str(p.slot) == "ram1":
+					p["sku"] = wrong_ram
+		"incompat_psu_gpu":
+			built = _build_compatible_pc({
+				"case_id": "atx_mid",
+				"need_gpu": true,
+				"gpu_sku": "gpu_flagship_16g",
+			})
+			var weak_psu: String = ["psu_450w", "psu_550w"].pick_random()
+			ref_sku = "psu_750w"
+			for p in built.parts:
+				if str(p.slot) == "psu":
+					p["sku"] = weak_psu
+		"incompat_no_igpu":
+			var sock: String = ["AM4", "LGA1700"].pick_random()
+			built = _build_compatible_pc({
+				"socket": sock,
+				"igpu": false,
+				"need_gpu": true,
+			})
+			ref_sku = "gpu_entry_4g"
+			built.parts = built.parts.filter(func(p): return str(p.slot) != "gpu")
+		_:
+			built = _build_compatible_pc({})
+	j.case_id = built.case_id
+	j.parts = built.parts
+	j.pay = PM.price_sku(ref_sku) + f.roll_labor()
+	return j
+
+
+## Gün ilerleyişine göre varsayılan PC kurulum profili:
+## 1. gün başlangıç AM4/DDR4, 2. gün DDR4 (AM4/LGA1700), 3+ gün tüm 3 kasa ve 4 soket.
+func _progression_profile(base: Dictionary = {}) -> Dictionary:
+	var prof := base.duplicate(true)
+	if Game.day <= 1:
+		if not prof.has("case_id") and not prof.has("cases"):
+			prof["case_id"] = "atx_mid"
+		if not prof.has("socket"):
+			prof["socket"] = "AM4"
+		if not prof.has("cpu_sku"):
+			prof["cpu_sku"] = "cpu_am4_6c"
+		if not prof.has("ram_sku"):
+			prof["ram_sku"] = "ram_ddr4_8g"
+		if not prof.has("gpu_sku"):
+			prof["gpu_sku"] = "gpu_entry_4g"
+		if not prof.has("psu_sku"):
+			prof["psu_sku"] = "psu_550w"
+		if not prof.has("need_gpu"):
+			prof["need_gpu"] = true
+		if not prof.has("need_sata"):
+			prof["need_sata"] = true
+	elif Game.day == 2:
+		if not prof.has("ram_type"):
+			prof["ram_type"] = "DDR4"
+		if not prof.has("cases") and not prof.has("case_id"):
+			prof["cases"] = ["atx_mid", "matx_mini"]
+	return prof
+
+
+## Yüzde yüz uyumlu, gerçekçi PC kurulumu üretir: {"case_id": String, "parts": Array[Dictionary]}.
+## Tüm 3 kasa form faktörü (atx_mid, matx_mini, itx_compact) ve 4 CPU soketi (AM4, AM5, LGA1700, LGA1851) desteklenir.
+func _build_compatible_pc(profile: Dictionary = {}) -> Dictionary:
+	var all_cases: Array = profile.get("cases", ["atx_mid", "matx_mini", "itx_compact"])
+	if profile.has("case_id"):
+		all_cases = [str(profile.case_id)]
+	var all_mobos: Array = DB.parts.by_category("mobo")
+	var valid_pairs := []
+	for cid in all_cases:
+		var cdef := DB.parts.case_def(str(cid))
+		if cdef.is_empty():
+			continue
+		var ffs: Array = cdef.get("form_factors", [])
+		for m in all_mobos:
+			if not ffs.has(str(m.compat.get("form_factor", ""))):
+				continue
+			if profile.has("socket") and str(m.compat.get("socket", "")) != str(profile.socket):
+				continue
+			if profile.has("ram_type") and str(m.compat.get("ram_type", "")) != str(profile.ram_type):
+				continue
+			if profile.has("mobo_sku") and m.id != str(profile.mobo_sku):
+				continue
+			valid_pairs.append([str(cid), cdef, m])
+	if valid_pairs.is_empty():
+		return _starter_pc_fallback()
+	var pick: Array = valid_pairs.pick_random()
+	var case_id: String = pick[0]
+	var cdef: Dictionary = pick[1]
+	var mobo: PartDef = pick[2]
+	var sock := str(mobo.compat.get("socket", "AM4"))
+	var ram_type := str(mobo.compat.get("ram_type", "DDR4"))
+
+	# CPU: anakart soketine uyumlu
+	var cpus := DB.parts.by_category("cpu").filter(func(c):
+		if str(c.compat.get("socket", "")) != sock:
+			return false
+		if profile.has("cpu_sku") and c.id != str(profile.cpu_sku):
+			return false
+		if profile.has("igpu") and bool(c.specs.get("igpu", false)) != bool(profile.igpu):
+			return false
+		return true)
+	if cpus.is_empty():
+		return _starter_pc_fallback()
+	var cpu: PartDef = cpus.pick_random()
+
+	# Soğutucu: soket + kasa yükseklik/radyatör sınırına uyumlu
+	var max_h := int(cdef.get("max_cooler_mm", 165))
+	var max_rad := int(cdef.get("max_rad_mm", 240))
+	var coolers := DB.parts.by_category("cooler").filter(func(cl):
+		var socks: Array = cl.compat.get("sockets", [])
+		if not socks.is_empty() and not socks.has(sock):
+			return false
+		if int(cl.specs.get("height_mm", 0)) > max_h:
+			return false
+		var rad := int(cl.specs.get("radiator_mm", 0))
+		if rad > 0 and rad > max_rad:
+			return false
+		if profile.has("cooler_sku") and cl.id != str(profile.cooler_sku):
+			return false
+		return true)
+	if coolers.is_empty():
+		coolers = [DB.parts.get_def("cooler_stock")]
+	var cooler: PartDef = coolers.pick_random()
+
+	# RAM: anakart DDR nesli ve yuva sayısına uyumlu
+	var max_ram_gb := int(profile.get("max_ram_gb", 0))
+	var rams := DB.parts.by_category("ram").filter(func(r):
+		if str(r.compat.get("ram_type", "")) != ram_type:
+			return false
+		if profile.has("ram_sku") and r.id != str(profile.ram_sku):
+			return false
+		if max_ram_gb > 0 and int(r.specs.get("gb", 8)) > max_ram_gb:
+			return false
+		return true)
+	if rams.is_empty():
+		return _starter_pc_fallback()
+	var ram: PartDef = rams.pick_random()
+	var max_slots := int(mobo.compat.get("ram_slots", 2))
+	var ram_count := int(profile.get("ram_count", -1))
+	if ram_count < 1:
+		ram_count = 2 if (max_slots >= 2 and randf() < float(profile.get("ram2_chance", 0.5))) else 1
+	ram_count = clampi(ram_count, 1, max_slots)
+
+	# GPU: kasa uzunluğuna uyumlu (iGPU'lu işlemcide opsiyonel)
+	var has_igpu := bool(cpu.specs.get("igpu", false))
+	var need_gpu := bool(profile.get("need_gpu", false)) or not has_igpu
+	var gpu: PartDef = null
+	if need_gpu or randf() < 0.75:
+		var max_gpu := int(cdef.get("max_gpu_mm", 330))
+		var max_gpu_tier := int(profile.get("max_gpu_tier", 99))
+		var gpus := DB.parts.by_category("gpu").filter(func(g):
+			if int(g.specs.get("length_mm", 0)) > max_gpu:
+				return false
+			if g.tier > max_gpu_tier:
+				return false
+			if profile.has("gpu_sku") and g.id != str(profile.gpu_sku):
+				return false
+			return true)
+		if not gpus.is_empty():
+			gpu = gpus.pick_random()
+	if gpu == null and not has_igpu:
+		return _starter_pc_fallback()
+
+	# Depolama: SATA SSD/HDD ve/veya M.2 NVMe
+	var storage_entries := []
+	var need_sata := bool(profile.get("need_sata", false))
+	var use_nvme := not need_sata and int(mobo.compat.get("m2_slots", 0)) > 0 and randf() < 0.5
+	if use_nvme:
+		var nvmes := DB.parts.by_category("nvme")
+		if not nvmes.is_empty():
+			storage_entries.append(["m2", nvmes.pick_random()])
+	if storage_entries.is_empty() or (not need_sata and randf() < 0.25):
+		var sata_sku := str(profile.get("sata_sku", ""))
+		var sata_def: PartDef = DB.parts.get_def(sata_sku) if not sata_sku.is_empty() else null
+		if sata_def == null:
+			var satas := DB.parts.by_category("ssd") + DB.parts.by_category("hdd")
+			sata_def = satas.pick_random() if not satas.is_empty() else DB.parts.get_def("ssd_sata_512")
+		storage_entries.append(["ssd", sata_def])
+
+	# Kasa fanları + CMOS
+	var fan_slots := int(cdef.get("fan_slots", 1))
+	var fans := DB.parts.by_category("fan")
+	var fan_def: PartDef = fans.pick_random() if not fans.is_empty() else DB.parts.get_def("fan_120_std")
+	var fan_count := 2 if (fan_slots >= 2 and randf() < 0.6) else 1
+
+	# Parça listesini (PSU hariç) oluşturup gereken watt + konnektörü hesapla
+	var parts := [
+		_part_entry("mobo", mobo.id),
+		_part_entry("cpu", cpu.id),
+		_part_entry("cooler", cooler.id),
+		_part_entry("cmos", "cmos_cr2032"),
+	]
+	for i in ram_count:
+		parts.append(_part_entry("ram%d" % (i + 1), ram.id))
+	if gpu != null:
+		parts.append(_part_entry("gpu", gpu.id))
+	for se in storage_entries:
+		parts.append(_part_entry(str(se[0]), se[1].id))
+	for fi in fan_count:
+		parts.append(_part_entry("fan%d" % (fi + 1), fan_def.id))
+
+	var hyp := _case_state_from_parts(case_id, parts)
+	var watts := Compatibility.calc_watts(hyp)
+	var min_w := maxi(int(watts.recommended), int(profile.get("min_psu_watts", 0)))
+	var psus := DB.parts.by_category("psu").filter(func(ps):
+		if gpu != null and not Compatibility.check_psu_connectors(ps, gpu).ok:
+			return false
+		if int(ps.compat.get("watts", 0)) < min_w:
+			return false
+		if profile.has("psu_sku") and ps.id != str(profile.psu_sku):
+			return false
+		return true)
+	if psus.is_empty():
+		psus = DB.parts.by_category("psu").filter(func(ps):
+			return (gpu == null or Compatibility.check_psu_connectors(ps, gpu).ok) and int(ps.compat.get("watts", 0)) >= int(watts.draw))
+	if psus.is_empty():
+		return _starter_pc_fallback()
+	psus.sort_custom(func(a, b): return a.price < b.price)
+	var psu: PartDef = psus[randi() % mini(2, psus.size())]
+	parts.append(_part_entry("psu", psu.id))
+
+	# Son doğrulama: tüm kurallardan geçmezse güvenli başlangıç kurulumuna düş
+	var final_state := _case_state_from_parts(case_id, parts)
+	if not Compatibility.check_system(final_state).ok:
+		return _starter_pc_fallback()
+	return {"case_id": case_id, "parts": parts}
+
+
+static func _part_entry(slot: String, sku_id: String, broken := false, paste_ok := true, cheap := false, health := 100) -> Dictionary:
+	return {"slot": slot, "sku": sku_id, "broken": broken, "paste_ok": paste_ok, "cheap": cheap, "health": health}
+
+
+static func _case_state_from_parts(case_id: String, parts: Array) -> Dictionary:
+	var cdef := DB.parts.case_def(case_id)
+	var st := {
+		"case_id": case_id,
+		"case_def": cdef,
+		"mobo": null,
+		"cpu": null,
+		"cooler": null,
+		"rams": [],
+		"gpu": null,
+		"psu": null,
+		"storage": [],
+		"fans": [],
+		"cmos": null,
+		"slots_occupied": {},
+	}
+	for p in parts:
+		if not (p is Dictionary):
+			continue
+		var sn := str(p.get("slot", ""))
+		if sn == "dust" or sn.is_empty():
+			continue
+		var d: PartDef = DB.parts.get_def(str(p.get("sku", "")))
+		if d == null:
+			continue
+		st.slots_occupied[sn] = d
+		match d.category:
+			"mobo": st.mobo = d
+			"cpu": st.cpu = d
+			"cooler": st.cooler = d
+			"ram": st.rams.append(d)
+			"gpu": st.gpu = d
+			"psu": st.psu = d
+			"ssd", "hdd", "nvme": st.storage.append(d)
+			"fan": st.fans.append(d)
+			"cmos": st.cmos = d
+	return st
+
+
+static func _starter_pc_fallback() -> Dictionary:
+	return {
+		"case_id": "atx_mid",
+		"parts": [
+			_part_entry("mobo", "mobo_am4_matx"),
+			_part_entry("cpu", "cpu_am4_6c"),
+			_part_entry("cooler", "cooler_stock"),
+			_part_entry("ram1", "ram_ddr4_8g"),
+			_part_entry("gpu", "gpu_entry_4g"),
+			_part_entry("ssd", "ssd_sata_512"),
+			_part_entry("psu", "psu_550w"),
+			_part_entry("fan1", "fan_120_std"),
+			_part_entry("cmos", "cmos_cr2032"),
+		],
+	}
 
 
 func _with_broken(base: Array, broken: String) -> Array:

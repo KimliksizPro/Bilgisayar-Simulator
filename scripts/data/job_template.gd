@@ -2,14 +2,14 @@ extends RefCounted
 ## İş şablonu (data/jobs.json). Yeni iş = JSON'a bir kayıt; kod `kind`a göre genel çalışır.
 
 var id := ""
-var kind := ""                # repair / overheat / upgrade / build / sale / device (üretim yolu)
+var kind := ""                # repair / overheat / incompat / upgrade / build / sale / device (üretim yolu)
 var job_kind := ""            # iş sözlüğündeki "kind" (HUD/personel buna bakar)
 var family := ""              # tekrar cezası için aile
 var weight := 0
 var min_money := 0
 var min_day := 0
 var min_rep := 0.0
-var fault := ""               # repair/overheat: FaultDef kimliği
+var fault := ""               # repair/overheat/incompat: FaultDef kimliği
 var device := ""              # device: laptop / phone
 var intro := ""               # sabit müşteri cümlesi
 var intro_pool := ""          # ya da "text" havuzu (belirsiz anlatım / satış cümlesi)
@@ -22,6 +22,7 @@ var pay_extra := 0
 var with_base_parts := false  # upgrade: tam çalışan standart bilgisayar
 var want := ""                # sale: "tür:kademe"
 var target := {}              # upgrade: teslim koşulu (part/min_tier ya da ram_gb) + fail cümlesi
+var profile := {}             # isteğe bağlı PC kurulum profili (case_id, socket, ram_type...)
 var hours := 0.0              # 0 = varsayılan süre
 
 
@@ -48,6 +49,7 @@ static func from_dict(d: Dictionary):
 	t.with_base_parts = bool(d.get("with_base_parts", false))
 	t.want = str(d.get("want", ""))
 	t.target = d.get("target", {})
+	t.profile = d.get("profile", {})
 	t.hours = float(d.get("hours", 0.0))
 	return t
 

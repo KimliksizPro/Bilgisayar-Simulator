@@ -88,6 +88,7 @@ static func short_goal(rec: Dictionary) -> String:
 		return "GARANTİ dönüşü" + ex
 	match str(rec.get("kind", "")):
 		"overheat_dust", "overheat_paste": return "PC aşırı ısınıyor" + ex
+		"incompat_ram_ddr", "incompat_psu_gpu", "incompat_no_igpu": return "Uyumluluk sorunu" + ex
 		"upgrade_gpu": return "Ekran kartı yükseltme" + ex
 		"upgrade_ram": return "RAM 32 GB yükseltme" + ex
 		"build": return "Sıfırdan PC toplama" + ex
@@ -114,19 +115,26 @@ static func normalize(r: Dictionary) -> Dictionary:
 	if out.status == "on_bench":
 		out.status = "waiting_bench"  # tezgâhta kalan iş yüklemede yine tezgâha konur
 		out.location = "bench"
+	out.name = str(out.get("name", "Müşteri"))
+	out.kind = str(out.get("kind", "repair"))
+	out.device = str(out.get("device", ""))
+	out.broken = str(out.get("broken", ""))
+	var is_pc: bool = out.device == "" or out.device == "pc"
+	if is_pc:
+		var cid := str(out.get("case_id", "atx_mid"))
+		out["case_id"] = "atx_mid" if cid.is_empty() else cid
 	out.parts = _norm_parts(out.get("parts", []))
 	var st = out.get("state", null)
 	if st is Dictionary:
+		if is_pc:
+			var scid := str(st.get("case_id", out.get("case_id", "atx_mid")))
+			st["case_id"] = "atx_mid" if scid.is_empty() else scid
 		st.parts = _norm_parts(st.get("parts", []))
 		st.dust = float(st.get("dust", 0.0))
 		st.socket_paste = bool(st.get("socket_paste", false))
 		out.state = st
 	else:
 		out.state = null
-	out.name = str(out.get("name", "Müşteri"))
-	out.kind = str(out.get("kind", "repair"))
-	out.device = str(out.get("device", ""))
-	out.broken = str(out.get("broken", ""))
 	if out.has("target") and not (out.target is Dictionary):
 		out.erase("target")
 	if out.has("target"):
@@ -136,42 +144,103 @@ static func normalize(r: Dictionary) -> Dictionary:
 	return out
 
 
+## Parça listesini normalleştirir: v4 sözlükleri ve geriye dönük v3 dizileri desteklenir.
 static func _norm_parts(parts: Array) -> Array:
 	var out := []
 	for p in parts:
-		var q := [str(p[0]), str(p[1]), (float(p[2]) if str(p[0]) == "dust" else int(p[2])), bool(p[3])]
-		if p.size() > 4:
-			q.append(bool(p[4]))
-		if p.size() > 5:
-			q.append(bool(p[5]))
-		out.append(q)
+		if p is Dictionary:
+			var sn := str(p.get("slot", ""))
+			if sn == "dust" or p.has("dust"):
+				out.append({"slot": "dust", "amount": float(p.get("amount", p.get("dust", 0.0)))})
+				continue
+			var raw_sku := str(p.get("sku", ""))
+			var sku_id: String = DB.parts.resolve_id(raw_sku) if not raw_sku.is_empty() else ""
+			out.append({
+				"slot": sn,
+				"sku": sku_id,
+				"broken": bool(p.get("broken", false)),
+				"paste_ok": bool(p.get("paste_ok", true)),
+				"cheap": bool(p.get("cheap", false)),
+				"health": int(p.get("health", 100)),
+			})
+		elif p is Array and p.size() >= 4:
+			var q := [str(p[0]), str(p[1]), (float(p[2]) if str(p[0]) == "dust" else int(p[2])), bool(p[3])]
+			if p.size() > 4:
+				q.append(bool(p[4]))
+			if p.size() > 5:
+				q.append(bool(p[5]))
+			out.append(q)
 	return out
 
 
 # ---------------------------------------------------------------- cihaz durumu
-## Cihazın parça durumunu kayda yazılabilir sözlüğe çevirir:
-## parts: [[yuva, tür, seviye, bozuk, macun_sağlam, muadil]], dust, socket_paste.
+## Cihazın parça durumunu v4 kayda yazılabilir sözlüğe çevirir:
+## case_id (PC için), parts: [{slot, sku, broken, paste_ok, cheap, health}], dust, socket_paste.
 static func snapshot(dev) -> Dictionary:
 	var parts := []
 	for sn in dev.slots:
 		var p = dev.slots[sn].part
 		if p != null:
-			parts.append([sn, p.part_type, p.tier, p.broken, p.paste_ok, p.cheap])
-	return {"parts": parts, "dust": float(dev.dust) if "dust" in dev else 0.0,
-		"socket_paste": bool(dev.socket_paste) if "socket_paste" in dev else false}
+			var raw_sku: String = p.sku if not p.sku.is_empty() else DB.parts.id_for(p.part_type, p.tier)
+			var sku_id: String = DB.parts.resolve_id(raw_sku) if not raw_sku.is_empty() else raw_sku
+			parts.append({
+				"slot": str(sn),
+				"sku": sku_id,
+				"broken": bool(p.broken),
+				"paste_ok": bool(p.paste_ok),
+				"cheap": bool(p.cheap),
+				"health": int(p.health) if "health" in p else 100,
+			})
+	var out := {
+		"parts": parts,
+		"dust": float(dev.dust) if "dust" in dev else 0.0,
+		"socket_paste": bool(dev.socket_paste) if "socket_paste" in dev else false,
+	}
+	if "case_id" in dev:
+		out["case_id"] = str(dev.case_id)
+	return out
 
 
-## Boş yeni cihaza kayıtlı durumu kurar (fill + muadil işareti + toz/macun).
+## Boş yeni cihaza kayıtlı durumu kurar (v4 sözlükleri ve geriye dönük v3 dizileri destekler).
 static func restore(dev, state: Dictionary) -> void:
+	var is_pc: bool = not dev.has_method("slot_open")
+	var raw_parts: Array = state.get("parts", [])
 	var fill := []
-	for p in state.parts:
-		fill.append([p[0], p[1], p[2], p[3], p[4] if p.size() > 4 else true])
+	var cheap_slots := []
+	var seen := {}
+	for p in raw_parts:
+		if p is Dictionary:
+			var sn := str(p.get("slot", ""))
+			if sn == "dust" or p.has("dust"):
+				if is_pc:
+					fill.append(p)
+				continue
+			seen[sn] = true
+			if is_pc:
+				fill.append(p)
+			else:
+				var sku_id: String = DB.parts.resolve_id(str(p.get("sku", "")))
+				var d: PartDef = DB.parts.get_def(sku_id)
+				var pt: String = d.category if d != null else str(p.get("type", ""))
+				var tr: int = d.tier if d != null else int(p.get("tier", 1))
+				fill.append([sn, pt, tr, bool(p.get("broken", false))])
+				if bool(p.get("cheap", false)):
+					cheap_slots.append(sn)
+		elif p is Array and p.size() >= 4:
+			var sn := str(p[0])
+			seen[sn] = true
+			fill.append([sn, p[1], p[2], p[3], p[4] if p.size() > 4 else true])
+			if p.size() > 5 and bool(p[5]):
+				cheap_slots.append(sn)
+	# PC kaydında sökülü bırakılmış varsayılan parçalar geri takılmasın (omit işareti)
+	if is_pc and not raw_parts.is_empty():
+		for def_slot in ["mobo", "cooler", "fan1", "cmos"]:
+			if not seen.has(def_slot):
+				fill.append({"slot": def_slot, "omit": true})
 	dev.fill(fill)
-	for p in state.parts:
-		if p.size() > 5 and p[5]:
-			var part = dev.slots[p[0]].part
-			if part != null:
-				part.make_cheap()
+	for sn in cheap_slots:
+		if dev.slots.has(sn) and dev.slots[sn].part != null:
+			dev.slots[sn].part.make_cheap()
 	if "dust" in dev and float(state.get("dust", 0.0)) > 0.0:
 		dev.set_dust(float(state.dust))
 	if "socket_paste" in dev and bool(state.get("socket_paste", false)):
