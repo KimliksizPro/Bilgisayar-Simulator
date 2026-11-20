@@ -7,6 +7,8 @@ const PATH := "user://settings.cfg"
 const QUALITY_NAMES := ["Düşük", "Orta", "Yüksek"]
 const WINDOW_NAMES := ["Pencere", "Tam ekran", "Kenarsız"]
 const FPS_CAPS := [0, 30, 60, 120, 144]
+const TOUCH_MODES := ["auto", "on", "off"]
+const TOUCH_NAMES := ["Otomatik", "Açık", "Kapalı"]
 
 # anahtar -> [bölüm, varsayılan]
 const DEFS := {
@@ -22,6 +24,8 @@ const DEFS := {
 	"music": ["ses", 0.5],
 	"sensitivity": ["kontrol", 1.0],
 	"invert_y": ["kontrol", false],
+	"touch_controls": ["kontrol", "auto"],
+	"hud_scale": ["oyun", 1.0],
 	"show_fps": ["oyun", false],
 	"show_hints": ["oyun", true],
 	"tips_seen": ["oyun", []],
@@ -39,6 +43,8 @@ var sfx := 1.0
 var music := 0.5
 var sensitivity := 1.0
 var invert_y := false
+var touch_controls: String = "auto"
+var hud_scale: float = 1.0
 var show_fps := false
 var show_hints := true
 var tips_seen: Array = []
@@ -75,6 +81,9 @@ func load_settings() -> void:
 	window_mode = clampi(window_mode, 0, 2)
 	res_scale = clampf(res_scale, 0.5, 1.0)
 	fov = clampf(fov, 60.0, 100.0)
+	hud_scale = clampf(hud_scale, 0.65, 1.40)
+	if not TOUCH_MODES.has(touch_controls):
+		touch_controls = "auto"
 
 
 func save_settings() -> void:
@@ -86,6 +95,10 @@ func save_settings() -> void:
 
 ## Bir ayarı değiştirir, uygular ve (gecikmeli) kaydeder.
 func set_opt(key: String, value) -> void:
+	if key == "hud_scale":
+		value = clampf(float(value), 0.65, 1.40)
+	elif key == "touch_controls" and not TOUCH_MODES.has(str(value)):
+		value = "auto"
 	set(key, value)
 	_apply(key)
 	changed.emit(key)
@@ -94,6 +107,15 @@ func set_opt(key: String, value) -> void:
 		_save_timer.timeout.connect(func():
 			_save_timer = null
 			save_settings())
+
+
+## Dokunmatik kontroller şu an etkin mi?
+func is_touch_enabled() -> bool:
+	if touch_controls == "on":
+		return true
+	if touch_controls == "off":
+		return false
+	return DisplayServer.is_touchscreen_available()
 
 
 func reset_defaults() -> void:

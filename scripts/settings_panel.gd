@@ -214,6 +214,7 @@ func _build_audio(p: Control) -> void:
 func _build_controls(p: Control) -> void:
 	_slider(p, "Fare hassasiyeti", "sensitivity", 0.25, 3.0, 0.05, func(x): return "%.2fx" % x)
 	_toggle(p, "Y eksenini ters çevir", "invert_y", "Fareyi yukarı itince aşağı bakar.")
+	_seg(p, "Dokunmatik Kontroller", "touch_controls", Settings.TOUCH_NAMES, Settings.TOUCH_MODES, "Dokunmatik ekran kontrollerini etkinleştirir.")
 	K.hsep(p)
 	K.label(p, "Tuşlar", 22, T.ACCENT, "BoldLabel")
 	var g := GridContainer.new()
@@ -233,6 +234,7 @@ func _build_controls(p: Control) -> void:
 
 
 func _build_game(p: Control) -> void:
+	_slider(p, "HUD Ölçeği", "hud_scale", 0.65, 1.40, 0.05, _pct, "Arayüz kartlarının ve panellerin boyutu.")
 	_toggle(p, "FPS sayacını göster", "show_fps", "Sol üstte FPS ve çizim sayısı (F3).")
 	_toggle(p, "İpuçlarını göster", "show_hints", "İlk günlerde kısa öğretici ipuçları çıkar.")
 	var h := _row(p, "Öğretici ipuçları", "Daha önce gördüğün ipuçları bir daha çıkmaz.")
