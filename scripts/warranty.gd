@@ -14,9 +14,25 @@ const REP_ANGRY_EXTRA := 0.3  # garanti müşterisi kızıp giderse ek itibar ka
 static func on_delivered(pc, job: Dictionary) -> void:
 	for part in pc.installed_parts():
 		if part.cheap and randf() < Game.warranty_chance:
-			Game.warranty_list.append({"due": Game.day + randi_range(1, 2), "name": str(job.get("name", "Müşteri")),
-				"type": part.part_type, "tier": part.tier, "device": str(job.get("device", ""))})
+			var sku_id: String = DB.parts.resolve_id(part.sku if not part.sku.is_empty() else Game.sku(part.part_type, part.tier))
+			var d: PartDef = DB.parts.get_def(sku_id)
+			Game.warranty_list.append({
+				"due": Game.day + randi_range(1, 2),
+				"name": str(job.get("name", "Müşteri")),
+				"sku": sku_id,
+				"type": d.category if d else part.part_type,
+				"tier": d.tier if d else part.tier,
+				"device": str(job.get("device", "")),
+			})
 			return  # bir iş en fazla bir kez geri döner
+
+
+## Garanti kaydından kanonik SKU kimliğini çözer (eski {type, tier} kayıtları dahil).
+static func _resolve_sku(w: Dictionary) -> String:
+	var raw := str(w.get("sku", ""))
+	if not raw.is_empty():
+		return DB.parts.resolve_id(raw)
+	return DB.parts.resolve_id(Game.sku(str(w.get("type", "ram")), int(w.get("tier", 1))))
 
 
 ## Günü gelmiş ilk garanti kaydını listeden çıkarıp döndürür; yoksa boş sözlük.
@@ -29,27 +45,44 @@ static func take_due() -> Dictionary:
 	return {}
 
 
-## Garanti işi: aynı türden parçası arızalı, ücretsiz bir tamir. base: job_manager'ın parça listesi.
+## Garanti işi: aynı SKU'lu parçası arızalı, ücretsiz bir tamir. base: job_manager'ın parça listesi.
 static func make_job(w: Dictionary, base: Array) -> Dictionary:
 	var dev: String = str(w.get("device", ""))
 	if dev != "":
 		return _device_job(w, dev)
-	var broken: String = w.type
+	var sku_id := _resolve_sku(w)
+	var d: PartDef = DB.parts.get_def(sku_id)
+	var broken: String = d.category if d else str(w.get("type", "ram"))
 	var parts := []
 	for b in base:
-		parts.append([b[0], b[1], b[2], b[1] == broken])
-	return {"name": w.name, "kind": "warranty", "warranty": true, "broken": broken, "pay": 0, "parts": parts,
+		if b is Dictionary:
+			var nb: Dictionary = b.duplicate()
+			var b_sku := DB.parts.resolve_id(str(nb.get("sku", "")))
+			var bd: PartDef = DB.parts.get_def(b_sku)
+			var b_cat := bd.category if bd else str(nb.get("type", ""))
+			var is_match := b_cat == broken
+			if is_match:
+				nb["sku"] = sku_id
+			nb["broken"] = is_match
+			parts.append(nb)
+		else:
+			parts.append([b[0], b[1], b[2], b[1] == broken])
+	var label := PM.display_name_sku(sku_id) if d else PM.type_name(broken)
+	return {"name": w.name, "kind": "warranty", "warranty": true, "broken": broken, "broken_sku": sku_id, "pay": 0, "parts": parts,
 		"intro": DB.jobs.text("warranty_pc_intro")[0],
-		"goal": DB.jobs.text("warranty_pc_goal")[0] % PM.type_name(broken)}
+		"goal": DB.jobs.text("warranty_pc_goal")[0] % label}
 
 
 ## Laptop/telefon garanti dönüşü: aynı cihaz, muadil takılan parçanın yuvası arızalı.
 static func _device_job(w: Dictionary, dev: String) -> Dictionary:
+	var sku_id := _resolve_sku(w)
+	var d: PartDef = DB.parts.get_def(sku_id)
+	var cat: String = d.category if d else str(w.get("type", ""))
 	var j := DJ.make({"name": w.name}, dev)
 	var table: Dictionary = DJ.slots(dev)
 	var slot_name := ""
 	for sl in table:
-		if table[sl] == w.type:
+		if table[sl] == cat:
 			slot_name = sl
 	if slot_name == "":
 		slot_name = j.broken
@@ -58,9 +91,10 @@ static func _device_job(w: Dictionary, dev: String) -> Dictionary:
 		parts.append([sl, table[sl], 1, sl == slot_name])
 	j.parts = parts
 	j.broken = slot_name
+	j.broken_sku = sku_id
 	j.kind = "warranty"
 	j.warranty = true
 	j.pay = 0
 	j.intro = DB.jobs.text("warranty_dev_intro")[0]
-	j.goal = DB.jobs.text("warranty_dev_goal")[0] % PM.display_name(w.type, int(w.get("tier", 1)))
+	j.goal = DB.jobs.text("warranty_dev_goal")[0] % PM.display_name_sku(sku_id)
 	return j

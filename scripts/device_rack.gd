@@ -8,7 +8,7 @@ const PM := preload("res://scripts/part_models.gd")
 const POS := Vector3(-2.35, 0.0, -2.955)   # arka duvar önü (raf arkası)
 const WIDTH := 1.2
 const DEPTH := 0.26
-const LEVELS := [1.02, 1.32, 1.62]
+const LEVELS := [0.88, 1.16, 1.44, 1.72]
 const K := 1.25                             # raftaki model büyütmesi (küçük parçalar daha büyük)
 const K_SMALL := 1.7
 
@@ -58,7 +58,7 @@ static func build(main: Node3D) -> void:
 		for e in rows[r].items:
 			var x: float = e.c - rows[r].width / 2.0
 			var shelf_y: float = LEVELS[LEVELS.size() - 1 - r]
-			_item(main, root, shelf_y, x, e.def.category, PM.info(e.def.category).shelf_tilt)
+			_item(main, root, shelf_y, x, e.def, PM.info(e.def.category).shelf_tilt)
 			Game.shelf_pos[e.def.id] = root.to_global(Vector3(x, shelf_y, DEPTH * 0.45))
 
 
@@ -67,9 +67,10 @@ static func _scale_for(info: Dictionary, tilt: float) -> float:
 	return K_SMALL if info.size.x < 0.1 and tilt == 0.0 else K
 
 
-static func _item(main: Node3D, root: Node3D, shelf_y: float, x: float, type: String, tilt: float) -> void:
-	var info: Dictionary = PM.info(type)
-	var built := PM.build(type, 1)
+static func _item(main: Node3D, root: Node3D, shelf_y: float, x: float, d: PartDef, tilt: float) -> void:
+	var sku_id: String = d.id
+	var info: Dictionary = PM.info(d.category)
+	var built := PM.build_sku(sku_id)
 	var n: Node3D = built.node
 	var sz: Vector3 = info.size
 	var k := _scale_for(info, tilt)
@@ -81,14 +82,15 @@ static func _item(main: Node3D, root: Node3D, shelf_y: float, x: float, type: St
 	n.position = Vector3(x, shelf_y + y, z)
 	root.add_child(n)
 	MU.no_merge(n)  # stok bitince gizlenebilsin
-	var dname := PM.display_name(type, 1)
+	var dname := PM.display_name_sku(sku_id)
 	var box := Vector3(maxf(sz.x * k, 0.12), maxf(y * 2.0, 0.06) + 0.04, DEPTH - 0.02)
-	MU.interactable(root, box, Vector3(x, shelf_y + box.y / 2, DEPTH / 2),
-		func(p): return main._shelf_hint(p, type, 1, dname),
-		func(p): main._shelf_use(p, type, 1))
+	var it = MU.interactable(root, box, Vector3(x, shelf_y + box.y / 2, DEPTH / 2),
+		func(p): return main._shelf_hint_sku(p, sku_id, dname),
+		func(p): main._shelf_use_sku(p, sku_id))
+	it.action_alt = func(p): main._buy_sku(p, sku_id, true)  # F: muadil parça al
 	# fiyat etiketi: rafın ön kenarından sarkar
 	var tag := MU.box(root, Vector3(0.3, 0.054, 0.002), Vector3(x, shelf_y - 0.037, DEPTH + 0.002), MU.mat(Color(1.0, 0.92, 0.4)))
 	tag.name = "PriceTag"
 	var l := MU.label(root, "", Vector3(x, shelf_y - 0.037, DEPTH + 0.0035), 21, Color(0.1, 0.1, 0.1), Vector3.ZERO, 0.001)
 	l.double_sided = false
-	main._price_labels.append([l, dname, type, 1, n])
+	main._price_labels.append([l, dname, d.category, sku_id, n])

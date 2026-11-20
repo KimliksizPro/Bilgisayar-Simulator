@@ -111,6 +111,8 @@ func _ready() -> void:
 		add_child(load("res://dev/jobs_shot.gd").new())
 	if "--multijobtest" in OS.get_cmdline_user_args() and ResourceLoader.exists("res://dev/multijob_test.gd"):
 		add_child(load("res://dev/multijob_test.gd").new())
+	if "--compattest" in OS.get_cmdline_user_args() and ResourceLoader.exists("res://dev/compat_test.gd"):
+		add_child(load("res://dev/compat_test.gd").new())
 
 
 ## Ana menü: akşamüstü, sokağın karşısından dükkânın vitrinine bakan, yavaşça süzülen kamera.
@@ -606,75 +608,86 @@ func _bin_use(p) -> void:
 func _build_shelf() -> void:
 	var x0 := -3.75
 	var wood := MU.pbr("laminate", 1.0)
-	var zc := -0.7
-	var length := 3.0
+	var zc := -0.85
+	var length := 4.0
+	var shelf_h := 2.24
 	for z in [zc - length / 2, zc + length / 2]:
-		MU.static_box(self, Vector3(0.42, 2.1, 0.04), Vector3(x0, 1.05, z), null)
-		MU.rbox(self, Vector3(0.42, 2.1, 0.04), Vector3(x0, 1.05, z), wood, 0.008)
-	MU.box(self, Vector3(0.02, 2.1, length), Vector3(x0 - 0.2, 1.05, zc), MU.pbr("wall", 0.5, Color(0.85, 0.88, 0.92), 0.3))
-	var levels := [0.45, 0.95, 1.45, 1.95]
+		MU.static_box(self, Vector3(0.42, shelf_h, 0.04), Vector3(x0, shelf_h / 2.0, z), null)
+		MU.rbox(self, Vector3(0.42, shelf_h, 0.04), Vector3(x0, shelf_h / 2.0, z), wood, 0.008)
+	MU.box(self, Vector3(0.02, shelf_h, length), Vector3(x0 - 0.2, shelf_h / 2.0, zc), MU.pbr("wall", 0.5, Color(0.85, 0.88, 0.92), 0.3))
+	var rows_y := [1.83, 1.46, 1.09, 0.72, 0.35]
+	var levels := [0.35, 0.72, 1.09, 1.46, 1.83, 2.20]
 	for y in levels:
 		MU.static_box(self, Vector3(0.42, 0.03, length), Vector3(x0, y, zc), null)
 		MU.rbox(self, Vector3(0.42, 0.03, length), Vector3(x0, y, zc), wood, 0.006)
 		# raf altı LED şerit
 		MU.box(self, Vector3(0.01, 0.004, length - 0.1), Vector3(x0 + 0.18, y - 0.017, zc), MU.mat(Color(1.0, 0.95, 0.85), 0, 0.5, 3.0))
-	for y in [0.75, 1.25, 1.75]:
+	for y in [0.65, 1.35, 2.0]:
 		var sl := OmniLight3D.new()
 		sl.position = Vector3(x0 + 0.15, y, zc)
-		sl.omni_range = 1.6
+		sl.omni_range = 2.0
 		sl.light_energy = 0.7
 		sl.light_color = Color(1.0, 0.95, 0.88)
 		add_child(sl)
-	var title := MU.label(self, "STOK RAFI", Vector3(x0 + 0.05, 2.48, zc), 90, Color(0.15, 0.2, 0.3), Vector3(0, 90, 0), 0.0025)
+	var title := MU.label(self, "STOK RAFI", Vector3(x0 + 0.05, 2.66, zc), 90, Color(0.15, 0.2, 0.3), Vector3(0, 90, 0), 0.0025)
 	title.double_sided = false
-	# raftaki ürünler data/parts.json'dan; yerleşim otomatik (satırlar üstten alta, her türün tercih ettiği sıra var)
-	var rows_y := [1.45, 0.95, 0.45]
+	# raftaki ürünler data/parts.json'dan; 5 satıra otomatik dizilir (üstten alta)
+	var min_w := 0.24
 	var entries := []
 	for d in DB.parts.shelf_items(["pc"]):
 		var sz: Vector3 = PM.info(d.category).size
-		entries.append({"def": d, "w": maxf(sz.z * 1.5 + 0.1, 0.4)})
-	var rows: Array = DB.parts.flow_rows(entries, length - 0.3, rows_y.size())
+		var k := _shelf_scale(sz)
+		entries.append({"def": d, "w": maxf(sz.z * k + 0.06, min_w)})
+	var rows: Array = DB.parts.flow_rows(entries, length - 0.2, rows_y.size())
 	Game.shelf_pos = {}
 	for r in rows.size():
 		for e in rows[r].items:
-			var z: float = zc - length / 2 + 0.15 + e.c
-			_shelf_item(x0, rows_y[r] + 0.015, z, e.def.category, e.def.tier)
+			var z: float = zc - length / 2 + 0.1 + e.c
+			_shelf_item(x0, rows_y[r] + 0.015, z, e.def)
 			Game.shelf_pos[e.def.id] = Vector3(x0 + 0.06, rows_y[r] + 0.015, z)
 	# en üst rafta süs kutuları
 	var box_cols := [Color(0.15, 0.3, 0.7), Color(0.75, 0.2, 0.2), Color(0.1, 0.1, 0.12), Color(0.9, 0.6, 0.1)]
-	for i in 6:
-		var bs := Vector3(0.3, randf_range(0.18, 0.3), randf_range(0.2, 0.35))
-		var bx := MU.rbox(self, bs, Vector3(x0, 1.965 + bs.y / 2, zc - 1.25 + i * 0.45), MU.mat(box_cols[i % 4], 0, 0.5), 0.008)
+	for i in 7:
+		var bs := Vector3(0.3, randf_range(0.18, 0.28), randf_range(0.2, 0.35))
+		var bx := MU.rbox(self, bs, Vector3(x0, 2.215 + bs.y / 2, zc - 1.65 + i * 0.55), MU.mat(box_cols[i % 4], 0, 0.5), 0.008)
 		MU.box(bx, Vector3(0.01, bs.y * 0.4, bs.z * 0.7), Vector3(0.15, 0, 0), MU.mat(Color(0.95, 0.95, 0.95), 0, 0.5))
 
 
-func _shelf_item(x0: float, shelf_y: float, z: float, type: String, tier: int) -> void:
-	var info: Dictionary = PM.info(type)
-	var built := PM.build(type, tier)
+## Raftaki parça ölçeği: yüksek parçalar (anakart vb.) satır yüksekliğine sığsın.
+func _shelf_scale(sz: Vector3) -> float:
+	return minf(1.35, 0.28 / maxf(sz.y, 0.01))
+
+
+func _shelf_item(x0: float, shelf_y: float, z: float, d: PartDef) -> void:
+	var sku_id: String = d.id
+	var info: Dictionary = PM.info(d.category)
+	var built := PM.build_sku(sku_id)
 	var n: Node3D = built.node
 	var c: Vector3 = info.center
-	var k := 1.5
+	var k := _shelf_scale(info.size)
 	n.scale = Vector3.ONE * k
 	n.position = Vector3(x0 + 0.06 - c.x * k, shelf_y + (info.size.y / 2 - c.y) * k, z - c.z * k)
 	add_child(n)
 	MU.no_merge(n)  # stok bitince gizlenebilsin
-	var dname := PM.display_name(type, tier)
-	var it = MU.interactable(self, info.size * 1.5 + Vector3(0.04, 0.04, 0.04), Vector3(x0 + 0.06, shelf_y + info.size.y * 0.75, z),
-		func(p): return _shelf_hint(p, type, tier, dname),
-		func(p): _shelf_use(p, type, tier))
-	it.action_alt = func(p): _buy(p, type, tier, true)  # F: muadil (ucuz) parça al
-	var l := MU.label(self, "", Vector3(x0 + 0.214, shelf_y - 0.045, z), 30, Color(0.1, 0.1, 0.1), Vector3(0, 90, 0), 0.001)
+	var dname := PM.display_name_sku(sku_id)
+	var it = MU.interactable(self, info.size * k + Vector3(0.04, 0.04, 0.04), Vector3(x0 + 0.06, shelf_y + info.size.y * k * 0.5, z),
+		func(p): return _shelf_hint_sku(p, sku_id, dname),
+		func(p): _shelf_use_sku(p, sku_id))
+	it.action_alt = func(p): _buy_sku(p, sku_id, true)  # F: muadil (ucuz) parça al
+	var l := MU.label(self, "", Vector3(x0 + 0.214, shelf_y - 0.04, z), 24, Color(0.1, 0.1, 0.1), Vector3(0, 90, 0), 0.001)
 	l.double_sided = false
-	_price_labels.append([l, dname, type, tier, n])
-	var tag := MU.box(self, Vector3(0.002, 0.06, 0.24), Vector3(x0 + 0.212, shelf_y - 0.045, z), MU.mat(Color(1.0, 0.92, 0.4)))
+	_price_labels.append([l, dname, d.category, sku_id, n])
+	var tag := MU.box(self, Vector3(0.002, 0.055, 0.22), Vector3(x0 + 0.212, shelf_y - 0.04, z), MU.mat(Color(1.0, 0.92, 0.4)))
 	tag.name = "PriceTag"
 
 
-func _shelf_hint(p, type: String, tier: int, dname: String) -> String:
-	var n := Game.stock_of(type, tier)
-	var c := Game.stock_cheap_of(type, tier)
+func _shelf_hint_sku(p, sku_id: String, dname: String) -> String:
+	var id: String = DB.parts.resolve_id(sku_id)
+	var n := Game.stock_of_sku(id)
+	var c := Game.stock_cheap_of_sku(id)
 	if p.held:
-		if not p.held.is_tool() and p.held.part_type == type and p.held.tier == tier:
+		var held_id: String = DB.parts.resolve_id(p.held.sku if not p.held.sku.is_empty() else Game.sku(p.held.part_type, p.held.tier)) if not p.held.is_tool() else ""
+		if not p.held.is_tool() and held_id == id:
 			return "Arızalı parça rafa konmaz" if p.held.broken else "Rafa geri koy: %s  [E]" % p.held.display_name
 		return "Elin dolu"
 	if n <= 0 and c <= 0:
@@ -685,50 +698,65 @@ func _shelf_hint(p, type: String, tier: int, dname: String) -> String:
 	return "Al: %s  (orijinal %d [E] / muadil %d [F])" % [dname, n, c]
 
 
-func _shelf_use(p, type: String, tier: int) -> void:
+func _shelf_hint(p, type: String, tier: int, dname: String) -> String:
+	return _shelf_hint_sku(p, Game.sku(type, tier), dname)
+
+
+func _shelf_use_sku(p, sku_id: String) -> void:
+	var id: String = DB.parts.resolve_id(sku_id)
 	if p.held:
-		if not p.held.is_tool() and p.held.part_type == type and p.held.tier == tier and not p.held.broken:
+		var held_id: String = DB.parts.resolve_id(p.held.sku if not p.held.sku.is_empty() else Game.sku(p.held.part_type, p.held.tier)) if not p.held.is_tool() else ""
+		if not p.held.is_tool() and held_id == id and not p.held.broken:
 			var part = p.release_held()
 			var was_cheap: bool = part.cheap
 			part.queue_free()
 			if was_cheap:
-				Game.add_stock_cheap(type, tier, 1)
+				Game.add_stock_cheap_sku(id, 1)
 			else:
-				Game.add_stock(type, tier, 1)
+				Game.add_stock_sku(id, 1)
 			Game.sfx.click()
-			Game.msg("%s rafa kondu (stok %d)." % [PM.display_name(type, tier) + (" (muadil)" if was_cheap else ""), Game.stock_cheap_of(type, tier) if was_cheap else Game.stock_of(type, tier)])
+			Game.msg("%s rafa kondu (stok %d)." % [PM.display_name_sku(id) + (" (muadil)" if was_cheap else ""), Game.stock_cheap_of_sku(id) if was_cheap else Game.stock_of_sku(id)])
 		return
-	_buy(p, type, tier)
+	_buy_sku(p, id)
 
 
-## Raftan parça al: stoktan düşer (parası ParçaNet siparişinde ödendi).
-func _buy(p, type: String, tier: int, cheap := false) -> void:
+func _shelf_use(p, type: String, tier: int) -> void:
+	_shelf_use_sku(p, Game.sku(type, tier))
+
+
+## Raftan parça al (SKU): stoktan düşer (parası ParçaNet siparişinde ödendi).
+func _buy_sku(p, sku_id: String, cheap := false) -> void:
 	if p.held or Game.is_carrying():
 		return
+	var id: String = DB.parts.resolve_id(sku_id)
 	if cheap:
-		if not Game.take_stock_cheap(type, tier):
-			Game.msg("Muadil %s stokta yok!" % PM.display_name(type, tier), Color(1, 0.5, 0.4))
+		if not Game.take_stock_cheap_sku(id):
+			Game.msg("Muadil %s stokta yok!" % PM.display_name_sku(id), Color(1, 0.5, 0.4))
 			Game.sfx.error()
 			return
-		var cp = PART.new().setup(type, tier, false)
+		var cp = PART.new().setup_sku(id, false)
 		cp.make_cheap()
 		add_child(cp)
 		p.pick_up(cp)
 		Game.sfx.click()
 		return
-	if not Game.take_stock(type, tier):
-		Game.msg("%s stokta yok! Tezgahtaki laptoptan ParçaNet'e sipariş ver." % PM.display_name(type, tier), Color(1, 0.5, 0.4))
+	if not Game.take_stock_sku(id):
+		Game.msg("%s stokta yok! Tezgahtaki laptoptan ParçaNet'e sipariş ver." % PM.display_name_sku(id), Color(1, 0.5, 0.4))
 		Game.sfx.error()
 		if Game.hud:
 			Game.hud.tip("order", "Parça bitince tezgahtaki laptopu aç: ParçaNet'ten sipariş ver, kurye getirsin.")
 		return
-	var part = PART.new().setup(type, tier, Game.take_was_dud)  # ikinci elden gizli arızalı çıkabilir
+	var part = PART.new().setup_sku(id, Game.take_was_dud)  # ikinci elden gizli arızalı çıkabilir
 	add_child(part)
 	p.pick_up(part)
 	Game.sfx.click()
 
 
-var _price_labels := []   # raf etiketleri: [Label3D, ad, tür, seviye, model]
+func _buy(p, type: String, tier: int, cheap := false) -> void:
+	_buy_sku(p, Game.sku(type, tier), cheap)
+
+
+var _price_labels := []   # raf etiketleri: [Label3D, ad, kategori, sku, model]
 var _up_nodes := {}       # geliştirme id -> görünürlüğü açılacak düğümler
 
 
@@ -781,8 +809,9 @@ func _refresh_upgrades() -> void:
 ## Raf etiketleri stok adedini gösterir; tükenen ürünün modeli raftan kalkar.
 func _refresh_stock() -> void:
 	for e in _price_labels:
-		var c := Game.stock_cheap_of(e[2], e[3])
-		var n := Game.stock_of(e[2], e[3]) + c
+		var sku_id: String = str(e[3])
+		var c := Game.stock_cheap_of_sku(sku_id)
+		var n := Game.stock_of_sku(sku_id) + c
 		e[0].text = "%s\n%s" % [e[1], (("STOK: %d" % (n - c) + (" +%d M" % c if c > 0 else "")) if n > 0 else "TÜKENDİ")]
 		e[0].modulate = Color(0.1, 0.1, 0.1) if n > 0 else Color(0.75, 0.1, 0.08)
 		e[4].visible = n > 0
