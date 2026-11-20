@@ -53,6 +53,12 @@ var _excl: Array = []        # cihazın çarpışma gövdeleri (kamera duvar kon
 var _rmb := false
 var _rmb_moved := 0.0
 var _mmb := false
+var _touches: Dictionary = {}       # dokunmatik parmak indeksi -> ekran konumu
+var _touch_pos := Vector2(-1, -1)   # aktif tek parmak konumu
+var _touch_start := Vector2.ZERO
+var _touch_moved := 0.0
+var _touch_was_pinch := false
+var _touch_pinch_dist := 0.0
 var _stash_tool = null       # moda girerken elde olan alet
 var _tint_cur = null
 var _mat_neutral: StandardMaterial3D
@@ -70,12 +76,14 @@ var _sig_t := 0.0
 var _ui: CanvasLayer
 var _ui_root: Control
 var _side: PanelContainer
+var _side_scroll: ScrollContainer
 var _side_vb: VBoxContainer
 var _tip: PanelContainer
 var _tip_title: Label
 var _tip_spec: Label
 var _tip_sub: Label
 var _keys: PanelContainer
+var _keys_hb: HBoxContainer
 
 
 func _ready() -> void:
@@ -219,14 +227,29 @@ func _build_ui() -> void:
 	_ui_root.visible = false
 	_ui.add_child(_ui_root)
 	_side = K.panel(_ui_root, "ScrewCard")
-	_side.position = Vector2(18, 210)
+	_side.anchor_left = 0.0
+	_side.anchor_right = 0.0
+	_side.anchor_top = 0.0
+	_side.anchor_bottom = 1.0
+	_side.offset_left = 18.0
+	_side.offset_right = 302.0
+	_side.offset_top = 210.0
+	_side.offset_bottom = -64.0
+	_side.pivot_offset = Vector2.ZERO
+	_side_scroll = ScrollContainer.new()
+	_side_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_side_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	_side_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_side_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_side.add_child(_side_scroll)
 	_side_vb = VBoxContainer.new()
-	_side_vb.add_theme_constant_override("separation", 6)
-	_side_vb.custom_minimum_size = Vector2(250, 0)
-	_side.add_child(_side_vb)
+	_side_vb.add_theme_constant_override("separation", 4)
+	_side_vb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_side_scroll.add_child(_side_vb)
 	# fare yanı bilgi kartı
 	_tip = K.panel(_ui_root, "Toast")
 	_tip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_tip.pivot_offset = Vector2.ZERO
 	_tip.visible = false
 	var tv := VBoxContainer.new()
 	tv.add_theme_constant_override("separation", 1)
@@ -236,22 +259,76 @@ func _build_ui() -> void:
 	_tip_sub = K.label(tv, "", 15, T.ACCENT)
 	# alt tuş ipuçları
 	_keys = K.panel(_ui_root, "HudCard")
-	_keys.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var kh := HBoxContainer.new()
-	kh.add_theme_constant_override("separation", 8)
-	_keys.add_child(kh)
-	for pair in [["SAĞ TIK", "Döndür"], ["TEKERLEK", "Yakınlaştır"], ["WASD", "Kaydır"], ["Q E", "90°"], ["TAB", "Çık"]]:
-		K.keycap(kh, pair[0], 13)
-		K.label(kh, pair[1], 15, T.MUTED)
-		K.spacer(kh, 0).custom_minimum_size = Vector2(10, 0)
+	_keys_hb = HBoxContainer.new()
+	_keys_hb.add_theme_constant_override("separation", 8)
+	_keys.add_child(_keys_hb)
+	_rebuild_keys()
+	Settings.changed.connect(_on_setting_changed)
 	get_viewport().size_changed.connect(_layout_ui)
 	_layout_ui()
 
 
+func _on_setting_changed(k: String) -> void:
+	if k == "hud_scale":
+		_layout_ui()
+	elif k == "touch_controls":
+		_rebuild_keys()
+		_layout_ui()
+
+
+func _rebuild_keys() -> void:
+	if _keys_hb == null:
+		return
+	for c in _keys_hb.get_children():
+		_keys_hb.remove_child(c)
+		c.queue_free()
+	var touch := Settings.is_touch_enabled()
+	_keys.mouse_filter = Control.MOUSE_FILTER_PASS if touch else Control.MOUSE_FILTER_IGNORE
+	var pairs: Array
+	if touch:
+		pairs = [["SÜRÜKLE", "Döndür"], ["İKİ PARMAK", "Yakınlaştır"], ["DOKUN", "Sök / Tak"]]
+	else:
+		pairs = [["SAĞ TIK", "Döndür"], ["TEKERLEK", "Yakınlaştır"], ["WASD", "Kaydır"], ["Q E", "90°"], ["TAB", "Çık"]]
+	for pair in pairs:
+		K.keycap(_keys_hb, pair[0], 13)
+		K.label(_keys_hb, pair[1], 15, T.MUTED)
+		K.spacer(_keys_hb, 0).custom_minimum_size = Vector2(10, 0)
+	if touch:
+		K.button(_keys_hb, "Çık", func(): exit(), "PrimaryButton", 14, Vector2(66, 30))
+
+
 func _layout_ui() -> void:
+	if _ui_root == null or not is_inside_tree():
+		return
 	var vs := get_viewport().get_visible_rect().size
+	var s := Settings.hud_scale
+	var sv := Vector2(s, s)
+	# alt çubuk: alt-ortadan ölçekle
 	_keys.reset_size()
-	_keys.position = Vector2((vs.x - _keys.size.x) * 0.5, vs.y - _keys.size.y - 16)
+	_keys.pivot_offset = Vector2(_keys.size.x * 0.5, _keys.size.y)
+	_keys.scale = sv
+	_keys.position = Vector2((vs.x - _keys.size.x) * 0.5, vs.y - _keys.size.y - 16.0)
+	# sol yan panel: yazar kasanın altından güvenli alt boşluğa kadar, taşarsa kaydırılır
+	var top_y: float = (Game.hud.money_card_bottom() + 10.0) if (Game.hud and Game.hud.has_method("money_card_bottom")) else (196.0 * s + 10.0)
+	var keys_h: float = maxf(_keys.size.y, 38.0) * s
+	var bottom_margin: float = maxf(64.0, keys_h + 26.0)
+	var avail_h: float = maxf(140.0, vs.y - top_y - bottom_margin)
+	var max_unscaled_h: float = avail_h / s
+	var content_h: float = _side_vb.get_combined_minimum_size().y + 30.0
+	var panel_h: float = minf(max_unscaled_h, maxf(120.0, content_h))
+	_side.anchor_left = 0.0
+	_side.anchor_right = 0.0
+	_side.anchor_top = 0.0
+	_side.anchor_bottom = 1.0
+	_side.pivot_offset = Vector2.ZERO
+	_side.scale = sv
+	_side.offset_left = 18.0
+	_side.offset_right = 302.0
+	_side.offset_top = top_y
+	_side.offset_bottom = top_y + panel_h - vs.y
+	# fare yanı bilgi kartı ölçeği
+	_tip.pivot_offset = Vector2.ZERO
+	_tip.scale = sv
 
 
 # ---------------------------------------------------------------- giriş / çıkış
@@ -293,6 +370,8 @@ func enter() -> bool:
 		Game.hud.corner_hint.visible = false
 	_ui_root.visible = true
 	_sig = ""
+	_layout_ui()
+	call_deferred("_layout_ui")
 	Game.sfx.click()
 	return true
 
@@ -307,6 +386,10 @@ func exit(immediate := false) -> void:
 	tool = null
 	_rmb = false
 	_mmb = false
+	_touches.clear()
+	_touch_pos = Vector2(-1, -1)
+	_touch_was_pinch = false
+	_touch_pinch_dist = 0.0
 	hovered = {}
 	_set_hl(null)
 	_tip.visible = false
@@ -476,7 +559,15 @@ func _unhandled_input(event: InputEvent) -> void:
 			_yaw_goal += PI / 2.0
 		elif event.physical_keycode == KEY_E:
 			_yaw_goal -= PI / 2.0
+	elif event is InputEventScreenTouch:
+		_handle_touch(event)
+		get_viewport().set_input_as_handled()
+	elif event is InputEventScreenDrag:
+		_handle_drag(event)
+		get_viewport().set_input_as_handled()
 	elif event is InputEventMouseButton:
+		if event.device == InputEvent.DEVICE_ID_EMULATION:
+			return
 		match event.button_index:
 			MOUSE_BUTTON_LEFT:
 				if event.pressed:
@@ -500,6 +591,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				if event.pressed:
 					_dist_goal = clampf(_dist_goal / 0.88, _d_min, _d_max)
 	elif event is InputEventMouseMotion:
+		if event.device == InputEvent.DEVICE_ID_EMULATION:
+			return
 		if _rmb:
 			_rmb_moved += event.relative.length()
 			var sens: float = 0.004 * Settings.sensitivity
@@ -513,6 +606,60 @@ func _unhandled_input(event: InputEvent) -> void:
 			var fwd := Vector3(-sin(_yaw), 0, -cos(_yaw))
 			_pan += (-right * event.relative.x + fwd * event.relative.y) * s
 			_pan = _pan.limit_length(_pan_max)
+
+
+## Dokunmatik dokunma / bırakma: kısa dokunuş parça seçer/söker/takar, iki parmak yakınlaştırmayı başlatır.
+func _handle_touch(event: InputEventScreenTouch) -> void:
+	if event.pressed:
+		_touches[event.index] = event.position
+		if _touches.size() == 1:
+			_touch_start = event.position
+			_touch_pos = event.position
+			_touch_moved = 0.0
+			_touch_was_pinch = false
+			_touch_pinch_dist = 0.0
+		elif _touches.size() >= 2:
+			_touch_was_pinch = true
+			_touch_pos = Vector2(-1, -1)
+			var pts := _touches.values()
+			_touch_pinch_dist = (pts[0] as Vector2).distance_to(pts[1] as Vector2)
+	else:
+		var was_single := _touches.size() == 1 and not _touch_was_pinch
+		_touches.erase(event.index)
+		if was_single:
+			if _touch_moved < 16.0:
+				click(_resolve(_ray_hit(event.position)))
+			elif selected != null:
+				var res := _resolve(_ray_hit(event.position))
+				if res.get("kind", "") in ["slot", "installed"]:
+					install_selected(res.slot)
+		if _touches.is_empty():
+			_touch_pos = Vector2(-1, -1)
+			_touch_was_pinch = false
+			_touch_pinch_dist = 0.0
+		elif _touches.size() < 2:
+			_touch_pinch_dist = 0.0
+
+
+## Dokunmatik sürükleme: parça taşımıyorken tek parmak kamerayı döndürür; iki parmak kıstırma yakınlaştırır.
+func _handle_drag(event: InputEventScreenDrag) -> void:
+	_touches[event.index] = event.position
+	if _touches.size() >= 2:
+		_touch_was_pinch = true
+		var pts := _touches.values()
+		var d := (pts[0] as Vector2).distance_to(pts[1] as Vector2)
+		if _touch_pinch_dist > 1.0 and d > 1.0:
+			_dist_goal = clampf(_dist_goal * (_touch_pinch_dist / d), _d_min, _d_max)
+		_touch_pinch_dist = d
+	elif _touches.size() == 1 and not _touch_was_pinch:
+		_touch_moved += event.relative.length()
+		_touch_pos = event.position
+		if selected == null:
+			var sens: float = 0.005 * Settings.sensitivity
+			var dy: float = event.relative.y * (-1.0 if Settings.invert_y else 1.0)
+			_yaw -= event.relative.x * sens
+			_yaw_goal = _yaw
+			_elev = clampf(_elev + dy * sens, deg_to_rad(4.0), deg_to_rad(88.0))
 
 
 # ---------------------------------------------------------------- fare ışını
@@ -560,7 +707,11 @@ func _resolve(hit: Dictionary) -> Dictionary:
 
 ## Fare konumu (geliştirici ekran görüntüleri için mouse_override ile ezilebilir).
 func _mp() -> Vector2:
-	return mouse_override if mouse_override.x >= 0.0 else get_viewport().get_mouse_position()
+	if mouse_override.x >= 0.0:
+		return mouse_override
+	if _touch_pos.x >= 0.0:
+		return _touch_pos
+	return get_viewport().get_mouse_position()
 
 
 func _over_gui() -> bool:
@@ -592,8 +743,9 @@ func _update_hover() -> void:
 	_tip.visible = true
 	_tip.reset_size()
 	var vs := get_viewport().get_visible_rect().size
+	var tip_sz := _tip.size * Settings.hud_scale
 	var mp := _mp() + Vector2(20, 24)
-	_tip.position = Vector2(clampf(mp.x, 0, vs.x - _tip.size.x - 4), clampf(mp.y, 0, vs.y - _tip.size.y - 4))
+	_tip.position = Vector2(clampf(mp.x, 0, vs.x - tip_sz.x - 4), clampf(mp.y, 0, vs.y - tip_sz.y - 4))
 
 
 ## Çarpışma kutusu etrafında yarı saydam vurgu kutusu.
@@ -1139,37 +1291,37 @@ func _rebuild_side(tools: Array) -> void:
 		_side_vb.remove_child(c)
 		c.queue_free()
 	var vb := _side_vb
-	K.label(vb, _device_title().to_upper(), 22, T.ACCENT, "TitleLabel")
+	K.label(vb, _device_title().to_upper(), 19, T.ACCENT, "TitleLabel")
 	var rec := _job_rec()
 	var job := _job_dict()
 	if not rec.is_empty():
 		const ST := preload("res://scripts/job_store.gd")
-		K.label(vb, "Fiş #%d · %s" % [int(rec.ticket), str(rec.name)], 16, T.TEXT, "BoldLabel")
-		var l1 := K.label(vb, ST.short_goal(rec), 14, T.MUTED)
+		K.label(vb, "Fiş #%d · %s" % [int(rec.ticket), str(rec.name)], 15, T.TEXT, "BoldLabel")
+		var l1 := K.label(vb, ST.short_goal(rec), 13, T.MUTED)
 		l1.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		l1.custom_minimum_size = Vector2(250, 0)
-		K.label(vb, "Teslim: %s · %s" % [ST.due_label(float(rec.due_abs), Game.day), ST.status_text(rec, Game.now_abs())], 14, T.ACCENT)
+		l1.custom_minimum_size = Vector2(236, 0)
+		K.label(vb, "Teslim: %s · %s" % [ST.due_label(float(rec.due_abs), Game.day), ST.status_text(rec, Game.now_abs())], 13, T.ACCENT)
 		if _looks_fixed(rec):
-			var ok := K.label(vb, "Tamir tamam gibi — rafa koy", 15, T.GOOD, "BoldLabel")
+			var ok := K.label(vb, "Tamir tamam gibi — rafa koy", 14, T.GOOD, "BoldLabel")
 			ok.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-			ok.custom_minimum_size = Vector2(250, 0)
+			ok.custom_minimum_size = Vector2(236, 0)
 	elif not job.is_empty():
-		K.label(vb, str(job.get("name", "")), 16, T.TEXT, "BoldLabel")
+		K.label(vb, str(job.get("name", "")), 15, T.TEXT, "BoldLabel")
 		var intro := str(job.get("intro", job.get("goal", "")))
 		if intro != "":
-			var l := K.label(vb, intro, 14, T.MUTED)
+			var l := K.label(vb, intro, 13, T.MUTED)
 			l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-			l.custom_minimum_size = Vector2(250, 0)
+			l.custom_minimum_size = Vector2(236, 0)
 	if kind == "pc":
 		_build_pc_summary(vb)
-	K.hsep(vb)
-	K.label(vb, "YAPILACAKLAR", 12, T.MUTED, "SmallCaps")
+	K.hsep(vb).add_theme_constant_override("separation", 4)
+	K.label(vb, "YAPILACAKLAR", 11, T.MUTED, "SmallCaps")
 	for it in _checklist():
-		var l := K.label(vb, ("[x] " if it[1] else "[  ] ") + it[0], 15, T.GOOD if it[1] else T.TEXT)
+		var l := K.label(vb, ("[x] " if it[1] else "[  ] ") + it[0], 13, T.GOOD if it[1] else T.TEXT)
 		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		l.custom_minimum_size = Vector2(250, 0)
-	K.hsep(vb)
-	K.label(vb, "CİHAZ", 12, T.MUTED, "SmallCaps")
+		l.custom_minimum_size = Vector2(236, 0)
+	K.hsep(vb).add_theme_constant_override("separation", 4)
+	K.label(vb, "CİHAZ", 11, T.MUTED, "SmallCaps")
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 6)
 	vb.add_child(row)
@@ -1181,27 +1333,27 @@ func _rebuild_side(tools: Array) -> void:
 			open_label = "Düzelt" if device.panel_open else "Ters çevir"
 		_:
 			open_label = "Ekranı indir" if device.panel_open else "Ekranı kaldır"
-	var b1 := K.button(row, open_label, toggle_panel, "", 16, Vector2(0, 38))
+	var b1 := K.button(row, open_label, toggle_panel, "", 14, Vector2(0, 32))
 	b1.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var b2 := K.button(row, "Kapat" if device.powered else "Güç", press_power, "", 16, Vector2(0, 38))
+	var b2 := K.button(row, "Kapat" if device.powered else "Güç", press_power, "", 14, Vector2(0, 32))
 	b2.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	if not tools.is_empty():
-		K.label(vb, "ALETLER", 12, T.MUTED, "SmallCaps")
+		K.label(vb, "ALETLER", 11, T.MUTED, "SmallCaps")
 		for t in tools:
 			var tb := K.button(vb, t.display_name + ("  (seçili)" if t == tool else ""), select_tool.bind(t),
-				"PrimaryButton" if t == tool else "", 16, Vector2(0, 36))
+				"PrimaryButton" if t == tool else "", 14, Vector2(0, 32))
 			tb.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	K.label(vb, "TEPSİ (%d)" % tray_parts.size(), 12, T.MUTED, "SmallCaps")
+	K.label(vb, "TEPSİ (%d)" % tray_parts.size(), 11, T.MUTED, "SmallCaps")
 	if tray_parts.is_empty():
-		var e := K.label(vb, "Boş. Söktüğün parçalar buraya iner.", 14, T.MUTED)
+		var e := K.label(vb, "Boş. Söktüğün parçalar buraya iner.", 13, T.MUTED)
 		e.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		e.custom_minimum_size = Vector2(250, 0)
+		e.custom_minimum_size = Vector2(236, 0)
 	for p in tray_parts:
 		var sel: bool = p == selected
-		var pb := K.button(vb, p.display_name, (cancel_selection if sel else select_part.bind(p)), "PrimaryButton" if sel else "", 16, Vector2(0, 36))
+		var pb := K.button(vb, p.display_name, (cancel_selection if sel else select_part.bind(p)), "PrimaryButton" if sel else "", 14, Vector2(0, 32))
 		pb.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	_side.reset_size()
-	_side.call_deferred("reset_size")  # otomatik satır kaydırmalı etiketler yerleşince yeniden boyutla
+	_layout_ui()
+	call_deferred("_layout_ui")  # otomatik satır kaydırmalı etiketler yerleşince yeniden boyutla
 
 
 ## Yan panelde PC kasa/anakart özeti ve canlı watt çubuğu.
@@ -1209,20 +1361,20 @@ func _build_pc_summary(vb: VBoxContainer) -> void:
 	var cs := _pc_case_state()
 	var cdef: Dictionary = cs.get("case_def", {})
 	var w := Compatibility.calc_watts(cs)
-	K.hsep(vb)
-	K.label(vb, "SİSTEM", 12, T.MUTED, "SmallCaps")
+	K.hsep(vb).add_theme_constant_override("separation", 4)
+	K.label(vb, "SİSTEM", 11, T.MUTED, "SmallCaps")
 	var cname := str(cdef.get("name", "Mid-Tower ATX"))
-	var cl := K.label(vb, "%s · GPU≤%dmm · Soğ.≤%dmm" % [cname, int(cdef.get("max_gpu_mm", 330)), int(cdef.get("max_cooler_mm", 165))], 13, T.MUTED)
+	var cl := K.label(vb, "%s · GPU≤%dmm · Soğ.≤%dmm" % [cname, int(cdef.get("max_gpu_mm", 330)), int(cdef.get("max_cooler_mm", 165))], 12, T.MUTED)
 	cl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	cl.custom_minimum_size = Vector2(250, 0)
+	cl.custom_minimum_size = Vector2(236, 0)
 	var mobo: PartDef = cs.get("mobo", null)
 	if mobo != null:
 		var ml := K.label(vb, "%s · %s · %s · %d RAM" % [str(mobo.compat.get("socket", "")), str(mobo.compat.get("ram_type", "")),
-			str(mobo.compat.get("form_factor", "")), int(mobo.compat.get("ram_slots", 2))], 13, T.INFO)
+			str(mobo.compat.get("form_factor", "")), int(mobo.compat.get("ram_slots", 2))], 12, T.INFO)
 		ml.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		ml.custom_minimum_size = Vector2(250, 0)
+		ml.custom_minimum_size = Vector2(236, 0)
 	else:
-		K.label(vb, "Anakart takılı değil", 13, T.BAD)
+		K.label(vb, "Anakart takılı değil", 12, T.BAD)
 	# canlı watt çubuğu
 	var w_col := T.GOOD
 	if w.psu <= 0 or w.draw > w.psu:
@@ -1233,10 +1385,10 @@ func _build_pc_summary(vb: VBoxContainer) -> void:
 	vb.add_child(wh)
 	K.label(wh, "GÜÇ", 11, T.MUTED, "SmallCaps").size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var w_txt := "%d W / %s" % [w.draw, ("%d W" % w.psu) if w.psu > 0 else "PSU yok"]
-	K.label(wh, w_txt, 14, w_col, "BoldLabel")
+	K.label(wh, w_txt, 13, w_col, "BoldLabel")
 	var bar := ProgressBar.new()
 	bar.show_percentage = false
-	bar.custom_minimum_size = Vector2(250, 10)
+	bar.custom_minimum_size = Vector2(236, 8)
 	bar.max_value = float(maxi(w.psu, maxi(w.draw, 100)))
 	bar.value = float(w.draw)
 	bar.add_theme_stylebox_override("fill", T.seg_box(w_col))

@@ -11,6 +11,7 @@ const ST := preload("res://scripts/job_store.gd")
 
 var _ui_root: Control
 # sol üst kart
+var _money_card: PanelContainer
 var money_label: Label
 var day_label: Label
 var clock_label: Label
@@ -103,12 +104,67 @@ func _ready() -> void:
 	Game.day_started.connect(_on_day_started)
 	Game.orders_changed.connect(_refresh_cargo)
 	Game.jobs_changed.connect(_refresh_jobs)
-	Settings.changed.connect(func(k): if k == "show_fps": fps_label.visible = Settings.show_fps)
+	Settings.changed.connect(_on_setting_changed)
 	fps_label.visible = Settings.show_fps
 	_on_money(Game.money)
 	_on_rep(Game.rep)
 	set_job("Hoş geldin!", "")
 	set_patience(-1.0)
+	_apply_hud_scale()
+	call_deferred("_apply_hud_scale")
+
+
+func _on_setting_changed(k: String) -> void:
+	if k == "show_fps":
+		fps_label.visible = Settings.show_fps
+	elif k == "hud_scale":
+		_apply_hud_scale()
+
+
+## Yazar kasa kartının ekrandaki alt Y konumu (HUD ölçeği dahil).
+func money_card_bottom() -> float:
+	if _money_card:
+		var h := _money_card.size.y
+		if h <= 1.0:
+			h = _money_card.get_combined_minimum_size().y
+		return _money_card.position.y + maxf(h, 175.0) * Settings.hud_scale
+	return 196.0 * Settings.hud_scale
+
+
+func _place_fps() -> void:
+	if fps_label:
+		fps_label.position = Vector2(24.0, money_card_bottom() + 10.0)
+
+
+func _apply_hud_scale() -> void:
+	var s := Settings.hud_scale
+	var sv := Vector2(s, s)
+	if _money_card:
+		_money_card.pivot_offset = Vector2.ZERO
+		_money_card.scale = sv
+	if fps_label:
+		fps_label.pivot_offset = Vector2.ZERO
+		fps_label.scale = sv
+		_place_fps()
+	if _job_holder:
+		_job_holder.pivot_offset = Vector2(_job_holder.size.x if _job_holder.size.x > 1.0 else 380.0, 0.0)
+		_job_holder.scale = sv
+	if _jobs_holder:
+		_jobs_holder.pivot_offset = Vector2(_jobs_holder.size.x if _jobs_holder.size.x > 1.0 else 380.0, 0.0)
+		_jobs_holder.scale = sv
+	_place_jobs_list()
+	if prompt:
+		prompt.pivot_offset = Vector2(prompt.size.x * 0.5, 0.0)
+		prompt.scale = sv
+	if toasts:
+		toasts.pivot_offset = Vector2(0.0, toasts.size.y)
+		toasts.scale = sv
+	if tip_card:
+		tip_card.pivot_offset = Vector2(330.0, 0.0)
+		tip_card.scale = sv
+	if corner_hint:
+		corner_hint.pivot_offset = corner_hint.size
+		corner_hint.scale = sv
 
 
 # ---------------------------------------------------------------- yapı
@@ -116,7 +172,10 @@ func _ready() -> void:
 func _build_money_card(root: Control) -> void:
 	var card := K.panel(root, "ScrewCard")
 	card.position = Vector2(18, 18)
+	card.pivot_offset = Vector2.ZERO
 	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card.resized.connect(_place_fps)
+	_money_card = card
 	var vb := VBoxContainer.new()
 	vb.add_theme_constant_override("separation", 7)
 	card.add_child(vb)
@@ -191,7 +250,7 @@ func _build_job_card(root: Control) -> void:
 	holder.offset_top = 30
 	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	holder.rotation_degrees = 0.8
-	holder.pivot_offset = Vector2(190, 0)
+	holder.pivot_offset = Vector2(380, 0)
 	root.add_child(holder)
 	_job_holder = holder
 	var card := K.panel(holder, "PaperPanel")
@@ -269,7 +328,7 @@ func _build_jobs_list(root: Control) -> void:
 	holder.offset_top = 250
 	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	holder.rotation_degrees = -0.5
-	holder.pivot_offset = Vector2(190, 0)
+	holder.pivot_offset = Vector2(380, 0)
 	root.add_child(holder)
 	_jobs_holder = holder
 	var card := K.panel(holder, "PaperPanel")
@@ -294,7 +353,8 @@ func _build_jobs_list(root: Control) -> void:
 ## Tezgâh fişinin boyu değişince liste hemen altına kayar.
 func _place_jobs_list() -> void:
 	if _jobs_holder and _job_card:
-		_jobs_holder.offset_top = 30 + _job_card.size.y + 20
+		var s := Settings.hud_scale
+		_jobs_holder.offset_top = 30.0 + _job_card.size.y * s + 20.0 * s
 
 
 func _refresh_jobs() -> void:
@@ -391,6 +451,7 @@ func _build_center(root: Control) -> void:
 	prompt.offset_bottom = 40
 	prompt.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	prompt.add_theme_stylebox_override("panel", T.flat(Color(0.06, 0.065, 0.075, 0.88), 6, Color(1, 1, 1, 0.07), 1, Vector2(8, 6), 8))
+	prompt.resized.connect(func(): prompt.pivot_offset = Vector2(prompt.size.x * 0.5, 0.0))
 	prompt.visible = false
 	var h := HBoxContainer.new()
 	h.add_theme_constant_override("separation", 12)
@@ -412,6 +473,7 @@ func _build_toasts(root: Control) -> void:
 	toasts.alignment = BoxContainer.ALIGNMENT_END
 	toasts.add_theme_constant_override("separation", 8)
 	toasts.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	toasts.resized.connect(func(): toasts.pivot_offset = Vector2(0.0, toasts.size.y))
 	root.add_child(toasts)
 
 
@@ -471,6 +533,7 @@ func _build_corner(root: Control) -> void:
 	h.offset_bottom = -20
 	h.modulate.a = 0.6
 	h.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	h.resized.connect(func(): h.pivot_offset = h.size)
 	root.add_child(h)
 	corner_hint = h
 	K.keycap(h, "Esc", 14)
@@ -693,12 +756,13 @@ func pop_money(amount: int) -> void:
 	var l := K.label(_ui_root, "%s%s TL" % ["+" if amount >= 0 else "-", K.money(absi(amount))], 38, T.GOOD if amount >= 0 else T.BAD, "SignLabel")
 	l.add_theme_constant_override("outline_size", 12)
 	l.add_theme_color_override("font_outline_color", Color(0.05, 0.05, 0.06, 0.9))
-	l.position = Vector2(30, 232)
+	var y0 := money_card_bottom() + 8.0
+	l.position = Vector2(30, y0)
 	l.modulate.a = 0.0
 	var tw := l.create_tween()
 	tw.set_parallel(true)
 	tw.tween_property(l, "modulate:a", 1.0, 0.15)
-	tw.tween_property(l, "position:y", 205.0, 1.5).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tw.tween_property(l, "position:y", y0 - 27.0, 1.5).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	tw.tween_property(l, "modulate:a", 0.0, 0.5).set_delay(1.1)
 	tw.chain().tween_callback(l.queue_free)
 
