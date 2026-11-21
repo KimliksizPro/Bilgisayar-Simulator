@@ -16,7 +16,7 @@ const SHOP_CATS := [
 	{"id": "storage", "label": "Depolama", "cats": ["ssd", "nvme", "hdd"]},
 	{"id": "psu", "label": "PSU", "cats": ["psu"]},
 	{"id": "other", "label": "Soğutma/Diğer", "cats": ["cooler", "fan", "cmos"]},
-	{"id": "mobile", "label": "Mobil", "cats": ["lap_ram", "lap_ssd", "lap_bat", "lap_scr", "tel_bat", "tel_scr", "tel_port"]},
+	{"id": "mobile", "label": "Mobil", "cats": ["lap_ram", "lap_ssd", "lap_bat", "lap_scr", "lap_kbd", "lap_wifi", "lap_dc", "tel_bat", "tel_scr", "tel_port", "tel_cam", "tel_spk", "tel_back"]},
 ]
 
 signal back
@@ -393,25 +393,37 @@ func _refresh_cargo() -> void:
 
 # ---------------------------------------------------------------- Geliştirmeler
 func _build_upgrades(p: Control) -> void:
-	for u in Game.UPGRADE_LIST:
-		var ip := K.panel(p, "InsetPanel")
-		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 16)
-		ip.add_child(row)
-		var tcol := VBoxContainer.new()
-		tcol.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		tcol.add_theme_constant_override("separation", 0)
-		row.add_child(tcol)
-		K.label(tcol, u.name, 22, T.TEXT, "BoldLabel")
-		K.label(tcol, u.desc, 16, T.MUTED, "MutedLabel")
-		var uid: String = u.id
-		var owned := CenterContainer.new()
-		owned.custom_minimum_size = Vector2(200, 0)
-		row.add_child(owned)
-		K.stamp(owned, "ALINDI", T.GOOD, 20, -6.0)
-		var b := K.button(row, "", func(): Game.buy_upgrade(uid), "PrimaryButton", 18, Vector2(200, 50))
-		b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		_up_rows[uid] = [b, owned]
+	var sc := ScrollContainer.new()
+	sc.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	p.add_child(sc)
+	var vb := VBoxContainer.new()
+	vb.add_theme_constant_override("separation", 8)
+	vb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sc.add_child(vb)
+	for sec in [["shop", "DÜKKÂN GELİŞTİRMELERİ"], ["tool", "TEŞHİS & TAMİR ALETLERİ"]]:
+		K.label(vb, sec[1], 13, T.ACCENT, "SmallCaps")
+		for u in Game.UPGRADE_LIST:
+			if str(u.get("cat", "shop")) != sec[0]:
+				continue
+			var ip := K.panel(vb, "InsetPanel")
+			var row := HBoxContainer.new()
+			row.add_theme_constant_override("separation", 16)
+			ip.add_child(row)
+			var tcol := VBoxContainer.new()
+			tcol.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			tcol.add_theme_constant_override("separation", 0)
+			row.add_child(tcol)
+			K.label(tcol, u.name, 20, T.TEXT, "BoldLabel")
+			K.label(tcol, u.desc, 15, T.MUTED, "MutedLabel")
+			var uid: String = u.id
+			var owned := CenterContainer.new()
+			owned.custom_minimum_size = Vector2(200, 0)
+			row.add_child(owned)
+			K.stamp(owned, "ALINDI", T.GOOD, 18, -6.0)
+			var b := K.button(row, "", func(): Game.buy_upgrade(uid), "PrimaryButton", 17, Vector2(200, 46))
+			b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			_up_rows[uid] = [b, owned]
 
 
 func _refresh_upgrades() -> void:

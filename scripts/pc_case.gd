@@ -20,6 +20,21 @@ var case_d := D
 var board_x := BOARD_X
 var slot_pos := {}
 
+const CABLE_IDS := ["atx_24", "cpu_8", "pcie_gpu", "sata", "front_panel"]
+const CABLE_NAMES := {
+	"atx_24": "24-pin Anakart Güç",
+	"cpu_8": "CPU 8-pin Güç",
+	"pcie_gpu": "GPU PCIe Güç",
+	"sata": "SATA Veri/Güç",
+	"front_panel": "Ön Panel Güç Düğmesi",
+}
+const SCREW_NAMES := {
+	"panel_1": "Üst Yan Kapak",
+	"panel_2": "Alt Yan Kapak",
+	"gpu": "GPU Braketi",
+	"m2": "M.2 SSD",
+}
+
 var slots := {}
 var monitor = null
 var powered := false
@@ -31,17 +46,26 @@ var hum: AudioStreamPlayer3D
 var led_mat: StandardMaterial3D
 var inner_light: OmniLight3D
 var debug_leds := {}
+var _debug_led_group: Node3D
+var post_card_active := false
 var _hue := 0.0
 var dust := 0.0            # 0..1 toz miktarı
 var socket_paste := false  # CPU soketinde taze termal macun var mı
 var cpu_temp := 35.0
 var paste_blob: MeshInstance3D
-var cable_groups := {}     # parça adı -> kablo düğümü (parça takılıysa görünür)
+var cables := {"atx_24": "ok", "cpu_8": "ok", "pcie_gpu": "ok", "sata": "ok", "front_panel": "ok"}
+var cables_tidy := false
+var screws := {"panel_1": true, "panel_2": true, "gpu": false, "m2": false}
+var sw_faults: Array = []
+var cable_groups := {}     # geriye dönük uyumluluk / eski kablo düğümleri
+var cable_nodes := {}      # id -> {root, plug, warn, inter, ok_pos, loose_pos, tidy_pos}
+var screw_nodes := {}      # id -> {root, head, hole, inter}
 var _dust_nodes: Array = []  # [MeshInstance3D, gereken_slot]
 var _dust_mat: StandardMaterial3D
 var _dust_vis := 0.0
 var _dust_tween: Tween
 var _last_temp_i := -1
+var _cap_t := 0.0
 var _built := false
 
 
@@ -135,6 +159,7 @@ func _build() -> void:
 	for f in case_fans:
 		MU.no_merge(f)
 	_build_cables()
+	_build_screws()
 	_build_rear_io()
 	_build_dust()
 	MU.merge_static(self)
@@ -193,15 +218,18 @@ func _build_tray() -> void:
 	var brackets := 5 if case_h >= 0.42 else (4 if case_h >= 0.36 else 2)
 	for i in brackets:
 		MU.box(tray, Vector3(0.03, 0.012, 0.002), Vector3(-case_w * 0.27, slot_pos.gpu.y + 0.015 - i * 0.02, -case_d / 2.0 + 0.003), metal)
-	# hata LED'leri (CPU / DRAM / VGA / BOOT)
+	# hata LED'leri (CPU / DRAM / VGA / BOOT — yalnızca debug_led'li anakartta veya POST kartıyla görünür)
+	_debug_led_group = MU.no_merge(Node3D.new())
+	_debug_led_group.name = "DebugLEDs"
+	add_child(_debug_led_group)
 	var names := ["CPU", "DRAM", "VGA", "BOOT"]
 	var led_y := minf(mobo_p.y + tray_h * 0.46, case_h - 0.03)
 	var led_z := minf(mobo_p.z + tray_d * 0.40, case_d * 0.38)
 	for i in names.size():
 		var lm := MU.new_mat(Color(0.25, 0.12, 0.05), 0, 0.4)
 		debug_leds[names[i]] = lm
-		MU.box(tray, Vector3(0.002, 0.003, 0.005), Vector3(board_x + 0.004, led_y - i * 0.008, led_z), lm)
-		var ll := MU.label(tray, names[i], Vector3(board_x + 0.0042, led_y - i * 0.008, led_z - 0.011), 24, Color(0.9, 0.9, 0.9), Vector3(0, 90, 0), 0.00022)
+		MU.box(_debug_led_group, Vector3(0.002, 0.003, 0.005), Vector3(board_x + 0.004, led_y - i * 0.008, led_z), lm)
+		var ll := MU.label(_debug_led_group, names[i], Vector3(board_x + 0.0042, led_y - i * 0.008, led_z - 0.011), 24, Color(0.9, 0.9, 0.9), Vector3(0, 90, 0), 0.00022)
 		ll.double_sided = false
 
 
@@ -240,46 +268,98 @@ func _build_slots() -> void:
 		slots[sn] = s
 
 
-## Gerçekçi eğrisel kablolar. PSU/GPU/SSD takılı değilse ilgili kablolar gizlenir (birleştirilmez).
+## Gerçekçi eğrisel ve etkileşimli kablolar (24-pin, CPU 8-pin, PCIe GPU, SATA, ön panel).
 func _build_cables() -> void:
 	var sleeve := MU.mat(Color(0.07, 0.07, 0.08), 0.1, 0.75)
 	var sleeve2 := MU.mat(Color(0.12, 0.12, 0.13), 0.1, 0.7)
 	var plug_m := MU.mat(Color(0.04, 0.04, 0.045), 0.1, 0.5)
 	var red := MU.mat(Color(0.75, 0.1, 0.1), 0, 0.6)
-	var psu_g := MU.no_merge(Node3D.new())
-	var gpu_g := MU.no_merge(Node3D.new())
-	var ssd_g := MU.no_merge(Node3D.new())
-	add_child(psu_g)
-	add_child(gpu_g)
-	add_child(ssd_g)
-	cable_groups = {"psu": psu_g, "gpu": gpu_g, "ssd": ssd_g}
+	var fp_m := MU.mat(Color(0.18, 0.22, 0.32), 0.1, 0.6)
+	var warn_m := MU.mat(Color(1.0, 0.55, 0.1), 0, 0.4, 1.5)
 	var bx := board_x
 	var dy := maxf(case_h - H, -0.105)
 	var psu_z: float = slot_pos.psu.z + 0.105
 	var ssd_z: float = slot_pos.ssd.z + 0.056
-	# 24-pin: kalın, örgülü; PSU'dan anakart ön kenarına
-	var p24: Array[Vector3] = [Vector3(0.015, 0.118, psu_z), Vector3(0.025, 0.15 + dy * 0.4, 0.04), Vector3(0.0, 0.22 + dy * 0.6, 0.10),
-		Vector3(-0.045, 0.31 + dy, 0.105), Vector3(bx + 0.025, 0.352 + dy, 0.10)]
-	MU.tube(psu_g, p24, 0.0085, sleeve2, 8)
-	MU.rbox(psu_g, Vector3(0.016, 0.056, 0.016), Vector3(bx + 0.016, 0.355 + dy, 0.102), plug_m, 0.002)
-	# CPU 4+4 pin
-	var pcpu: Array[Vector3] = [Vector3(-0.015, 0.118, psu_z), Vector3(0.045, 0.17 + dy * 0.4, -0.05),
-		Vector3(0.055, 0.28 + dy * 0.8, -0.09), Vector3(bx + 0.02, case_h - 0.025, -0.10)]
-	MU.tube(psu_g, pcpu, 0.0055, sleeve, 6)
-	MU.rbox(psu_g, Vector3(0.014, 0.012, 0.03), Vector3(bx + 0.012, case_h - 0.03, -0.10), plug_m, 0.002)
-	# SATA güç + data (SSD/HDD)
-	var psata: Array[Vector3] = [Vector3(0.045, 0.0675, 0.0), Vector3(0.06, 0.05, ssd_z * 0.5), Vector3(0.022, 0.015, ssd_z)]
-	MU.tube(ssd_g, psata, 0.003, sleeve, 5)
-	MU.rbox(ssd_g, Vector3(0.012, 0.007, 0.012), Vector3(0.022, 0.015, ssd_z), plug_m, 0.001)
-	var pdata: Array[Vector3] = [Vector3(bx + 0.012, 0.2 + dy, 0.10), Vector3(-0.03, 0.11, ssd_z * 0.85), Vector3(0.006, 0.015, ssd_z)]
-	MU.tube(ssd_g, pdata, 0.0025, red, 5)
-	MU.rbox(ssd_g, Vector3(0.008, 0.006, 0.012), Vector3(0.006, 0.015, ssd_z), plug_m, 0.001)
-	# PCIe güç (GPU)
 	var gy: float = slot_pos.gpu.y
-	var pgpu: Array[Vector3] = [Vector3(-0.04, 0.118, psu_z), Vector3(0.0, 0.13, 0.01),
-		Vector3(0.045, gy, 0.04), Vector3(0.0105, gy + 0.023, 0.035)]
-	MU.tube(gpu_g, pgpu, 0.0055, sleeve, 6)
-	MU.rbox(gpu_g, Vector3(0.012, 0.014, 0.026), Vector3(0.0105, gy + 0.017, 0.035), plug_m, 0.002)
+
+	var specs := [
+		["atx_24",
+			[Vector3(0.015, 0.118, psu_z), Vector3(0.025, 0.15 + dy * 0.4, 0.04), Vector3(0.0, 0.22 + dy * 0.6, 0.10),
+				Vector3(-0.045, 0.31 + dy, 0.105), Vector3(bx + 0.025, 0.352 + dy, 0.10)],
+			0.0085, sleeve2, Vector3(0.016, 0.056, 0.016), Vector3(bx + 0.016, 0.355 + dy, 0.102), Vector3(0.028, 0, 0.006)],
+		["cpu_8",
+			[Vector3(-0.015, 0.118, psu_z), Vector3(0.045, 0.17 + dy * 0.4, -0.05),
+				Vector3(0.055, 0.28 + dy * 0.8, -0.09), Vector3(bx + 0.02, case_h - 0.025, -0.10)],
+			0.0055, sleeve, Vector3(0.014, 0.012, 0.03), Vector3(bx + 0.012, case_h - 0.03, -0.10), Vector3(0.024, -0.014, 0.0)],
+		["pcie_gpu",
+			[Vector3(-0.04, 0.118, psu_z), Vector3(0.0, 0.13, 0.01),
+				Vector3(0.045, gy, 0.04), Vector3(0.0105, gy + 0.023, 0.035)],
+			0.0055, sleeve, Vector3(0.012, 0.014, 0.026), Vector3(0.0105, gy + 0.017, 0.035), Vector3(0.024, 0.018, 0.0)],
+		["sata",
+			[Vector3(0.045, 0.0675, 0.0), Vector3(0.06, 0.05, ssd_z * 0.5), Vector3(0.022, 0.015, ssd_z)],
+			0.003, sleeve, Vector3(0.016, 0.009, 0.016), Vector3(0.016, 0.015, ssd_z), Vector3(0.0, 0.022, 0.022)],
+		["front_panel",
+			[Vector3(0.0, 0.04, case_d * 0.5 - 0.04), Vector3(-0.02, 0.11, 0.09), Vector3(bx + 0.012, 0.175 + dy, 0.075)],
+			0.0028, fp_m, Vector3(0.012, 0.014, 0.022), Vector3(bx + 0.012, 0.175 + dy, 0.075), Vector3(0.026, -0.01, 0.0)],
+	]
+	cable_nodes.clear()
+	cable_groups.clear()
+	for sp in specs:
+		var cid: String = sp[0]
+		var g := MU.no_merge(Node3D.new())
+		g.name = "Cable_" + cid
+		add_child(g)
+		var pts: Array[Vector3] = []
+		for pt in sp[1]:
+			pts.append(pt)
+		var tube_mi := MU.tube(g, pts, float(sp[2]), sp[3], 6)
+		MU.no_merge(tube_mi)
+		if cid == "sata":
+			var pdata: Array[Vector3] = [Vector3(bx + 0.012, 0.2 + dy, 0.10), Vector3(-0.03, 0.11, ssd_z * 0.85), Vector3(0.006, 0.015, ssd_z)]
+			MU.no_merge(MU.tube(g, pdata, 0.0025, red, 5))
+		var plug := MU.no_merge(Node3D.new())
+		var ok_pos: Vector3 = sp[5]
+		var loose_pos: Vector3 = ok_pos + sp[6]
+		plug.position = ok_pos
+		g.add_child(plug)
+		MU.rbox(plug, sp[4], Vector3.ZERO, plug_m, 0.002)
+		var warn := MU.box(plug, sp[4] * 1.15, Vector3.ZERO, warn_m)
+		warn.visible = false
+		var it = MU.interactable(plug, sp[4] + Vector3(0.028, 0.028, 0.028), Vector3.ZERO,
+			func(_p): return _cable_hint(cid), func(_p): _cable_use(cid))
+		cable_nodes[cid] = {"root": g, "plug": plug, "warn": warn, "inter": it, "ok_pos": ok_pos, "loose_pos": loose_pos, "tube": tube_mi}
+		cable_groups[cid] = g
+	if cable_nodes.has("pcie_gpu"):
+		cable_groups["gpu"] = cable_nodes["pcie_gpu"].root
+	if cable_nodes.has("atx_24"):
+		cable_groups["psu"] = cable_nodes["atx_24"].root
+	if cable_nodes.has("sata"):
+		cable_groups["ssd"] = cable_nodes["sata"].root
+
+
+## Sökülüp sıkılabilen vidalar: yan kapak (2), GPU braketi ve M.2 SSD vidası.
+func _build_screws() -> void:
+	screw_nodes.clear()
+	var steel := MU.mat(Color(0.78, 0.8, 0.84), 0.9, 0.25)
+	var hole_m := MU.mat(Color(0.05, 0.05, 0.06), 0.3, 0.7)
+	var defs := [
+		["panel_1", panel_pivot, Vector3(0.006, case_h - 0.04, case_d - 0.016), Vector3(0, 0, 90), Vector3(0.036, 0.04, 0.04)],
+		["panel_2", panel_pivot, Vector3(0.006, 0.04, case_d - 0.016), Vector3(0, 0, 90), Vector3(0.036, 0.04, 0.04)],
+		["gpu", self, Vector3(-case_w * 0.27, slot_pos.gpu.y + 0.008, -case_d / 2.0 + 0.008), Vector3(90, 0, 0), Vector3(0.04, 0.04, 0.036)],
+		["m2", self, slot_pos.m2 + Vector3(0.005, 0.0, 0.038), Vector3(0, 0, 90), Vector3(0.032, 0.032, 0.032)],
+	]
+	for d in defs:
+		var sid: String = d[0]
+		var parent: Node3D = d[1]
+		var root := MU.no_merge(Node3D.new())
+		root.name = "Screw_" + sid
+		root.position = d[2]
+		parent.add_child(root)
+		var head := MU.cyl(root, 0.0045, 0.006, Vector3.ZERO, steel, d[3], 10)
+		var hole := MU.cyl(root, 0.003, 0.002, Vector3.ZERO, hole_m, d[3], 8)
+		var it = MU.interactable(root, d[4], Vector3.ZERO,
+			func(p): return _screw_hint(sid, p), func(p): _screw_use(sid, p))
+		screw_nodes[sid] = {"root": root, "head": head, "hole": hole, "inter": it}
 
 
 ## Kasa arkası: I/O kalkanı, PSU girişi, PCIe kapakları (dış yüz).
@@ -372,6 +452,49 @@ func _apply_dust(v: float) -> void:
 	_update_visuals(v > 0.04)
 
 
+func _is_unlocked() -> bool:
+	return slots.is_empty() or slots.values()[0].is_processing()
+
+
+func has_debug_leds() -> bool:
+	if post_card_active:
+		return true
+	var mobo = part_in("mobo")
+	if mobo != null:
+		var d: PartDef = mobo.def()
+		if d != null:
+			return bool(d.specs.get("debug_led", false))
+	return false
+
+
+func gpu_needs_cable() -> bool:
+	var g = part_in("gpu")
+	if g == null:
+		return false
+	var d: PartDef = g.def()
+	if d == null:
+		return false
+	return not d.compat.get("pcie_pins", []).is_empty()
+
+
+func sata_present() -> bool:
+	return part_in("ssd") != null
+
+
+func _cable_visible(cid: String) -> bool:
+	var st := str(cables.get(cid, "ok"))
+	match cid:
+		"atx_24", "cpu_8":
+			return (part_in("psu") != null and part_in("mobo") != null) or st != "ok"
+		"pcie_gpu":
+			return (part_in("psu") != null and gpu_needs_cable()) or (part_in("gpu") != null and st != "ok")
+		"sata":
+			return sata_present() or st != "ok"
+		"front_panel":
+			return part_in("mobo") != null or st != "ok"
+	return false
+
+
 func _update_visuals(dust_on = null) -> void:
 	if not _built:
 		return
@@ -379,11 +502,214 @@ func _update_visuals(dust_on = null) -> void:
 	for d in _dust_nodes:
 		var req: String = d[1]
 		d[0].visible = on and (req == "" or (slots.has(req) and slots[req].part != null))
-	for k in cable_groups:
-		if slots.has(k):
-			cable_groups[k].visible = slots[k].part != null
+	if _debug_led_group:
+		_debug_led_group.visible = has_debug_leds()
+	var unlocked := _is_unlocked()
+	for cid in cable_nodes:
+		var cn: Dictionary = cable_nodes[cid]
+		var vis := _cable_visible(cid)
+		cn.root.visible = vis
+		var st := str(cables.get(cid, "ok"))
+		var is_ok := st == "ok"
+		cn.plug.position = cn.ok_pos if is_ok else cn.loose_pos
+		cn.warn.visible = vis and not is_ok
+		cn.tube.position.x = -0.012 if cables_tidy else 0.0
+		cn.inter.collision_layer = 3 if (unlocked and vis and panel_open) else 0
+	for sid in screw_nodes:
+		var sn: Dictionary = screw_nodes[sid]
+		var show := true
+		if sid == "gpu":
+			show = part_in("gpu") != null
+		elif sid == "m2":
+			show = part_in("m2") != null
+		sn.root.visible = show
+		var tight := bool(screws.get(sid, false))
+		sn.head.visible = tight
+		sn.hole.visible = not tight
+		var active := false
+		if unlocked and show:
+			active = (not panel_open) if (sid == "panel_1" or sid == "panel_2") else panel_open
+		sn.inter.collision_layer = 3 if active else 0
 	if paste_blob and slots.has("cpu"):
 		paste_blob.visible = socket_paste and slots.cpu.part == null
+
+
+func _cable_hint(cid: String) -> String:
+	if not panel_open:
+		return ""
+	var nm := str(CABLE_NAMES.get(cid, cid))
+	if str(cables.get(cid, "ok")) != "ok":
+		return "Tak: %s kablosu  [E]" % nm
+	return "%s kablosu (takılı)" % nm
+
+
+func _cable_use(cid: String) -> void:
+	if not panel_open:
+		return
+	if str(cables.get(cid, "ok")) != "ok":
+		plug_cable(cid)
+
+
+func plug_cable(cid: String) -> bool:
+	if not cables.has(cid) or str(cables[cid]) == "ok":
+		return false
+	cables[cid] = "ok"
+	Game.sfx.click()
+	_update_visuals()
+	Game.msg("%s kablosu takıldı." % str(CABLE_NAMES.get(cid, cid)), Color(0.5, 1.0, 0.5))
+	return true
+
+
+func fix_all_cables() -> void:
+	for cid in CABLE_IDS:
+		cables[cid] = "ok"
+	_update_visuals()
+
+
+func tidy_cables() -> bool:
+	for cid in CABLE_IDS:
+		if str(cables.get(cid, "ok")) != "ok":
+			Game.sfx.error()
+			Game.msg("Önce gevşek kabloları tak (%s)!" % str(CABLE_NAMES.get(cid, cid)), Color(1.0, 0.7, 0.35))
+			return false
+	if not cables_tidy:
+		cables_tidy = true
+		Game.sfx.click()
+		_update_visuals()
+		Game.msg("Kablolar kelepçelenip düzenlendi!", Color(0.5, 1.0, 0.6))
+	return true
+
+
+func panel_screwed() -> bool:
+	return bool(screws.get("panel_1", false)) or bool(screws.get("panel_2", false))
+
+
+func slot_screwed(slot_name: String) -> bool:
+	if slot_name == "gpu" or slot_name == "m2":
+		return bool(screws.get(slot_name, false))
+	return false
+
+
+func screws_missing() -> bool:
+	if not bool(screws.get("panel_1", false)) or not bool(screws.get("panel_2", false)):
+		return true
+	if part_in("gpu") != null and not bool(screws.get("gpu", false)):
+		return true
+	if part_in("m2") != null and not bool(screws.get("m2", false)):
+		return true
+	return false
+
+
+func missing_screws_text() -> String:
+	var miss: Array[String] = []
+	if not bool(screws.get("panel_1", false)) or not bool(screws.get("panel_2", false)):
+		miss.append("Yan Kapak")
+	if part_in("gpu") != null and not bool(screws.get("gpu", false)):
+		miss.append("GPU Braketi")
+	if part_in("m2") != null and not bool(screws.get("m2", false)):
+		miss.append("M.2")
+	return ", ".join(miss)
+
+
+func _screw_hint(sid: String, player) -> String:
+	var nm := str(SCREW_NAMES.get(sid, sid))
+	var tight := bool(screws.get(sid, false))
+	var verb := "Vidayı sök" if tight else "Vidayı sık"
+	var is_bench: bool = player != null and player.has_method("enter")
+	if is_bench or Game.has_upgrade("auto_screw"):
+		return "%s: %s  [E]" % [verb, nm]
+	var h = player.get("held") if player else null
+	if h != null and h.has_method("is_tool") and h.is_tool() and h.tool_type == "screwdriver":
+		return "%s: %s  [E]" % [verb, nm]
+	return "%s vidası (%s — Tornavida gerekir)" % [nm, "sıkılı" if tight else "sökük"]
+
+
+func _screw_use(sid: String, player) -> void:
+	var is_bench: bool = player == null or player.has_method("enter")
+	var h = player.get("held") if (player != null and not is_bench) else null
+	var has_sd: bool = is_bench or Game.has_upgrade("auto_screw") or (h != null and h.has_method("is_tool") and h.is_tool() and h.tool_type == "screwdriver")
+	if not has_sd:
+		Game.sfx.error()
+		Game.msg("Vidayı sökmek/sıkmak için eline Tornavida al.", Color(1.0, 0.75, 0.35))
+		return
+	toggle_screw(sid)
+
+
+func toggle_screw(sid: String) -> bool:
+	if not screws.has(sid):
+		return false
+	screws[sid] = not bool(screws[sid])
+	Game.sfx.screw()
+	_update_visuals()
+	return true
+
+
+func unscrew(sid: String) -> bool:
+	if not bool(screws.get(sid, false)):
+		return false
+	screws[sid] = false
+	Game.sfx.screw()
+	_update_visuals()
+	return true
+
+
+func fasten_screw(sid: String) -> bool:
+	if bool(screws.get(sid, false)):
+		return false
+	screws[sid] = true
+	Game.sfx.screw()
+	_update_visuals()
+	return true
+
+
+func unscrew_all() -> void:
+	for k in screws:
+		screws[k] = false
+	_update_visuals()
+
+
+func fasten_all() -> void:
+	screws["panel_1"] = true
+	screws["panel_2"] = true
+	screws["gpu"] = part_in("gpu") != null
+	screws["m2"] = part_in("m2") != null
+	_update_visuals()
+
+
+func mobo_has_children() -> bool:
+	for sn in ["cpu", "cooler", "ram1", "ram2", "ram3", "ram4", "gpu", "m2", "cmos"]:
+		if part_in(sn) != null:
+			return true
+	return false
+
+
+func can_remove_reason(slot_name: String) -> String:
+	if slot_name == "mobo" and mobo_has_children():
+		return "Anakartı sökmeden önce üzerindeki parçaları çıkar."
+	if slot_screwed(slot_name):
+		if Game.has_upgrade("auto_screw"):
+			screws[slot_name] = false
+			_update_visuals()
+			return ""
+		return "Önce %s vidasını tornavidayla sök." % str(SCREW_NAMES.get(slot_name, slot_name))
+	return ""
+
+
+func on_slot_installed(slot_name: String) -> void:
+	if slot_name == "gpu" or slot_name == "m2":
+		screws[slot_name] = Game.has_upgrade("auto_screw")
+
+
+func has_sw_fault(code: String) -> bool:
+	return sw_faults.has(code)
+
+
+func fix_sw_fault(code: String) -> bool:
+	if not sw_faults.has(code):
+		return false
+	sw_faults.erase(code)
+	on_parts_changed()
+	return true
 
 
 func cpu_installed(p) -> void:
@@ -396,7 +722,8 @@ func cpu_installed(p) -> void:
 # ---------------------------------------------------------------- aletler
 
 func tool_hint(tool, slot) -> String:
-	match tool.tool_type:
+	var tt := str(tool.tool_type)
+	match tt:
 		"paste":
 			if slot == null or slot.accepts != "cpu":
 				return "Termal macun: boş işlemci soketine sürülür"
@@ -407,11 +734,38 @@ func tool_hint(tool, slot) -> String:
 			return "Termal macun sür  [E]"
 		"air":
 			return "Tozu üfle  [E]" if dust > 0.02 else "Üfle  [E] (zaten temiz)"
+		"ipa":
+			return "IPA ile temas noktalarını temizle  [E]"
+		"screwdriver":
+			if slot != null and slot.accepts == "cpu" and slot.part != null and slot.part.bent_pins:
+				return "Eğik CPU pinlerini düzelt  [E]"
+			if slot != null and (slot.name == "gpu" or slot.name == "m2") and slot.part != null:
+				return ("Vidayı sök (%s)  [E]" if slot_screwed(slot.name) else "Vidayı sık (%s)  [E]") % str(SCREW_NAMES.get(slot.name, slot.name))
+			return "Vidaları sök/sık  [E]"
+		"psu_tester":
+			return "PSU ve güç kablolarını test et  [E]"
+		"multimeter":
+			if slot != null and slot.part != null:
+				return "Multimetre ile ölç: %s  [E]" % slot.part.display_name
+			return "Anakart ve voltajı ölç  [E]"
+		"post_card":
+			return "POST Teşhis Kartı tak / kod oku  [E]"
+		"thermal_cam":
+			return "Termal Kamera ile sıcaklık & toz tara  [E]"
+		"ram_usb":
+			return "RAM Test USB ile bellekleri tara  [E]"
+		"smart_usb":
+			return "Disk SMART USB ile disk sağlığını tara  [E]"
+		"antivirus_usb":
+			return "Antivirüs USB ile virüs tara & temizle  [E]"
+		"install_usb":
+			return "Kurulum & BIOS USB kullan  [E]"
 	return ""
 
 
 func tool_use(player, tool, slot) -> void:
-	match tool.tool_type:
+	var tt := str(tool.tool_type)
+	match tt:
 		"paste":
 			if slot == null or slot.accepts != "cpu":
 				Game.msg("Macunu boş işlemci soketine sürmelisin.", Color(1, 0.8, 0.4))
@@ -431,18 +785,159 @@ func tool_use(player, tool, slot) -> void:
 				Game.msg("Kasanın içi tozdan arındı!", Color(0.7, 0.9, 1.0))
 			else:
 				Game.msg("İçerisi zaten temiz.")
+		"ipa":
+			tool.puff(player, Color(0.72, 0.96, 0.82, 0.35))
+			Game.msg("IPA spreyiyle kontaklar temizlendi.", Color(0.7, 0.95, 0.8))
+		"screwdriver":
+			if slot != null and slot.accepts == "cpu" and slot.part != null and slot.part.bent_pins:
+				slot.part.straighten_pins()
+				Game.sfx.screw()
+				on_parts_changed()
+				Game.msg("Eğik CPU pinleri hassasça düzeltildi!", Color(0.5, 1.0, 0.5))
+			elif slot != null and (slot.name == "gpu" or slot.name == "m2") and slot.part != null:
+				toggle_screw(slot.name)
+			elif not panel_open:
+				if panel_screwed():
+					unscrew("panel_1")
+					unscrew("panel_2")
+					Game.msg("Yan kapak vidaları söküldü.", Color(0.7, 0.9, 1.0))
+				else:
+					fasten_screw("panel_1")
+					fasten_screw("panel_2")
+					Game.msg("Yan kapak vidaları sıkıldı.", Color(0.7, 0.9, 1.0))
+			else:
+				Game.msg("Tornavida: sökmek/sıkmak istediğin vidaya veya eğik pinli CPU'ya tıkla.", Color(0.7, 0.9, 1.0))
+		"psu_tester":
+			Game.sfx.beep_scan()
+			var psu = part_in("psu")
+			var w := watt_summary()
+			if psu == null:
+				Game.msg("PSU Testi: Güç kaynağı takılı değil!", Color(1.0, 0.55, 0.35))
+			elif psu.broken:
+				Game.msg("PSU Testi: ARIZALI! +12V / +5V çıkışı yok.", Color(1.0, 0.35, 0.3))
+			elif str(cables.get("atx_24", "ok")) != "ok" or str(cables.get("cpu_8", "ok")) != "ok" or (gpu_needs_cable() and str(cables.get("pcie_gpu", "ok")) != "ok"):
+				Game.msg("PSU Testi: PSU sağlam (%dW) ama güç kablolarından biri gevşek!" % w.psu, Color(1.0, 0.78, 0.3))
+			elif not w.ok or w.psu < w.recommended:
+				Game.msg("PSU Testi: Watt yetersiz! (%dW < gereken %dW+)" % [w.psu, w.recommended], Color(1.0, 0.65, 0.3))
+			else:
+				Game.msg("PSU Testi: Tüm kanallar OK (+12.0V / +5.0V / %dW)." % w.psu, Color(0.5, 1.0, 0.5))
+		"multimeter":
+			Game.sfx.beep_scan()
+			if slot != null and slot.part != null:
+				var pt = slot.part
+				if pt.broken:
+					Game.msg("Multimetre (%s): KISA DEVRE / ARIZALI!" % pt.display_name, Color(1.0, 0.35, 0.3))
+				elif pt.bad_caps:
+					Game.msg("Multimetre (%s): Kondansatör voltajı dengesiz (şişmiş)!" % pt.display_name, Color(1.0, 0.5, 0.3))
+				elif pt.bent_pins:
+					Game.msg("Multimetre (%s): Pin temassızlığı tespit edildi!" % pt.display_name, Color(1.0, 0.6, 0.3))
+				elif pt.vram_bad:
+					Game.msg("Multimetre (%s): VRAM bellek hattında hata!" % pt.display_name, Color(1.0, 0.5, 0.3))
+				else:
+					Game.msg("Multimetre (%s): Voltaj değerleri NORMAL (Sağlam)." % pt.display_name, Color(0.5, 1.0, 0.5))
+			else:
+				var mobo = part_in("mobo")
+				var cmos = part_in("cmos")
+				if mobo == null or mobo.broken:
+					Game.msg("Multimetre: Anakart besleme hattı ölü (0.0V).", Color(1.0, 0.35, 0.3))
+				elif mobo.bad_caps:
+					Game.msg("Multimetre: Anakart VRM kondansatörleri şişmiş (dalgalı voltaj)!", Color(1.0, 0.5, 0.3))
+				elif cmos == null or cmos.broken:
+					Game.msg("Multimetre: CMOS pili voltajı düşük (0.4V < 3.0V)!", Color(1.0, 0.7, 0.3))
+				else:
+					Game.msg("Multimetre: Anakart ve CMOS (+3.0V) hatları normal.", Color(0.5, 1.0, 0.5))
+		"post_card":
+			Game.sfx.beep_scan()
+			post_card_active = true
+			_update_visuals()
+			var issues := diagnose_all()
+			if issues.is_empty():
+				Game.msg("POST Kartı [AA]: Sistem tüm donanım kontrollerinden geçti.", Color(0.5, 1.0, 0.5))
+			else:
+				var hex_map := {"nopower": "00", "cable_fp": "01", "cable_24pin": "02", "mobo": "05", "mobo_cap": "09",
+					"cable_cpu": "10", "cpu": "12", "cpu_pins": "14", "ram": "53", "ram_unseated": "55",
+					"cable_gpu": "92", "gpu": "96", "gpu_artifact": "98", "cable_sata": "A1", "ssd": "A2",
+					"hdd_smart": "A4", "cooler": "C1", "fan": "C2", "cmos": "E0", "overheat": "F1"}
+				var code := str(issues[0])
+				Game.msg("POST Kartı [%s]: %s (%d sorun)" % [hex_map.get(code, "FF"), code, issues.size()], Color(1.0, 0.72, 0.3))
+		"thermal_cam":
+			Game.sfx.beep_scan()
+			var cpu = part_in("cpu")
+			var cooler = part_in("cooler")
+			var paste_txt := "KURU!" if (cpu != null and not cpu.paste_ok) else "Taze"
+			var fan_bad := false
+			for fn in ["fan1", "fan2"]:
+				var fp = part_in(fn)
+				if fp != null and fp.broken:
+					fan_bad = true
+			var cooler_bad: bool = cooler == null or cooler.broken
+			var c_col := Color(1.0, 0.45, 0.3) if (dust > 0.5 or paste_txt == "KURU!" or fan_bad or cooler_bad) else Color(0.5, 1.0, 0.5)
+			Game.msg("Termal Kamera: CPU %.0f°C · Toz %%%d · Macun: %s%s" % [
+				cpu_temp, roundi(dust * 100.0), paste_txt,
+				(" · DURMUŞ FAN!" if (fan_bad or cooler_bad) else "")
+			], c_col)
+		"ram_usb":
+			Game.sfx.beep_scan()
+			var bad_msgs: Array[String] = []
+			for rn in ["ram1", "ram2", "ram3", "ram4"]:
+				var rp = part_in(rn)
+				if rp == null:
+					continue
+				if rp.broken:
+					bad_msgs.append("%s: BOZUK" % rn.to_upper())
+				elif not rp.seated:
+					bad_msgs.append("%s: OTURMAMIŞ" % rn.to_upper())
+				else:
+					bad_msgs.append("%s: OK" % rn.to_upper())
+			if bad_msgs.is_empty():
+				Game.msg("RAM Test USB: Hiç RAM algılanmadı!", Color(1.0, 0.45, 0.3))
+			else:
+				var xmp_txt := " · XMP KAPALI" if has_sw_fault("sw_xmp_off") else ""
+				var any_bad := bad_msgs.any(func(s): return not s.ends_with("OK")) or xmp_txt != ""
+				Game.msg("RAM Testi: " + ", ".join(bad_msgs) + xmp_txt, Color(1.0, 0.65, 0.3) if any_bad else Color(0.5, 1.0, 0.5))
+		"smart_usb":
+			Game.sfx.beep_scan()
+			var d_msgs: Array[String] = []
+			for sn in ["m2", "ssd"]:
+				var sp = part_in(sn)
+				if sp == null:
+					continue
+				if sp.broken:
+					d_msgs.append("%s: YANIT YOK" % sn.to_upper())
+				else:
+					d_msgs.append("%s: %%%d sağlık" % [sn.to_upper(), int(sp.health)])
+			if d_msgs.is_empty():
+				Game.msg("SMART USB: Hiçbir depolama birimi bulunamadı!", Color(1.0, 0.45, 0.3))
+			else:
+				var full_txt := " · DİSK DOLU (%99)" if has_sw_fault("sw_disk_full") else ""
+				var warn: bool = has_sw_fault("sw_disk_full") or d_msgs.any(func(s): return "YANIT" in s) or (part_in("ssd") != null and part_in("ssd").health < 35) or (part_in("m2") != null and part_in("m2").health < 35)
+				Game.msg("SMART USB: " + ", ".join(d_msgs) + full_txt, Color(1.0, 0.65, 0.3) if warn else Color(0.5, 1.0, 0.5))
+		"antivirus_usb":
+			Game.sfx.beep_scan()
+			if fix_sw_fault("sw_virus"):
+				Game.msg("Antivirüs USB: Virüs ve reklam yazılımları temizlendi!", Color(0.5, 1.0, 0.5))
+			else:
+				Game.msg("Antivirüs USB: Tehdit bulunamadı, sistem temiz.", Color(0.7, 0.9, 1.0))
+		"install_usb":
+			Game.sfx.beep_scan()
+			if fix_sw_fault("sw_os_corrupt"):
+				Game.msg("Kurulum USB: Disk formatlandı ve BilgiOS yeniden kuruldu!", Color(0.5, 1.0, 0.5))
+			elif fix_sw_fault("sw_bios_update"):
+				Game.msg("Kurulum & BIOS USB: Anakart BIOS'u v3.2 sürümüne güncellendi!", Color(0.5, 1.0, 0.5))
+			else:
+				Game.msg("Kurulum USB: İşletim sistemi ve BIOS zaten güncel.", Color(0.7, 0.9, 1.0))
 
 
 func get_hint(player) -> String:
 	if player.held and player.held.is_tool():
-		if not panel_open:
+		if not panel_open and player.held.tool_type != "screwdriver":
 			return "Aleti kullanmak için kapağı aç"
 		return tool_hint(player.held, null)
 	return ""
 
 
 func interact(player) -> void:
-	if player.held and player.held.is_tool() and panel_open:
+	if player.held and player.held.is_tool() and (panel_open or player.held.tool_type == "screwdriver"):
 		tool_use(player, player.held, null)
 
 
@@ -455,8 +950,27 @@ func interact(player) -> void:
 func fill(parts: Array) -> void:
 	var seen := {}
 	var has_any_part := false
+	cables = {"atx_24": "ok", "cpu_8": "ok", "pcie_gpu": "ok", "sata": "ok", "front_panel": "ok"}
+	cables_tidy = false
+	sw_faults = []
+	screws = {"panel_1": true, "panel_2": true, "gpu": false, "m2": false}
+	var has_explicit_screws := false
 	for entry in parts:
 		if entry is Dictionary:
+			if entry.has("cables") and entry["cables"] is Dictionary:
+				for ck in entry["cables"]:
+					cables[str(ck)] = str(entry["cables"][ck])
+				continue
+			if entry.has("screws") and entry["screws"] is Dictionary:
+				has_explicit_screws = true
+				for sk in entry["screws"]:
+					screws[str(sk)] = bool(entry["screws"][sk])
+				continue
+			if entry.has("sw_faults") and entry["sw_faults"] is Array:
+				for sf in entry["sw_faults"]:
+					if not sw_faults.has(str(sf)):
+						sw_faults.append(str(sf))
+				continue
 			var sn := str(entry.get("slot", ""))
 			if sn == "dust" or entry.has("dust"):
 				set_dust(float(entry.get("amount", entry.get("dust", 0.0))))
@@ -474,6 +988,14 @@ func fill(parts: Array) -> void:
 				part.paste_ok = bool(entry.get("paste_ok", true))
 			if entry.has("health"):
 				part.health = int(entry.get("health", 100))
+			if entry.has("seated"):
+				part.seated = bool(entry.get("seated", true))
+			if bool(entry.get("bent_pins", false)):
+				part.mark_bent_pins(true)
+			if bool(entry.get("bad_caps", false)):
+				part.mark_bad_caps(true)
+			if entry.has("vram_bad"):
+				part.vram_bad = bool(entry.get("vram_bad", false))
 			slots[sn].install(part)
 			if bool(entry.get("cheap", false)):
 				part.make_cheap()
@@ -496,6 +1018,10 @@ func fill(parts: Array) -> void:
 	# Geriye dönük uyumluluk: eski işler/testler mobo/cooler/fan1/cmos vermediyse uyumlu varsayılanları tak
 	if has_any_part:
 		_fill_legacy_defaults(seen)
+	if not has_explicit_screws:
+		screws["gpu"] = part_in("gpu") != null
+		screws["m2"] = part_in("m2") != null
+	_update_visuals(null if dust <= 0.0 else dust > 0.04)
 
 
 func _fill_legacy_defaults(seen: Dictionary) -> void:
@@ -558,55 +1084,116 @@ func watt_summary() -> Dictionary:
 
 # ---------------------------------------------------------------- teşhis ve güç
 
-## Teşhis kodu: "nopower", "mobo", "cpu", "ram", "gpu", "ssd", "cooler", "cmos",
-## uyumluluk kodları ("psu_watts", "psu_connectors", "no_display", ...), "overheat" veya "ok".
-func diagnose() -> String:
+## Tüm etkin arızaları öncelik sırasıyla liste olarak döndürür (çoklu arıza desteği).
+func diagnose_all() -> Array[String]:
+	var out: Array[String] = []
+	var add_code := func(c: String):
+		if not c.is_empty() and not out.has(c):
+			out.append(c)
+
+	if str(cables.get("front_panel", "ok")) != "ok":
+		add_code.call("cable_fp")
 	var psu = part_in("psu")
 	if psu == null or psu.broken:
-		return "nopower"
+		add_code.call("nopower")
+	if str(cables.get("atx_24", "ok")) != "ok":
+		add_code.call("cable_24pin")
 	var mobo = part_in("mobo")
 	if mobo == null or mobo.broken:
-		return "mobo"
+		add_code.call("mobo")
+	elif mobo.bad_caps:
+		add_code.call("mobo_cap")
+	if str(cables.get("cpu_8", "ok")) != "ok":
+		add_code.call("cable_cpu")
 	var cpu = part_in("cpu")
 	if cpu == null or cpu.broken:
-		return "cpu"
+		add_code.call("cpu")
+	elif cpu.bent_pins:
+		add_code.call("cpu_pins")
 	var rams := []
 	for n in ["ram1", "ram2", "ram3", "ram4"]:
 		var r = part_in(n)
 		if r:
 			rams.append(r)
 	if rams.is_empty() or rams.any(func(r): return r.broken):
-		return "ram"
+		add_code.call("ram")
+	if rams.any(func(r): return not r.seated):
+		add_code.call("ram_unseated")
 	var gpu = part_in("gpu")
-	if gpu != null and gpu.broken:
-		return "gpu"
+	if gpu != null:
+		if gpu_needs_cable() and str(cables.get("pcie_gpu", "ok")) != "ok":
+			add_code.call("cable_gpu")
+		if gpu.broken:
+			add_code.call("gpu")
+		elif gpu.vram_bad:
+			add_code.call("gpu_artifact")
 	var storages := []
 	for n in ["ssd", "m2"]:
 		var st = part_in(n)
 		if st:
 			storages.append(st)
+	if sata_present() and str(cables.get("sata", "ok")) != "ok":
+		add_code.call("cable_sata")
 	if storages.is_empty() or storages.any(func(s): return s.broken):
-		return "ssd"
+		add_code.call("ssd")
+	if storages.any(func(s): return s.health < 35):
+		add_code.call("hdd_smart")
 	var cooler = part_in("cooler")
 	if cooler == null or cooler.broken:
-		return "cooler"
+		add_code.call("cooler")
+	for fn in ["fan1", "fan2"]:
+		var fp = part_in(fn)
+		if fp != null and fp.broken:
+			add_code.call("fan")
 	var cmos = part_in("cmos")
 	if cmos == null or cmos.broken:
-		return "cmos"
+		add_code.call("cmos")
 	var sys := Compatibility.check_system(case_state())
-	if not sys.ok and not sys.issues.is_empty():
-		return str(sys.issues[0].code)
-	if dust > 0.5 or not cpu.paste_ok:
-		return "overheat"
-	return "ok"
+	if not sys.ok:
+		for iss in sys.issues:
+			var ic := str(iss.code)
+			match ic:
+				"no_mobo": add_code.call("mobo")
+				"no_cpu": add_code.call("cpu")
+				"no_cooler": add_code.call("cooler")
+				"no_ram": add_code.call("ram")
+				"no_storage": add_code.call("ssd")
+				"no_psu": add_code.call("nopower")
+				_: add_code.call(ic)
+	var w := watt_summary()
+	if w.psu > 0 and w.draw > 0 and w.psu < w.recommended:
+		add_code.call("psu_watts")
+	if dust > 0.5 or (cpu != null and not cpu.paste_ok):
+		add_code.call("overheat")
+	for sf in sw_faults:
+		add_code.call(str(sf))
+	return out
 
 
-func toggle_panel() -> void:
+## İlk öncelikli teşhis kodu ("ok" = sorun yok).
+func diagnose() -> String:
+	var all := diagnose_all()
+	return all[0] if not all.is_empty() else "ok"
+
+
+func toggle_panel(force := false) -> void:
+	if not panel_open and not force and not Game.has_upgrade("auto_screw") and panel_screwed():
+		Game.sfx.error()
+		var cnt := (1 if bool(screws.get("panel_1", false)) else 0) + (1 if bool(screws.get("panel_2", false)) else 0)
+		Game.msg("Önce yan kapak vidalarını tornavidayla sök (%d vida)." % cnt, Color(1.0, 0.75, 0.35))
+		return
 	panel_open = not panel_open
+	if panel_open and (force or Game.has_upgrade("auto_screw")):
+		screws["panel_1"] = false
+		screws["panel_2"] = false
+	elif not panel_open and Game.has_upgrade("auto_screw"):
+		screws["panel_1"] = true
+		screws["panel_2"] = true
 	var tw := create_tween()
 	tw.tween_property(panel_pivot, "rotation:y", deg_to_rad(100.0) if panel_open else 0.0, 0.45) \
 		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	Game.sfx.click()
+	_update_visuals(null if dust <= 0.0 else dust > 0.04)
 
 
 func power_button() -> void:
@@ -618,8 +1205,10 @@ func power_button() -> void:
 	var code := diagnose()
 	var fdef = DB.jobs.fault_by_code(code)  # belirti verisi (LED, bip, ekran, mesaj) arıza tanımından
 	var sym: Dictionary = fdef.symptoms if fdef != null else {}
-	if code == "nopower" or code == "mobo":
-		var fb := "Hiçbir tepki yok... Anakart takılı değil veya arızalı." if code == "mobo" else "Hiçbir tepki yok... Fanlar bile dönmüyor."
+	if code in ["nopower", "mobo", "cable_fp", "cable_24pin"]:
+		var fb := "Güç düğmesi tepki vermiyor! Ön panel kablosunu kontrol et." if code == "cable_fp" else \
+			("24-pin anakart güç kablosu gevşek!" if code == "cable_24pin" else \
+			("Hiçbir tepki yok... Anakart takılı değil veya arızalı." if code == "mobo" else "Hiçbir tepki yok... Fanlar bile dönmüyor."))
 		_symptom_msg(sym, fb)
 		return
 	if code == "psu_watts" or code == "psu_connectors":
@@ -630,8 +1219,9 @@ func power_button() -> void:
 	powered = true
 	cpu_temp = 36.0
 	_last_temp_i = -1
+	_cap_t = 0.0
 	var led_name: String = str(sym.get("led", _fallback_led(code)))
-	if led_name != "" and debug_leds.has(led_name):
+	if has_debug_leds() and led_name != "" and debug_leds.has(led_name):
 		var lm: StandardMaterial3D = debug_leds[led_name]
 		lm.albedo_color = Color(1.0, 0.45, 0.1)
 		lm.emission_enabled = true
@@ -657,24 +1247,42 @@ func power_button() -> void:
 		match screen:
 			"no_signal": monitor.show_no_signal()
 			"no_boot": monitor.show_no_boot()
+			"artifact": monitor.show_artifact(self)
+			"virus": monitor.show_virus(self)
+			"os_bsod": monitor.show_bsod("CRITICAL_PROCESS_DIED", "İşletim sistemi dosyaları bozuk.\nKurulum USB'si veya Servis Paneli'nden format atın.")
+			"driver_warn": monitor.show_desktop_warn(self, "Sürücü Hatası (Kod 43)", "Görüntü sürücüsü çakışıyor.\nMonitörden (E) Servis Paneli > Yazılım ile onarın.")
+			"boot_order": monitor.show_bios_warn("BilgiBIOS — Açılış Sırası Hatası", "PXE-E61: Ağdan başlatılamadı.\nMonitörden (E) BIOS > Boot Sırasını düzeltin.")
+			"bios_old": monitor.show_bios_warn("BilgiBIOS — Eski Sürüm", "Yeni işlemci tam tanınmadı (BIOS güncellemesi gerekli).\nKurulum & BIOS USB'si veya BIOS sekmesiyle güncelleyin.")
+			"disk_full": monitor.show_desktop_warn(self, "Disk Dolu (%99)", "C: sürücüsünde boş alan kalmadı.\nServis Paneli > Yazılım'dan Disk Temizliği yapın.")
+			"disk_warn": monitor.show_desktop_warn(self, "SMART Disk Uyarısı", "Sabit diskte bad sector tespit edildi!\nSMART sağlığı kritik — diski değiştirin.")
+			"cmos_warn": monitor.show_bios_warn("CMOS Checksum Error", "BIOS tarih/saat sıfırlandı (01.01.2001).\nCMOS pilini (CR2032) değiştirin.")
 			"boot": monitor.boot(self)
 	_symptom_msg(sym, _fallback_msg(code))
 
 
 func _fallback_led(code: String) -> String:
 	match code:
-		"socket", "cooler", "cooler_socket", "cooler_height", "cooler_rad": return "CPU"
-		"ddr_notch", "ram_slot_limit": return "DRAM"
-		"no_display", "gpu_length": return "VGA"
-		"cmos", "m2_limit", "sata_limit": return "BOOT"
+		"socket", "cooler", "cooler_socket", "cooler_height", "cooler_rad", "cpu_pins", "cable_cpu", "sw_bios_update": return "CPU"
+		"ddr_notch", "ram_slot_limit", "ram_unseated": return "DRAM"
+		"no_display", "gpu_length", "cable_gpu", "gpu_artifact": return "VGA"
+		"cmos", "m2_limit", "sata_limit", "cable_sata", "sw_boot_order", "hdd_smart": return "BOOT"
 	return ""
 
 
 func _fallback_screen(code: String) -> String:
 	match code:
-		"cooler": return "boot"
-		"cmos": return "no_boot"
-		"no_display", "ddr_notch", "socket", "ram_slot_limit", "gpu_length": return "no_signal"
+		"cooler", "fan", "mobo_cap", "sw_xmp_off": return "boot"
+		"cmos": return "cmos_warn"
+		"cable_sata": return "no_boot"
+		"gpu_artifact": return "artifact"
+		"sw_virus": return "virus"
+		"sw_os_corrupt": return "os_bsod"
+		"sw_driver": return "driver_warn"
+		"sw_boot_order": return "boot_order"
+		"sw_bios_update": return "bios_old"
+		"sw_disk_full": return "disk_full"
+		"hdd_smart": return "disk_warn"
+		"no_display", "ddr_notch", "socket", "ram_slot_limit", "gpu_length", "cpu_pins", "ram_unseated", "cable_cpu", "cable_gpu": return "no_signal"
 	return "no_signal"
 
 
@@ -682,9 +1290,17 @@ func _fallback_msg(code: String) -> String:
 	match code:
 		"no_display": return "Ekrana görüntü gelmiyor: bu işlemcide dahili grafik yok, ekran kartı gerekli."
 		"cooler": return "CPU soğutucu takılı değil veya arızalı! İşlemci hızla ısınıyor."
+		"fan": return "Kasa fanlarından biri dönmüyor!"
 		"cmos": return "CMOS pili eksik veya bitik — BIOS ayarları sıfırlandı."
 		"ddr_notch": return "RAM çentiği anakartla uyumsuz, sistem açılmıyor."
 		"socket": return "İşlemci soketi anakartla uyumsuz!"
+		"cpu_pins": return "İşlemci pinleri eğilmiş! Sistem POST geçmiyor."
+		"ram_unseated": return "RAM yuvasına tam oturmamış!"
+		"cable_gpu": return "Ekran kartı güç kablosu takılı değil!"
+		"cable_cpu": return "CPU 8-pin güç kablosu takılı değil!"
+		"cable_sata": return "SATA veri/güç kablosu gevşek — disk bulunamıyor!"
+		"cable_24pin": return "24-pin anakart güç kablosu takılı değil!"
+		"cable_fp": return "Ön panel güç düğmesi kablosu takılı değil!"
 	return "Sistem uyumsuzluk nedeniyle açılmadı (%s)." % code
 
 
@@ -737,6 +1353,8 @@ func _process(delta: float) -> void:
 	for r in case_fans:
 		r.rotate_object_local(Vector3.UP, delta * 30.0 * spin)
 	for p in installed_parts():
+		if p.broken:
+			continue
 		for r in p.rotors:
 			r.rotate_object_local(Vector3.UP, delta * 28.0)
 	var i := 0
@@ -750,12 +1368,20 @@ func _process(delta: float) -> void:
 	inner_light.light_color = Color.from_hsv(_hue, 0.6, 1.0)
 
 
-## CPU sıcaklığı: masaüstü açıkken ısınma/soğuma; aşırı ısınırsa bilgisayar kapanır.
+## CPU sıcaklığı: masaüstü açıkken ısınma/soğuma; aşırı ısınırsa (veya şişmiş kondansatörde) bilgisayar kapanır.
 func _heat(delta: float) -> void:
 	if monitor == null or not monitor.desktop.visible:
 		return
-	var code := diagnose()
-	var hot := code == "overheat" or code == "cooler"
+	var issues := diagnose_all()
+	var mobo = part_in("mobo")
+	if mobo != null and mobo.bad_caps:
+		_cap_t += delta
+		if _cap_t >= 2.2:
+			power_off()
+			Game.sfx.error()
+			Game.msg("Anakart voltaj dalgalanmasıyla kapandı (şişmiş kondansatör)!", Color(1, 0.4, 0.3))
+			return
+	var hot := issues.has("overheat") or issues.has("cooler")
 	var target := 99.0 if hot else 45.0
 	cpu_temp = move_toward(cpu_temp, target, (14.0 if hot else 18.0) * delta)
 	var ti := int(cpu_temp)

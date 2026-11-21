@@ -13,10 +13,16 @@ var broken := false
 var health := 100     # parça sağlığı (0..100, özellikle HDD/SMART ve Faz 3 için)
 var paste_ok := true  # CPU için: termal macun sağlam mı
 var cheap := false    # muadil (ucuz) parça: garantide bozulma riski taşır
+var seated := true    # RAM tam oturmuş mu (false ise temassızlık)
+var bent_pins := false  # CPU eğik pin hasarı
+var bad_caps := false   # anakart şişmiş kondansatör hasarı
+var vram_bad := false   # GPU VRAM artefakt arızası
+var is_test_part := false  # dükkânın yedek test parçası (teslimde bırakılamaz)
 var display_name := ""
 var slot = null
 var rotors: Array = []
 var rgb_mats: Array = []
+var _defect_node: Node3D = null
 
 
 ## Kanonik kurulum: SKU kimliği ile parçayı oluşturur.
@@ -151,3 +157,54 @@ func make_cheap() -> void:
 	var info: Dictionary = PM.info(part_type)
 	var sz: Vector3 = info.size
 	MU.box(self, Vector3(sz.x * 0.25, 0.002, sz.z * 0.25), info.center + Vector3(0, sz.y * 0.5 + 0.001, 0), MU.mat(Color(1.0, 0.55, 0.1), 0, 0.6))
+
+
+## Yedek test parçası: mavi TEST etiketi eklenir, müşteriye teslim edilemez.
+func make_test_part() -> void:
+	is_test_part = true
+	var base_name := PM.display_name_sku(sku) if not sku.is_empty() else PM.display_name(part_type, tier)
+	display_name = base_name + " (TEST)"
+	var info: Dictionary = PM.info(part_type)
+	var sz: Vector3 = info.size
+	MU.box(self, Vector3(maxf(sz.x * 0.45, 0.014), 0.003, maxf(sz.z * 0.45, 0.014)), info.center + Vector3(0, sz.y * 0.5 + 0.002, 0), MU.mat(Color(0.15, 0.55, 1.0), 0.1, 0.4, 0.4))
+
+
+## CPU eğik pin işareti (sökünce pin hasarı görünür).
+func mark_bent_pins(on: bool) -> void:
+	bent_pins = on
+	_clear_defect_node()
+	if not on:
+		return
+	_defect_node = Node3D.new()
+	_defect_node.name = "BentPins"
+	add_child(_defect_node)
+	var dmg := MU.mat(Color(0.95, 0.25, 0.1), 0.4, 0.4, 0.4)
+	for i in 4:
+		MU.box(_defect_node, Vector3(0.003, 0.005, 0.003), Vector3(-0.001, -0.012 + i * 0.008, -0.012 + (i % 2) * 0.022), dmg, Vector3(0, 0, 28))
+
+
+func straighten_pins() -> void:
+	mark_bent_pins(false)
+
+
+## Anakart şişmiş kondansatör görseli.
+func mark_bad_caps(on: bool) -> void:
+	bad_caps = on
+	_clear_defect_node()
+	if not on:
+		return
+	_defect_node = Node3D.new()
+	_defect_node.name = "BadCaps"
+	add_child(_defect_node)
+	var bulge := MU.mat(Color(0.28, 0.14, 0.06), 0.3, 0.7)
+	var leak := MU.mat(Color(0.12, 0.07, 0.03), 0.1, 0.9)
+	for i in 3:
+		var z := -0.055 + i * 0.014
+		MU.cyl(_defect_node, 0.0042, 0.011, Vector3(0.010, 0.055, z), bulge, Vector3(0, 0, 90), 10)
+		MU.sphere(_defect_node, 0.005, Vector3(0.007, 0.055, z), leak, Vector3(0.3, 1.2, 1.2))
+
+
+func _clear_defect_node() -> void:
+	if _defect_node != null and is_instance_valid(_defect_node):
+		_defect_node.queue_free()
+	_defect_node = null

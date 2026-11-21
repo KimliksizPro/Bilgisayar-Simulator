@@ -125,6 +125,7 @@ func _carry_and_repair(main, jobs, p) -> void:
 	_check(bench_events == ev + 1 and str(r2.status) == "on_bench" and str(r2.location) == "bench", "tezgâh sözleşmesi")
 	var pc = Game.bench_device
 	await get_tree().create_timer(0.35).timeout
+	pc.unscrew_all()
 	pc.toggle_panel()
 	var slot = pc.slots.cpu
 	slot.interact(p)  # sök
@@ -133,6 +134,7 @@ func _carry_and_repair(main, jobs, p) -> void:
 	main._buy(p, "cpu", 1)
 	slot.interact(p)  # tak
 	_check(slot.part != null and not slot.part.broken and pc.diagnose() == "ok", "işlemci takılmadı")
+	pc.fasten_all()
 	pc.toggle_panel()
 	_check(jobs.pick_up_device(r2, p) == "" and Game.bench_device == null and bench_events == ev + 2, "tezgâhtan alma / null sözleşmesi")
 	var slot_i: int = jobs.rack.free_slot()
@@ -153,14 +155,17 @@ func _carry_and_repair(main, jobs, p) -> void:
 	jobs.place_on_bench()
 	await get_tree().create_timer(0.35).timeout
 	var pc1 = Game.bench_device
+	pc1.unscrew_all()
 	pc1.toggle_panel()
 	pc1.slots.psu.interact(p)
 	main._bin_use(p)
 	_check(pc1.slots.psu.part == null, "psu sökülmedi")
-	# iş 3: toz ve kuru macun (parça durumu kayda girsin)
+	# iş 3: toz, kuru macun ve v5 kablo/yazılım alanları kayda girsin
 	var pc3 = jobs.devices[103]
 	pc3.set_dust(0.77)
 	pc3.slots.cpu.part.paste_ok = false
+	pc3.cables["sata"] = "unplugged"
+	pc3.sw_faults = ["sw_driver"]
 	print("OK taşıma, tezgâh sözleşmesi, hazır kuralı")
 
 
@@ -243,9 +248,11 @@ func _pickups(main, jobs, p) -> void:
 	await get_tree().create_timer(0.4).timeout
 	# tamir et (psu tak), doğru cihazı ver
 	var pc1 = Game.bench_device
+	pc1.unscrew_all()
 	pc1.toggle_panel()
 	main._buy(p, "psu", 1)
 	pc1.slots.psu.interact(p)
+	pc1.fasten_all()
 	pc1.toggle_panel()
 	_check(pc1.diagnose() == "ok", "psu takılınca teşhis")
 	jobs.pick_up_device(r1, p)

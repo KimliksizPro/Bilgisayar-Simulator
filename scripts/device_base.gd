@@ -15,6 +15,10 @@ var powered := false
 var panel_open := false     # servis modu: laptopta alt kapak, telefonda ekran açık
 var screen_state := "off"   # ekranda ne görünüyor (test ve teşhis için)
 var device_name := "Cihaz"
+var dust := 0.0
+var liquid_damage := false
+var hinge_loose := false
+var sw_fault := false
 
 var vp: SubViewport
 var scr_root: Control
@@ -45,10 +49,27 @@ func slot_open(_s) -> bool:
 
 func fill(parts: Array) -> void:
 	for p in parts:
+		if p is Dictionary:
+			if p.has("flags"):
+				var fl: Dictionary = p.flags
+				dust = float(fl.get("dust", dust))
+				liquid_damage = bool(fl.get("liquid_damage", liquid_damage))
+				hinge_loose = bool(fl.get("hinge_loose", hinge_loose))
+				sw_fault = bool(fl.get("sw_fault", sw_fault))
+			else:
+				var sn := str(p.get("slot", ""))
+				if slots.has(sn) and slots[sn].part == null:
+					var sku_id := str(p.get("sku", ""))
+					var part = PART.new().setup_sku(sku_id, bool(p.get("broken", false))) if sku_id != "" else PART.new().setup(str(p.get("type", "")), int(p.get("tier", 1)), bool(p.get("broken", false)))
+					if bool(p.get("broken", false)):
+						DP.add_damage(part, part.part_type)
+					slots[sn].install(part)
+			continue
 		var part = PART.new().setup(p[1], p[2], p[3])
 		if p[3]:
 			DP.add_damage(part, p[1])
 		slots[p[0]].install(part)
+	_update_visuals()
 
 
 func part_in(slot_name: String):
@@ -102,8 +123,13 @@ func interact(player) -> void:
 
 # ---------------------------------------------------------------- teşhis / teslim
 
+func diagnose_all() -> Array[String]:
+	return []
+
+
 func diagnose() -> String:
-	return "ok"
+	var all := diagnose_all()
+	return all[0] if not all.is_empty() else "ok"
 
 
 ## Teslimde müşteri itirazı ("" = sorun yok).

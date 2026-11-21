@@ -51,20 +51,20 @@ Amaç: yeni parça/arıza/iş eklemek = bir `.tres` dosyası eklemek.
 | 1.5 🟡 | (Raf konumları artık veriden; personel rotaları kısmen sabit) Raf / tezgâh / personel rota noktaları `Marker3D` olsun (`staff.gd:13-24` sabit koordinatları kalksın) | M |
 | 1.6 ✅ | Başsız test betikleri: JobDirector dağılımı, uyumluluk kuralları, kayıt-yükleme gidiş-dönüşü | M |
 
-## Faz 1.5 — Tezgâh modu ve çoklu iş (oynanışın kalbi) ⭐
+## Faz 1.5 — Tezgâh modu ve çoklu iş (oynanışın kalbi) ✅ TAMAMLANDI
 
 Şu an tamir "uzaktan bakıp E'ye basarak" yapılıyor. PC Building Simulator'da asıl oyun tezgâhta, kasanın etrafında
 geçiyor. Bu faz oyunu "prototip"ten "oynanabilir oyun"a taşıyan en önemli adım.
 
-**Tezgâh modu** (`Tab`, `scripts/bench_mode.gd`; 1.5.4 vida/söküm sırası Faz 3.5'e kaldı, 1.5.5: ad var, sağlık/spec henüz yok)
+**Tezgâh modu** (`Tab`, `scripts/bench_mode.gd`)
 
 | # | İş | Boyut |
 | --- | --- | --- |
 | 1.5.1 ✅ | Tezgâha `Tab` → kamera yumuşakça tezgâh görünümüne geçer, fare serbest kalır; `Esc`/`Tab` ile çıkış | M |
 | 1.5.2 ✅ | Kasanın etrafında **yörünge kamera**: sağ tık sürükle döndür, tekerlek yakınlaştır, kasayı yan yatır / çevir | M |
 | 1.5.3 ✅ | Fareyle parçaya tıkla → söküm; parça **tezgâh tepsisine** iner. Tepsiden sürükle → yuvaya bırak; uyumlu yuvalar yeşil, uyumsuzlar kırmızı yanar (hayalet önizleme) | L |
-| 1.5.4 | Söküm sırası: yan kapak vidaları → kapak → GPU braketi vidası → GPU kilidi → GPU (Faz 3.5 tornavida ile) | M |
-| 1.5.5 (kısmen) | Parçanın üstüne gelince küçük bilgi kartı: ad, durum, spec, (teşhis aleti varsa) sağlık | S |
+| 1.5.4 ✅ | Söküm sırası: yan kapak vidaları → kapak → GPU braketi vidası → GPU / M.2 vidası (tornavida & otomatik vida ile) | M |
+| 1.5.5 ✅ | Parçanın üstüne gelince küçük bilgi kartı: ad, durum, spec, vidalı/oturmamış/kusur bilgisi, (teşhis aleti varsa) SMART % sağlık & multimetre durumu | S |
 | 1.5.6 ✅ | Tezgâh yan paneli: iş fişi (müşteri ne istedi), yapılacaklar listesi, tepside duran parçalar | M |
 | 1.5.7 ✅ | Laptop ve telefon için de aynı mod (yakın plan, alt kapak vidaları, ters çevirme) | M |
 | 1.5.8 ✅ | Birinci şahıs modda da tamir yapılabilsin ama tezgâh modu varsayılan ve rahat yol olsun | S |
@@ -97,26 +97,26 @@ Hayali markalarla (lisans derdi yok; PCBS1 de bütçe parçalarda hayali marka k
 | 2.8 ✅ | `Compatibility.check(slot, parça, sistem)` → `{ok, sebep}`; yuvaya bakınca ipucu: "Bu anakart AM5, işlemci AM4" · ParçaNet'te "Uyumluluk" düğmesi · canlı watt göstergesi | M |
 | 2.9 ✅ | İş üretici asla uyumsuz başlangıç sistemi yaratmasın (PCBS2 v1.6 dersi) — ama bazı işler **bilerek** uyumsuzluk içersin (müşteri yanlış RAM almış vb.) | S |
 
-## Faz 3 — Arıza ve teşhis derinliği
+## Faz 3 — Arıza ve teşhis derinliği ✅ TAMAMLANDI
 
-Hedef: 14 sonuç → **30+ arıza**, çoklu arıza, teşhis gerçekten bir bulmaca.
+Hedef: 14 sonuç → **50 arıza**, çoklu arıza (`diagnose_all()`), etkileşimli kablolar/vidalar, teşhis aletleri ve BIOS/Servis paneli.
 
-**Arıza havuzu (önerilen):**
+**Arıza havuzu (50 arıza):**
 
-- *Donanım:* PSU ölü · PSU yetersiz watt (yükte kapanma) · RAM bozuk (tek modül, çift RAM'de hangisi?) · RAM yuvaya tam oturmamış · CPU bozuk · CPU pinleri eğik (AM4) / soket pini eğik (LGA) · GPU bozuk · GPU artefakt (VRAM) · GPU güç kablosu takılı değil · SSD/HDD ölü · HDD bad sector (yavaşlık, SMART) · anakart ölü · şişmiş kondansatör · CMOS pili bitik (saat/BIOS sıfırlanıyor) · fan ölü · toz · kurumuş termal macun · 24-pin/CPU 8-pin gevşek · ön panel güç düğmesi kablosu çıkmış
-- *Yazılım:* virüs/reklam yazılımı · bozuk işletim sistemi (format + kurulum USB) · sürücü sorunu · yanlış boot sırası (BIOS) · XMP kapalı / RAM düşük hızda · BIOS güncellemesi gerekiyor (yeni CPU eski anakartta) · disk dolu
-- *Laptop:* klavye, menteşe, şarj soketi, fan/toz, Wi-Fi kartı, sıvı teması
-- *Telefon:* kamera, hoparlör/mikrofon, arka cam, sıvı teması, yazılım (format)
+- *Donanım (25):* PSU ölü · PSU yetersiz watt (yükte kapanma) · RAM bozuk · RAM yuvaya tam oturmamış · CPU bozuk · CPU pinleri eğik · GPU bozuk · GPU artefakt (VRAM) · GPU güç kablosu takılı değil · SSD/HDD ölü · HDD bad sector (SMART) · anakart ölü · şişmiş kondansatör · CMOS pili bitik · fan ölü · toz · kurumuş termal macun · 24-pin/CPU 8-pin/SATA gevşek · ön panel güç düğmesi kablosu çıkmış · uyumsuz DDR/PSU/iGPU
+- *Yazılım & BIOS (7):* virüs/reklam yazılımı · bozuk işletim sistemi (BSOD + format USB) · sürücü çakışması (Kod 43) · yanlış boot sırası (BIOS) · XMP kapalı · BIOS güncellemesi gerekiyor · disk dolu (%99)
+- *Laptop (10):* RAM, SSD, batarya, ekran, klavye, Wi-Fi kartı, DC şarj soketi, fan tozu, gevşek menteşe, sıvı teması
+- *Telefon (8):* batarya, şarj soketi, ekran, arka kamera modülü, hoparlör, arka cam, sıvı teması, yazılım (bootloop/format)
 
 | # | İş | Boyut |
 | --- | --- | --- |
-| 3.1 | Yukarıdaki havuzu `FaultDef` olarak ekle, zorluk ve kilit seviyesine göre yay | L |
-| 3.2 | **Çoklu arıza** (toz + ölü fan, virüs + ölen disk) — `diagnose()` artık listeyi döndürsün | M |
-| 3.3 | **Debug LED'leri varsayılan olmaktan çıksın**: ucuz anakartlarda yok, sadece bip kodu; pahalı anakartlarda var. Duvar rehberi bip kodlarına dönüşsün | S |
-| 3.4 | **Teşhis aletleri** (geliştirme olarak alınır): PSU test cihazı, multimetre, RAM test USB'si, POST kartı, termal kamera, disk SMART aracı, antivirüs USB, Windows kurulum USB'si, yedek "test parçaları" (bilinen sağlam RAM/PSU ile değiştirerek eleme) | L |
-| 3.5 | **Tornavida ve vida mekaniği** (şu an masada süs): yan kapak, GPU braketi, M.2 vidası. İsteğe bağlı otomatik vida geliştirmesi (PCBS2 QoL) | M |
-| 3.6 | **Kablo bağlantıları**: 24-pin, CPU 8-pin, PCIe güç, SATA — takılı/gevşek durumu | M |
-| 3.7 | Kabloları düzenleme ve temizlik kalitesi müşteri memnuniyetine/bahşişe etki etsin (PCBS2, ReStory) | S |
+| 3.1 ✅ | Yukarıdaki 50 arızalık havuzu `FaultDef` olarak ekle, zorluk ve geliştirme kilidine göre yay (`data/faults.json`, `data/jobs.json`, `data/parts.json`) | L |
+| 3.2 ✅ | **Çoklu arıza** (`diagnose_all()`, `multi_*` şablonları, çoklu ipucu sayacı, `pc_service_panel.gd` BIOS/Yazılım/Teşhis paneli) | M |
+| 3.3 ✅ | **Debug LED'leri anakarta bağlı**: giriş anakartlarında gizli (yalnızca bip + `post_card` ile okunur), pahalı anakartlarda aktif; duvar posteri Bip & POST rehberi | S |
+| 3.4 ✅ | **Teşhis ve servis aletleri** (4 başlangıç: macun, hava, tornavida, IPA + 10 geliştirme: PSU test cihazı, multimetre, POST kartı, termal kamera, RAM USB, SMART USB, antivirüs USB, kurulum & BIOS USB, elektrikli tornavida, yedek test parçaları) | L |
+| 3.5 ✅ | **Tornavida ve vida mekaniği**: yan kapak (2 vida), GPU braketi, M.2 vidası; sıkılıyken söküm/kapak kilidi + teslim kontrolü + `auto_screw` geliştirme | M |
+| 3.6 ✅ | **Kablo bağlantıları**: 24-pin, CPU 8-pin, PCIe GPU, SATA, ön panel — gevşek/takılı görsel ve teşhis | M |
+| 3.7 ✅ | Kablo düzenleme (`Kabloları Düzenle` +30 TL) ve kozmetik temizlik (`had_dust` +20 TL) müşteri bahşişi | S |
 
 ## Faz 4 — Depo ve envanter
 

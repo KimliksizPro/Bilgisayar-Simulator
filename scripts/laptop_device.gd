@@ -19,6 +19,8 @@ var cover: Node3D
 var touchpad: Node3D
 var led_mat: StandardMaterial3D
 var hum: AudioStreamPlayer3D
+var _dust_node: Node3D
+var _liquid_node: Node3D
 
 
 func _ready() -> void:
@@ -68,14 +70,10 @@ func _build() -> void:
 	_show("off")
 
 
-func _build_keyboard(dark: Material) -> void:
-	# klavye çukuru + tuşlar
-	MU.rbox(base, Vector3(0.3, 0.0008, 0.105), Vector3(0, BH + 0.0001, -0.035), MU.mat(Color(0.03, 0.03, 0.035), 0.1, 0.6), 0.003)
-	var key_m := MU.mat(Color(0.09, 0.09, 0.1), 0.1, 0.55)
-	for r in 5:
-		for c in 14:
-			MU.rbox(base, Vector3(0.0175, 0.0012, 0.0165), Vector3(-0.1365 + c * 0.021, BH + 0.0008, -0.077 + r * 0.02), key_m, 0.0015)
-	MU.rbox(base, Vector3(0.12, 0.0012, 0.0165), Vector3(-0.01, BH + 0.0008, 0.023), key_m, 0.0015)
+func _build_keyboard(_dark: Material) -> void:
+	# klavye çukuru (sökülebilir klavye modülü)
+	MU.rbox(base, Vector3(0.305, 0.0008, 0.108), Vector3(0, BH + 0.0001, -0.035), MU.mat(Color(0.03, 0.03, 0.035), 0.1, 0.6), 0.003)
+	_add_slot("kbd", "lap_kbd", base, Vector3(0, BH + 0.001, -0.035))
 	# güç düğmesi (sağ üst) + güç LED'i (ön kenar)
 	MU.rbox(base, Vector3(0.018, 0.0014, 0.012), Vector3(0.14, BH + 0.0006, -D / 2 + 0.014), MU.mat(Color(0.15, 0.15, 0.17), 0.3, 0.4), 0.002)
 	MU.cyl(base, 0.0025, 0.0003, Vector3(0.14, BH + 0.0014, -D / 2 + 0.014), MU.mat(Color(0.8, 0.8, 0.82), 0.6, 0.3), Vector3.ZERO, 12)
@@ -130,7 +128,24 @@ func _build_internals(inner: Material, dark: Material) -> void:
 	# yuvalar (parçalar aşağı bakar: ters dönünce yukarı bakarlar)
 	_add_slot("ram", "lap_ram", base, Vector3(0.0, by - 0.0018, -0.07), Vector3(0, 0, 180))
 	_add_slot("ssd", "lap_ssd", base, Vector3(0.088, by - 0.0016, -0.03), Vector3(0, 0, 180))
+	_add_slot("wifi", "lap_wifi", base, Vector3(-0.045, by - 0.0016, -0.075), Vector3(0, 0, 180))
+	_add_slot("dc", "lap_dc", base, Vector3(-0.145, by - 0.0035, -0.015), Vector3(0, 0, 180))
 	_add_slot("bat", "lap_bat", base, Vector3(0.0, BH - 0.0038 - 0.0042, 0.055), Vector3(0, 0, 180))
+	# toz ve sıvı teması görselleri
+	_dust_node = MU.no_merge(Node3D.new())
+	base.add_child(_dust_node)
+	var dm := MU.mat(Color(0.55, 0.52, 0.46), 0, 0.98)
+	MU.cyl(_dust_node, 0.026, 0.0015, Vector3(-0.122, by - 0.0052, -0.065), dm, Vector3.ZERO, 16)
+	MU.rbox(_dust_node, Vector3(0.056, 0.002, 0.012), Vector3(-0.126, by - 0.0048, -0.104), dm, 0.001)
+	_dust_node.visible = false
+	_liquid_node = MU.no_merge(Node3D.new())
+	base.add_child(_liquid_node)
+	var ox := MU.mat(Color(0.32, 0.65, 0.36), 0.2, 0.85)
+	var rust := MU.mat(Color(0.45, 0.22, 0.08), 0.1, 0.9)
+	for p in [Vector3(-0.02, by - 0.0016, -0.055), Vector3(0.025, by - 0.0016, -0.048), Vector3(-0.055, by - 0.0016, -0.038)]:
+		MU.sphere(_liquid_node, 0.006, p, ox, Vector3(1.6, 0.3, 1.4))
+	MU.sphere(_liquid_node, 0.005, Vector3(0.005, by - 0.0016, -0.065), rust, Vector3(1.8, 0.25, 1.2))
+	_liquid_node.visible = false
 
 
 ## Alt kapak: vidalı, havalandırma ızgaralı, lastik ayaklı. Ayrı düğüm: sökülüp masaya konur.
@@ -185,12 +200,19 @@ func _build_lid(shell: Material, dark: Material) -> void:
 func slot_open(s) -> bool:
 	if powered:
 		return false
-	if s.name == "scr":
-		return not panel_open   # ekran paneli: laptop düz dururken
+	if s.name == "scr" or s.name == "kbd":
+		return not panel_open   # ekran ve klavye: laptop düz dururken
 	return panel_open
 
 
 func _update_visuals() -> void:
+	if _dust_node:
+		_dust_node.visible = dust > 0.25
+	if _liquid_node:
+		_liquid_node.visible = liquid_damage
+	if lid and not panel_open and not (_anim and _anim.is_running()):
+		lid.rotation.z = 0.06 if hinge_loose else 0.0
+		lid.rotation.x = LID_OPEN + (0.28 if hinge_loose else 0.0)
 	if touchpad == null:
 		return
 	var b = part_in("bat")
@@ -207,6 +229,7 @@ func toggle_panel() -> void:
 	var tw := _new_anim()
 	if panel_open:
 		tw.tween_property(lid, "rotation:x", 0.0, 0.35).set_trans(Tween.TRANS_CUBIC)
+		tw.parallel().tween_property(lid, "rotation:z", 0.0, 0.35)
 		tw.tween_property(flip, "rotation:z", PI, 0.5).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
 		tw.tween_property(cover, "position", Vector3(0, -0.05, 0), 0.2)
 		tw.tween_property(cover, "position", Vector3(COVER_OFF.x, -0.05, 0), 0.25)
@@ -217,19 +240,99 @@ func toggle_panel() -> void:
 		tw.tween_property(cover, "position", Vector3(0, -0.05, 0), 0.25)
 		tw.tween_property(cover, "position", Vector3.ZERO, 0.2)
 		tw.tween_property(flip, "rotation:z", 0.0, 0.5).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
-		tw.tween_property(lid, "rotation:x", LID_OPEN, 0.35).set_trans(Tween.TRANS_CUBIC)
+		tw.tween_property(lid, "rotation:x", LID_OPEN + (0.28 if hinge_loose else 0.0), 0.35).set_trans(Tween.TRANS_CUBIC)
+		tw.parallel().tween_property(lid, "rotation:z", 0.06 if hinge_loose else 0.0, 0.35)
 
 
-func diagnose() -> String:
+func diagnose_all() -> Array[String]:
+	var out: Array[String] = []
+	if liquid_damage:
+		out.append("lap_liquid")
+	if not _ok("dc"):
+		out.append("dc")
 	if not _ok("ram"):
-		return "ram"
+		out.append("ram")
 	if not _ok("ssd"):
-		return "ssd"
+		out.append("ssd")
 	if not _ok("bat"):
-		return "bat"
+		out.append("bat")
 	if not _ok("scr"):
-		return "scr"
-	return "ok"
+		out.append("scr")
+	if not _ok("kbd"):
+		out.append("kbd")
+	if not _ok("wifi"):
+		out.append("wifi")
+	if dust > 0.45:
+		out.append("lap_dust")
+	if hinge_loose:
+		out.append("lap_hinge")
+	return out
+
+
+func tool_hint(tool, _slot) -> String:
+	match str(tool.tool_type):
+		"air":
+			return "Tozlu laptop fanını temizle  [E]" if dust > 0.05 else "Hava sık  [E] (fan temiz)"
+		"screwdriver":
+			return "Gevşek ekran menteşesini sık  [E]" if hinge_loose else "Menteşe vidaları sağlam"
+		"ipa":
+			return "Sıvı oksidini IPA ile temizle  [E]" if liquid_damage else "Anakartı IPA ile temizle  [E]"
+		"multimeter", "thermal_cam", "ram_usb", "smart_usb":
+			return "%s ile laptopu tara  [E]" % tool.display_name
+	return super.tool_hint(tool, _slot)
+
+
+func tool_use(player, tool, _slot) -> void:
+	match str(tool.tool_type):
+		"air":
+			tool.puff(player)
+			if dust > 0.05:
+				dust = 0.0
+				_update_visuals()
+				Game.sfx.spray()
+				Game.msg("Laptop fanı ve soğutma petekleri temizlendi!", Color(0.5, 1.0, 0.5))
+			else:
+				Game.msg("Laptop fanı zaten temiz.")
+		"screwdriver":
+			if hinge_loose:
+				hinge_loose = false
+				Game.sfx.screw()
+				_update_visuals()
+				Game.msg("Ekran menteşesi sıkıldı, kapak hizalandı!", Color(0.5, 1.0, 0.5))
+			else:
+				Game.msg("Menteşe vidaları zaten sıkılı.")
+		"ipa":
+			tool.puff(player, Color(0.72, 0.96, 0.82, 0.35))
+			if liquid_damage:
+				liquid_damage = false
+				_update_visuals()
+				Game.msg("Anakarttaki sıvı oksidi IPA ile temizlendi!", Color(0.5, 1.0, 0.5))
+			else:
+				Game.msg("Anakart kontakları IPA ile temizlendi.")
+		"multimeter":
+			Game.sfx.beep_scan()
+			if liquid_damage:
+				Game.msg("Multimetre (Laptop): Anakartta SIVI KISA DEVRİSİ!", Color(1.0, 0.4, 0.3))
+			elif not _ok("dc"):
+				Game.msg("Multimetre (Laptop): DC şarj soketinde güç yok (0V)!", Color(1.0, 0.45, 0.3))
+			elif not _ok("wifi") or not _ok("kbd") or not _ok("bat"):
+				Game.msg("Multimetre (Laptop): Arızalı parça tespit edildi (%s)!" % diagnose(), Color(1.0, 0.5, 0.3))
+			else:
+				Game.msg("Multimetre (Laptop): Tüm voltaj hatları normal.", Color(0.5, 1.0, 0.5))
+		"thermal_cam":
+			Game.sfx.beep_scan()
+			Game.msg("Termal Kamera (Laptop): Toz oranı %%%d%s." % [roundi(dust * 100.0), " · AŞIRI ISINMA!" if dust > 0.45 else " · Normal"],
+				Color(1.0, 0.45, 0.3) if dust > 0.45 else Color(0.5, 1.0, 0.5))
+		"ram_usb":
+			Game.sfx.beep_scan()
+			Game.msg("RAM Testi (Laptop): %s" % ("SO-DIMM bellek ARIZALI!" if not _ok("ram") else "SO-DIMM bellek OK."),
+				Color(1.0, 0.45, 0.3) if not _ok("ram") else Color(0.5, 1.0, 0.5))
+		"smart_usb":
+			Game.sfx.beep_scan()
+			Game.msg("SMART USB (Laptop): %s" % ("M.2 SSD yanıt vermiyor!" if not _ok("ssd") else "M.2 SSD %98 sağlık (OK)."),
+				Color(1.0, 0.45, 0.3) if not _ok("ssd") else Color(0.5, 1.0, 0.5))
+		_:
+			super.tool_use(player, tool, _slot)
 
 
 func power_button() -> void:
@@ -249,6 +352,14 @@ func power_button() -> void:
 	hum.play()
 	var code := diagnose()
 	match code:
+		"lap_liquid":
+			hum.stop()
+			_show("black")
+			Game.sfx.beeps([0.1, 0.1])
+			Game.msg("Kısa devre koruması! Anakartta sıvı teması var, IPA ile temizle.", Color(1, 0.45, 0.3))
+		"dc":
+			_boot_then("dc")
+			Game.msg("Laptop prizle şarj olmuyor — DC güç girişi arızalı!", Color(1, 0.55, 0.35))
 		"ram":
 			if part_in("ram") == null:
 				_show("black")
@@ -272,6 +383,18 @@ func power_button() -> void:
 				Game.msg("Fan dönüyor, güç ışığı yanıyor... ama ekran paneli takılı değil!", Color(1, 0.6, 0.4))
 			else:
 				Game.msg("Laptop çalışıyor ama kırık ekranda görüntü bozuk: renkli çizgiler, kara lekeler.", Color(1, 0.6, 0.4))
+		"kbd":
+			_boot_then("kbd")
+			Game.msg("Laptop açıldı ama klavye tuşları çalışmıyor!", Color(1, 0.65, 0.35))
+		"wifi":
+			_boot_then("wifi")
+			Game.msg("Laptop açıldı ama Wi-Fi adaptörü algılanmıyor!", Color(1, 0.7, 0.35))
+		"lap_dust":
+			_boot_then("dust")
+			Game.msg("Fan çok gürültülü ve ısınıyor! Toz tıkamış, basınçlı havayla üfle.", Color(1, 0.65, 0.35))
+		"lap_hinge":
+			_boot_then("hinge")
+			Game.msg("Ekran kapağı gevşek sallanıyor — menteşe vidalarını tornavidayla sık!", Color(1, 0.75, 0.35))
 		"ok":
 			_boot_then("desktop")
 			Game.msg("Laptop sorunsuz açıldı, pil şarj oluyor!", Color(0.5, 1, 0.5))
@@ -322,7 +445,7 @@ func _paint(state: String) -> void:
 		"noboot":
 			_rect(Vector2.ZERO, s, Color(0, 0, 0))
 			_txt("BİLGİBOOK BIOS v1.08\n\nBoot device not found.\n\nPlease install an operating system\non your hard disk.\n\nHard Disk (3F0)  — F2: Kurulum", Vector2(18, 18), Vector2(370, 220), 15, Color(0.82, 0.82, 0.82))
-		"desktop", "bat":
+		"desktop", "bat", "dc", "kbd", "wifi", "dust", "hinge":
 			_wallpaper(Color(0.12, 0.5, 0.55), Color(0.2, 0.15, 0.5))
 			for i in 3:
 				_rect(Vector2(18, 16 + i * 52), Vector2(30, 26), [Color(0.95, 0.8, 0.3), Color(0.4, 0.9, 0.4), Color(0.8, 0.8, 0.85)][i])
@@ -333,10 +456,20 @@ func _paint(state: String) -> void:
 			_txt("%02d:%02d" % [t.hour, t.minute], Vector2(s.x - 50, s.y - 22), Vector2(46, 20), 13)
 			if state == "desktop":
 				_txt("Pil %86  şarj oluyor", Vector2(s.x - 190, s.y - 22), Vector2(136, 20), 13, Color(0.55, 1, 0.55), HORIZONTAL_ALIGNMENT_RIGHT)
-			else:
+			elif state == "bat" or state == "dc":
 				var missing := part_in("bat") == null
-				_txt("Pil yok" if missing else "Pil %0", Vector2(s.x - 160, s.y - 22), Vector2(106, 20), 13, Color(1, 0.35, 0.3), HORIZONTAL_ALIGNMENT_RIGHT)
+				_txt("Şarj yok!" if state == "dc" else ("Pil yok" if missing else "Pil %0"), Vector2(s.x - 160, s.y - 22), Vector2(106, 20), 13, Color(1, 0.35, 0.3), HORIZONTAL_ALIGNMENT_RIGHT)
 				var box := _rect(Vector2(s.x - 228, s.y - 104), Vector2(220, 74), Color(0.1, 0.1, 0.14, 0.96))
 				_rect(Vector2(0, 0), Vector2(5, 74), Color(0.95, 0.3, 0.25), box)
-				_txt("Batarya uyarısı" if not missing else "Pil algılanmadı", Vector2(s.x - 216, s.y - 100), Vector2(200, 20), 14, Color(1, 0.45, 0.4))
-				_txt("Takılı, şarj olmuyor. Bataryayı değiştirmeniz önerilir." if not missing else "Prizden çekerseniz laptop kapanır.", Vector2(s.x - 216, s.y - 80), Vector2(204, 44), 12, Color(0.9, 0.9, 0.92))
+				var bt := "DC Güç Soketi Hatası" if state == "dc" else ("Batarya uyarısı" if not missing else "Pil algılanmadı")
+				var bd := "Adaptörden akım gelmiyor! DC soketi değiştirin." if state == "dc" else ("Takılı, şarj olmuyor. Bataryayı değiştirmeniz önerilir." if not missing else "Prizden çekerseniz laptop kapanır.")
+				_txt(bt, Vector2(s.x - 216, s.y - 100), Vector2(204, 20), 14, Color(1, 0.45, 0.4))
+				_txt(bd, Vector2(s.x - 216, s.y - 80), Vector2(204, 44), 12, Color(0.9, 0.9, 0.92))
+			else:
+				_txt("Sistem Uyarısı!", Vector2(s.x - 170, s.y - 22), Vector2(116, 20), 13, Color(1, 0.5, 0.3), HORIZONTAL_ALIGNMENT_RIGHT)
+				var box := _rect(Vector2(s.x - 238, s.y - 110), Vector2(228, 78), Color(0.1, 0.1, 0.14, 0.96))
+				_rect(Vector2(0, 0), Vector2(5, 78), Color(0.95, 0.55, 0.2), box)
+				var wt := "Klavye Yanıt Vermiyor" if state == "kbd" else ("Wi-Fi Kartı Yok" if state == "wifi" else ("Aşırı Isınma (96°C)" if state == "dust" else "Gevşek Menteşe"))
+				var wd := "Tuş matrisi arızalı. Klavye modülünü değiştirin." if state == "kbd" else ("Ağ bağdaştırıcısı bulunamadı. Wi-Fi kartını değiştirin." if state == "wifi" else ("Soğutma fanı tozla tıkalı! Hava spreyiyle temizleyin." if state == "dust" else "Ekran kapağı vidaları gevşek. Tornavidayla sıkın."))
+				_txt(wt, Vector2(s.x - 226, s.y - 104), Vector2(210, 20), 14, Color(1, 0.72, 0.35))
+				_txt(wd, Vector2(s.x - 226, s.y - 82), Vector2(210, 44), 12, Color(0.9, 0.9, 0.92))

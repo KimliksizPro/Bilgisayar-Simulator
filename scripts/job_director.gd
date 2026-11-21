@@ -17,10 +17,14 @@ static func family_of(id: String) -> String:
 	return t.family if t != null else ""
 
 
-## Uygunluk: para / gün / itibar eşikleri (şablondan).
+## Uygunluk: para / gün / itibar / geliştirme eşikleri (şablondan).
 func _eligible(id: String, money: int) -> bool:
 	var t = DB.jobs.template(id)
-	return t != null and money >= t.min_money and _day >= t.min_day and _rep >= t.min_rep
+	if t == null or money < t.min_money or _day < t.min_day or _rep < t.min_rep:
+		return false
+	if t.req_upgrade != "" and not Game.has_upgrade(t.req_upgrade):
+		return false
+	return true
 
 
 func _refill() -> void:

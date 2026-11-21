@@ -19,6 +19,12 @@ static func build(out: Dictionary, builder: String, m: Dictionary) -> void:
 		"tel_bat": _tel_bat(out.node, m)
 		"tel_scr": _tel_scr(out.node)
 		"tel_port": _tel_port(out.node)
+		"lap_kbd": _lap_kbd(out.node)
+		"lap_wifi": _lap_wifi(out.node, m)
+		"lap_dc": _lap_dc(out.node)
+		"tel_cam": _tel_cam(out.node)
+		"tel_spk": _tel_spk(out.node)
+		"tel_back": _tel_back(out.node)
 
 
 # ---------------------------------------------------------------- ortak
@@ -166,6 +172,70 @@ static func add_damage(part: Node3D, type: String) -> void:
 			for p in [Vector3(-0.002, 0.003, 0.006), Vector3(0.003, 0.0028, 0.002), Vector3(0.012, 0.0015, -0.002), Vector3(-0.012, 0.0012, 0.003)]:
 				MU.sphere(part, 0.0018, p, green, Vector3(1.2, 0.5, 1.0))
 			MU.sphere(part, 0.003, Vector3(0.006, 0.0008, -0.002), brown, Vector3(1.4, 0.3, 1.0))
+		"tel_back":
+			_crack(part, Vector2(0.07, 0.15), 0.0018)
+		"lap_dc":
+			var burn := MU.mat(Color(0.05, 0.04, 0.03), 0.1, 0.9)
+			var ox := MU.mat(Color(0.35, 0.62, 0.38), 0.2, 0.8)
+			MU.sphere(part, 0.004, Vector3(-0.006, 0.004, 0), burn, Vector3(1.2, 0.6, 1.0))
+			MU.sphere(part, 0.003, Vector3(0.004, 0.003, 0.002), ox, Vector3(1.3, 0.5, 1.0))
+		"tel_cam":
+			var crack_c := MU.mat(Color(0.85, 0.9, 0.95), 0.1, 0.3)
+			MU.box(part, Vector3(0.009, 0.0008, 0.0008), Vector3(-0.004, 0.003, -0.002), crack_c, Vector3(0, 35, 0))
+			MU.box(part, Vector3(0.008, 0.0008, 0.0008), Vector3(0.004, 0.003, 0.003), crack_c, Vector3(0, -40, 0))
+
+
+# ---------------------------------------------------------------- YENİ MOBİL PARÇALAR
+
+static func _lap_kbd(n: Node3D) -> void:
+	MU.rbox(n, Vector3(0.30, 0.0018, 0.105), Vector3.ZERO, MU.mat(Color(0.08, 0.085, 0.095), 0.3, 0.5), 0.002)
+	var key_m := MU.mat(Color(0.14, 0.14, 0.16), 0.1, 0.55)
+	for r in 5:
+		for c in 14:
+			MU.box(n, Vector3(0.017, 0.0014, 0.0155), Vector3(-0.136 + c * 0.021, 0.0014, -0.04 + r * 0.019), key_m)
+	# şerit kablo (+Z kenarı)
+	MU.box(n, Vector3(0.032, 0.0004, 0.022), Vector3(0, -0.001, 0.058), MU.mat(Color(0.88, 0.52, 0.12), 0, 0.45))
+
+
+static func _lap_wifi(n: Node3D, m: Dictionary) -> void:
+	MU.box(n, Vector3(0.03, 0.0012, 0.022), Vector3.ZERO, MU.tex_mat(MU.pcb_texture(Color(0.04, 0.22, 0.14)), Vector3(1, 1, 1), 0.5))
+	MU.box(n, Vector3(0.004, 0.0014, 0.016), Vector3(-0.013, 0, 0), _gold())
+	MU.rbox(n, Vector3(0.014, 0.0016, 0.014), Vector3(0.002, 0.0012, 0), _steel(), 0.0005)
+	_text(n, m.get("label", "Wi-Fi 6"), Vector3(0.002, 0.0022, 0), 18, Color(0.12, 0.12, 0.14), 0.00015)
+	for z in [-0.006, 0.006]:
+		MU.cyl(n, 0.0015, 0.0012, Vector3(0.012, 0.001, z), _gold(), Vector3.ZERO, 8)
+
+
+static func _lap_dc(n: Node3D) -> void:
+	MU.rbox(n, Vector3(0.016, 0.0075, 0.014), Vector3(-0.008, 0, 0), MU.mat(Color(0.06, 0.06, 0.07), 0.2, 0.5), 0.001)
+	MU.cyl(n, 0.0032, 0.006, Vector3(-0.015, 0, 0), _steel(), Vector3(0, 0, 90), 12)
+	var red := MU.mat(Color(0.8, 0.12, 0.12), 0, 0.6)
+	var blk := MU.mat(Color(0.04, 0.04, 0.05), 0, 0.6)
+	for i in 4:
+		MU.box(n, Vector3(0.018, 0.0012, 0.0015), Vector3(0.007, 0, -0.0045 + i * 0.003), red if i < 2 else blk)
+	MU.rbox(n, Vector3(0.006, 0.003, 0.012), Vector3(0.016, 0, 0), MU.mat(Color(0.92, 0.92, 0.88), 0, 0.5), 0.0006)
+
+
+static func _tel_cam(n: Node3D) -> void:
+	MU.rbox(n, Vector3(0.022, 0.0042, 0.022), Vector3.ZERO, _steel(), 0.0012)
+	for p in [Vector2(-0.005, -0.005), Vector2(0.005, -0.005), Vector2(0, 0.005)]:
+		MU.cyl(n, 0.0042, 0.0012, Vector3(p.x, 0.0024, p.y), MU.mat(Color(0.02, 0.02, 0.03), 0.5, 0.1), Vector3.ZERO, 14)
+		MU.cyl(n, 0.0022, 0.0014, Vector3(p.x, 0.0025, p.y), MU.mat(Color(0.12, 0.25, 0.45), 0.8, 0.05), Vector3.ZERO, 12)
+	MU.box(n, Vector3(0.008, 0.0004, 0.012), Vector3(0, -0.0015, 0.014), MU.mat(Color(0.85, 0.5, 0.1), 0, 0.5))
+
+
+static func _tel_spk(n: Node3D) -> void:
+	MU.rbox(n, Vector3(0.026, 0.0036, 0.014), Vector3.ZERO, MU.mat(Color(0.1, 0.1, 0.12), 0.2, 0.5), 0.001)
+	MU.cyl(n, 0.005, 0.001, Vector3(-0.005, 0.002, 0), _steel(), Vector3.ZERO, 14)
+	MU.box(n, Vector3(0.006, 0.001, 0.006), Vector3(0.008, 0.002, 0), _gold())
+
+
+static func _tel_back(n: Node3D) -> void:
+	var glass_m := MU.mat(Color(0.16, 0.24, 0.38), 0.35, 0.12)
+	MU.rbox(n, Vector3(0.072, 0.0024, 0.152), Vector3.ZERO, glass_m, 0.004)
+	# kamera deliği çerçevesi (-X, -Z köşesi)
+	MU.rbox(n, Vector3(0.028, 0.0028, 0.030), Vector3(-0.017, 0.0004, -0.057), _steel(), 0.004)
+	MU.cyl(n, 0.008, 0.0004, Vector3(0, 0.0013, 0.005), _steel(), Vector3.ZERO, 20)
 
 
 ## Çatlak ekran: yarı saydam çatlak dokusu, görüntü quad'ının da üstünde durur.

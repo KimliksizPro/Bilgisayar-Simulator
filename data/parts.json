@@ -23,7 +23,13 @@
 	"lap_scr": {"name": "Laptop Ekranı", "size": [0.31, 0.005, 0.19], "center": [0, 0, 0], "shelf_row": 0, "shelf_tilt": 62, "hold": {"euler": [50, -25, 0], "offset": [-0.03, -0.03, -0.06]}},
 	"tel_bat": {"name": "Telefon Bataryası", "size": [0.05, 0.004, 0.08], "center": [0, 0, 0], "shelf_row": 2},
 	"tel_scr": {"name": "Telefon Ekranı", "size": [0.072, 0.003, 0.152], "center": [0, 0, 0], "shelf_row": 1, "shelf_tilt": 62},
-	"tel_port": {"name": "Şarj Soketi", "size": [0.05, 0.004, 0.014], "center": [0, 0, 0], "shelf_row": 2}
+	"tel_port": {"name": "Şarj Soketi", "size": [0.05, 0.004, 0.014], "center": [0, 0, 0], "shelf_row": 2},
+	"lap_kbd": {"name": "Laptop Klavyesi", "size": [0.30, 0.004, 0.105], "center": [0, 0, 0], "shelf_row": 0},
+	"lap_wifi": {"name": "Wi-Fi Kartı (M.2)", "size": [0.03, 0.003, 0.022], "center": [0, 0, 0], "shelf_row": 1},
+	"lap_dc": {"name": "Laptop Şarj Soketi", "size": [0.035, 0.008, 0.018], "center": [0, 0, 0], "shelf_row": 2},
+	"tel_cam": {"name": "Telefon Kamerası", "size": [0.024, 0.005, 0.024], "center": [0, 0, 0], "shelf_row": 2},
+	"tel_spk": {"name": "Hoparlör / Mikrofon", "size": [0.028, 0.004, 0.016], "center": [0, 0, 0], "shelf_row": 2},
+	"tel_back": {"name": "Telefon Arka Camı", "size": [0.072, 0.003, 0.152], "center": [0, 0, 0], "shelf_row": 1, "shelf_tilt": 62}
 },
 "parts": [
 	{"id": "mobo_am4_matx", "category": "mobo", "tier": 1, "name": "Anakart AM4 mATX", "brand": "Demir", "price": 95, "device": "pc", "model": {"builder": "mobo", "form_factor": "mATX", "socket": "AM4", "ram_slots": 2, "m2_slots": 1, "debug_led": false}, "specs": {"socket": "AM4", "ram_type": "DDR4", "ram_slots": 2, "form_factor": "mATX", "m2_slots": 1, "sata_ports": 4, "pcie_gen": 3, "debug_led": false}, "compat": {"socket": "AM4", "ram_type": "DDR4", "ram_slots": 2, "form_factor": "mATX", "m2_slots": 1, "sata_ports": 4, "pcie_gen": 3}, "shelf": true, "start_stock": 1, "catalog": true},
@@ -74,6 +80,12 @@
 	{"id": "lap_scr_156", "legacy_id": "lap_scr:1", "category": "lap_scr", "tier": 1, "name": "Laptop Ekranı 15.6\"", "brand": "", "price": 110, "device": "laptop", "model": {"builder": "lap_scr", "label": "15.6\" FHD IPS  eDP 30pin"}, "specs": {"inch": 15.6, "res": "FHD", "panel": "IPS"}, "compat": {}, "shelf": true, "start_stock": 1, "catalog": true},
 	{"id": "tel_bat_4500", "legacy_id": "tel_bat:1", "category": "tel_bat", "tier": 1, "name": "Telefon Bataryası", "brand": "", "price": 30, "device": "phone", "model": {"builder": "tel_bat", "label": "Li-ion\n4500 mAh\n3.85V"}, "specs": {"mah": 4500, "volt": 3.85}, "compat": {}, "shelf": true, "start_stock": 1, "catalog": true},
 	{"id": "tel_scr_oled", "legacy_id": "tel_scr:1", "category": "tel_scr", "tier": 1, "name": "Telefon Ekranı (OLED)", "brand": "", "price": 90, "device": "phone", "model": {"builder": "tel_scr"}, "specs": {"panel": "OLED"}, "compat": {}, "shelf": true, "start_stock": 1, "catalog": true},
-	{"id": "tel_port_usbc", "legacy_id": "tel_port:1", "category": "tel_port", "tier": 1, "name": "Şarj Soketi (USB-C)", "brand": "", "price": 15, "device": "phone", "model": {"builder": "tel_port"}, "specs": {"port": "USB-C"}, "compat": {}, "shelf": true, "start_stock": 1, "catalog": true}
+	{"id": "tel_port_usbc", "legacy_id": "tel_port:1", "category": "tel_port", "tier": 1, "name": "Şarj Soketi (USB-C)", "brand": "", "price": 15, "device": "phone", "model": {"builder": "tel_port"}, "specs": {"port": "USB-C"}, "compat": {}, "shelf": true, "start_stock": 1, "catalog": true},
+	{"id": "lap_kbd_tr", "category": "lap_kbd", "tier": 1, "name": "Laptop Klavyesi (TR-Q)", "brand": "", "price": 55, "device": "laptop", "model": {"builder": "lap_kbd"}, "specs": {"layout": "TR-Q"}, "compat": {}, "shelf": true, "start_stock": 1, "catalog": true},
+	{"id": "lap_wifi_ax", "category": "lap_wifi", "tier": 1, "name": "Wi-Fi 6 Kartı (M.2)", "brand": "", "price": 35, "device": "laptop", "model": {"builder": "lap_wifi", "label": "AX210 Wi-Fi 6"}, "specs": {"std": "Wi-Fi 6"}, "compat": {}, "shelf": true, "start_stock": 1, "catalog": true},
+	{"id": "lap_dc_jack", "category": "lap_dc", "tier": 1, "name": "Laptop Şarj Soketi (DC)", "brand": "", "price": 25, "device": "laptop", "model": {"builder": "lap_dc"}, "specs": {"type": "DC-In"}, "compat": {}, "shelf": true, "start_stock": 1, "catalog": true},
+	{"id": "tel_cam_mod", "category": "tel_cam", "tier": 1, "name": "Telefon Kamera Modülü", "brand": "", "price": 45, "device": "phone", "model": {"builder": "tel_cam"}, "specs": {"mp": 48}, "compat": {}, "shelf": true, "start_stock": 1, "catalog": true},
+	{"id": "tel_spk_mod", "category": "tel_spk", "tier": 1, "name": "Telefon Hoparlör & Mikrofon", "brand": "", "price": 20, "device": "phone", "model": {"builder": "tel_spk"}, "specs": {}, "compat": {}, "shelf": true, "start_stock": 1, "catalog": true},
+	{"id": "tel_back_glass", "category": "tel_back", "tier": 1, "name": "Telefon Arka Camı", "brand": "", "price": 30, "device": "phone", "model": {"builder": "tel_back"}, "specs": {"mat": "Cam"}, "compat": {}, "shelf": true, "start_stock": 1, "catalog": true}
 ]
 }

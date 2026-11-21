@@ -742,16 +742,19 @@ func _check_ready(rec: Dictionary, verbose := false) -> bool:
 
 
 # ---------------------------------------------------------------- teslim
-## Cihazın teslim kontrolü ("" = sorun yok): arıza, hedef (yükseltme), kapak açık.
+## Cihazın teslim kontrolü ("" = sorun yok): test parçası, tüm arızalar, hedef, kapak, vidalar.
 func _problem_of(rec: Dictionary) -> String:
 	var dev = devices.get(int(rec.ticket))
 	if dev == null or not is_instance_valid(dev):
 		return "Cihaz yok"
 	if DJ.is_device(rec):  # laptop / telefon kendi kontrolünü yapar
 		return dev.problem()
-	var code: String = dev.diagnose()
-	if code != "ok":
-		var f = _fault_of(dev, code)
+	for p in dev.installed_parts():
+		if "is_test_part" in p and p.is_test_part:
+			return "Usta kendi test parçanı kasanın içinde unutmuşsun!"
+	var issues: Array = dev.diagnose_all() if dev.has_method("diagnose_all") else []
+	if not issues.is_empty():
+		var f = _fault_of(dev, str(issues[0]))
 		var lines: Array = f.fail_lines if f != null else []
 		return lines.pick_random() if not lines.is_empty() else DB.jobs.text("fail_default")[0]
 	var tg: Dictionary = rec.get("target", {})
@@ -764,6 +767,8 @@ func _problem_of(rec: Dictionary) -> String:
 			return str(tg.fail) % dev.total_ram()
 	if dev.panel_open:
 		return "Kapağı kapatmadan mı vereceksin usta?"
+	if dev.has_method("screws_missing") and dev.screws_missing():
+		return "Usta vidaları sıkmadan mı veriyorsun? (%s)" % dev.missing_screws_text()
 	return ""
 
 
@@ -777,10 +782,24 @@ func _fault_of(dev, code: String):
 ## Teslim reddedilince oyuncuya HUD'da teknik ipucu (müşteri cümlesinden ayrı).
 func _problem_hint_of(rec: Dictionary) -> String:
 	var dev = devices.get(int(rec.ticket))
-	if DJ.is_device(rec) or dev == null or not is_instance_valid(dev):
+	if dev == null or not is_instance_valid(dev):
 		return ""
-	var f = _fault_of(dev, dev.diagnose())
-	return f.hint if f != null else ""
+	if DJ.is_device(rec):
+		var dc: String = dev.diagnose()
+		if dc != "ok":
+			var df = DB.jobs.fault_by_code(dc, str(rec.device))
+			return df.hint if df != null else ""
+		return ""
+	var issues: Array = dev.diagnose_all() if dev.has_method("diagnose_all") else []
+	if not issues.is_empty():
+		var f = _fault_of(dev, str(issues[0]))
+		var h := str(f.hint) if f != null else ""
+		if issues.size() > 1 and h != "":
+			h += " (+%d sorun daha)" % (issues.size() - 1)
+		return h
+	if dev.has_method("screws_missing") and dev.screws_missing():
+		return "İpucu: Eksik vidaları tornavidayla sık (%s)." % dev.missing_screws_text()
+	return ""
 
 
 ## Müşteriye E: taşınan cihazı teslim etmeye çalış.
@@ -843,14 +862,25 @@ func _complete(e: Dictionary) -> void:
 		_remove_record(rec, true, c.global_position + Vector3(0, 1.0, 0.1))
 		_finish_entry(e, ["Tamam usta, bu sefer sağlam olsun!", "Sağ ol usta, garanti dediğin böyle olur."].pick_random())
 		return
-	Game.add_money(int(rec.pay))
+	var tip := 0
+	var tip_notes: Array[String] = []
+	if not DJ.is_device(rec) and dev != null and is_instance_valid(dev):
+		if "cables_tidy" in dev and dev.cables_tidy:
+			tip += 30
+			tip_notes.append("kablo düzeni +30 TL")
+		if bool(rec.get("had_dust", false)) and "dust" in dev and dev.dust <= 0.04:
+			tip += 20
+			tip_notes.append("temizlik +20 TL")
+	var total_pay := int(rec.pay) + tip
+	Game.add_money(total_pay)
 	Game.jobs_done += 1
 	Game.jobs_today += 1
 	Game.stats.total_jobs = int(Game.stats.total_jobs) + 1
 	Game.change_rep(0.25 if fast else (0.15 if on_time else 0.05))
 	Game.cash_sound()
-	hud.pop_money(int(rec.pay))
-	Game.msg("+%d TL kazandın!" % int(rec.pay) + ("  (hızlı servis, itibar arttı)" if fast else ""), Color(0.5, 1, 0.5))
+	hud.pop_money(total_pay)
+	var extra_msg := ("  (" + ", ".join(tip_notes) + ")" if not tip_notes.is_empty() else "")
+	Game.msg("+%d TL kazandın!" % total_pay + ("  (hızlı servis, itibar arttı)" if fast else "") + extra_msg, Color(0.5, 1, 0.5))
 	_remove_record(rec, true, c.global_position + Vector3(0, 1.0, 0.1))
 	_finish_entry(e, ["Eline sağlık usta, sağ ol!", "Helal olsun, tıkır tıkır çalışıyor!",
 		"Çok teşekkürler, herkese seni önereceğim!"].pick_random())
@@ -991,6 +1021,9 @@ func _make_job_of(id: String, broken := "") -> Dictionary:
 		"repair": return _job_repair(j, t)
 		"overheat": return _job_overheat(j, t)
 		"incompat": return _job_incompat(j, t)
+		"cable": return _job_cable(j, t)
+		"software": return _job_software(j, t)
+		"multi": return _job_multi(j, t)
 	return _job_plain(j, t)  # upgrade / build
 
 
@@ -1054,35 +1087,125 @@ func _job_plain(j: Dictionary, t) -> Dictionary:
 	return j
 
 
+## PC parça/ayar listesine tek bir FaultDef arızasını işler; ücret hesabı için {sku, need_pay} döndürür.
+func _apply_fault_to_parts(parts: Array, f) -> Dictionary:
+	var res := {"sku": "", "need_pay": false}
+	if f == null:
+		return res
+	var find_slots := func(cat: String) -> Array:
+		var out := []
+		for p in parts:
+			if p is Dictionary and p.has("sku"):
+				var d: PartDef = DB.parts.get_def(str(p.sku))
+				if d != null and d.category == cat:
+					out.append(p)
+		return out
+	match f.kind:
+		"broken":
+			var targets: Array = find_slots.call(f.part)
+			if not targets.is_empty():
+				var ch: Dictionary = targets.pick_random()
+				ch["broken"] = true
+				res.sku = str(ch.sku)
+				res.need_pay = true
+			elif f.part != "":
+				res.sku = DB.parts.id_for(f.part, 1)
+				res.need_pay = true
+		"pin_bend":
+			for p in parts:
+				if p is Dictionary and str(p.get("slot", "")) == "cpu":
+					p["bent_pins"] = true
+					break
+		"unseated":
+			var rams: Array = find_slots.call("ram")
+			if not rams.is_empty():
+				var rp: Dictionary = rams.pick_random()
+				rp["seated"] = false
+		"vram_fault":
+			var gpus: Array = find_slots.call("gpu")
+			if not gpus.is_empty():
+				var gp: Dictionary = gpus.pick_random()
+				gp["vram_bad"] = true
+				res.sku = str(gp.sku)
+				res.need_pay = true
+		"smart_fail":
+			var hdds: Array = find_slots.call("hdd")
+			if hdds.is_empty():
+				hdds = find_slots.call("ssd")
+			if not hdds.is_empty():
+				var hd: Dictionary = hdds.pick_random()
+				hd["health"] = randi_range(8, 26)
+				res.sku = str(hd.sku)
+				res.need_pay = true
+		"capacitor":
+			for p in parts:
+				if p is Dictionary and str(p.get("slot", "")) == "mobo":
+					p["bad_caps"] = true
+					res.sku = str(p.sku)
+					res.need_pay = true
+					break
+		"overheat":
+			if f.paste_dry:
+				for p in parts:
+					if p is Dictionary and str(p.get("slot", "")) == "cpu":
+						p["paste_ok"] = false
+			if randf() < f.dust_chance:
+				parts.append({"slot": "dust", "amount": randf_range(f.dust.x, f.dust.y)})
+		"cable":
+			var c_entry = null
+			for p in parts:
+				if p is Dictionary and p.has("cables"):
+					c_entry = p
+					break
+			if c_entry == null:
+				c_entry = {"cables": {}}
+				parts.append(c_entry)
+			c_entry.cables[f.cable] = "unplugged"
+		"software":
+			var s_entry = null
+			for p in parts:
+				if p is Dictionary and p.has("sw_faults"):
+					s_entry = p
+					break
+			if s_entry == null:
+				s_entry = {"sw_faults": []}
+				parts.append(s_entry)
+			if not s_entry.sw_faults.has(f.sw_flag):
+				s_entry.sw_faults.append(f.sw_flag)
+	return res
+
+
+## İsteğe bağlı kozmetik toz (%40 şans, müşteri şikayet etmez ama temizleyene bahşiş verilir).
+func _maybe_add_cosmetic_dust(j: Dictionary, parts: Array) -> void:
+	if randf() < 0.4:
+		parts.append({"slot": "dust", "amount": randf_range(0.18, 0.38)})
+		j.had_dust = true
+
+
 func _job_repair(j: Dictionary, t) -> Dictionary:
 	var f = DB.jobs.fault(t.fault)
 	j.kind = t.job_kind
-	j.broken = f.part
+	j.broken = f.diag_code if f.part == "" else f.part
 	j.intro = _intro_of(t, f)
 	j.goal = t.goal
-	var prof := _progression_profile(t.profile.duplicate(true))
+	var prof: Dictionary = t.profile.duplicate(true)
 	prof["ram2_chance"] = t.ram2_chance
-	if f.part == "gpu":
+	if f.part == "gpu" or f.kind == "vram_fault":
 		prof["need_gpu"] = true
 	if f.part == "ssd":
 		prof["need_sata"] = true
 		prof["sata_sku"] = "ssd_sata_512"
+	elif f.part == "hdd":
+		prof["need_sata"] = true
+		prof["sata_sku"] = "hdd_sata_1t"
+	prof = _progression_profile(prof)
 	var built := _build_compatible_pc(prof)
 	var parts: Array = built.parts
-	var broken_sku := DB.parts.id_for(f.part, 1)
-	var target_slots := []
-	for p in parts:
-		var d: PartDef = DB.parts.get_def(str(p.sku))
-		if d != null and d.category == f.part:
-			target_slots.append(p)
-	if not target_slots.is_empty():
-		var chosen: Dictionary = target_slots.pick_random()
-		chosen["broken"] = true
-		broken_sku = str(chosen.sku)
+	var applied := _apply_fault_to_parts(parts, f)
+	_maybe_add_cosmetic_dust(j, parts)
 	j.case_id = built.case_id
 	j.parts = parts
-	# ücret = arızalı SKU bedeli + işçilik (arıza tanımından)
-	j.pay = PM.price_sku(broken_sku) + f.roll_labor()
+	j.pay = (PM.price_sku(applied.sku) if applied.need_pay and not str(applied.sku).is_empty() else 0) + f.roll_labor()
 	return j
 
 
@@ -1098,18 +1221,13 @@ func _job_overheat(j: Dictionary, t) -> Dictionary:
 		prof["socket"] = "AM4"
 	var built := _build_compatible_pc(prof)
 	var parts: Array = built.parts
-	if f.paste_dry:
-		for p in parts:
-			if str(p.slot) == "cpu":
-				p["paste_ok"] = false
-	if randf() < f.dust_chance:
-		parts.append({"slot": "dust", "amount": randf_range(f.dust.x, f.dust.y)})
+	_apply_fault_to_parts(parts, f)
 	j.case_id = built.case_id
 	j.parts = parts
 	return j
 
 
-## Bilerek uyumsuz PC işleri (2.9): DDR çentiği, PSU/GPU güç/konnektör, iGPU'suz işlemci.
+## Bilerek uyumsuz PC işleri: DDR çentiği, PSU/GPU güç/konnektör, iGPU'suz işlemci, PSU watt yetersizliği.
 func _job_incompat(j: Dictionary, t) -> Dictionary:
 	var f = DB.jobs.fault(t.fault)
 	j.kind = t.job_kind
@@ -1150,11 +1268,108 @@ func _job_incompat(j: Dictionary, t) -> Dictionary:
 			})
 			ref_sku = "gpu_entry_4g"
 			built.parts = built.parts.filter(func(p): return str(p.slot) != "gpu")
+		"psu_underwatt":
+			built = _build_compatible_pc({
+				"case_id": "atx_mid",
+				"socket": "AM5",
+				"cpu_sku": "cpu_am5_12c",
+				"need_gpu": true,
+				"gpu_sku": "gpu_gamer_12g",
+				"ram_count": 2,
+				"need_sata": true,
+			})
+			ref_sku = "psu_550w"
+			for p in built.parts:
+				if str(p.slot) == "psu":
+					p["sku"] = "psu_450w"
 		_:
 			built = _build_compatible_pc({})
 	j.case_id = built.case_id
 	j.parts = built.parts
 	j.pay = PM.price_sku(ref_sku) + f.roll_labor()
+	return j
+
+
+## Gevşek / takılmamış kablo işi.
+func _job_cable(j: Dictionary, t) -> Dictionary:
+	var f = DB.jobs.fault(t.fault)
+	j.kind = t.job_kind
+	j.broken = f.diag_code
+	j.intro = _intro_of(t, f)
+	j.goal = t.goal
+	var prof: Dictionary = t.profile.duplicate(true)
+	if f.cable == "pcie_gpu":
+		prof["need_gpu"] = true
+		prof["gpu_sku"] = "gpu_mid_8g"
+	elif f.cable == "sata":
+		prof["need_sata"] = true
+	prof = _progression_profile(prof)
+	var built := _build_compatible_pc(prof)
+	var parts: Array = built.parts
+	_apply_fault_to_parts(parts, f)
+	_maybe_add_cosmetic_dust(j, parts)
+	j.case_id = built.case_id
+	j.parts = parts
+	j.pay = f.roll_labor()
+	return j
+
+
+## Yazılım / BIOS işi.
+func _job_software(j: Dictionary, t) -> Dictionary:
+	var f = DB.jobs.fault(t.fault)
+	j.kind = t.job_kind
+	j.broken = f.diag_code
+	j.intro = _intro_of(t, f)
+	j.goal = t.goal
+	var prof := _progression_profile(t.profile.duplicate(true))
+	var built := _build_compatible_pc(prof)
+	var parts: Array = built.parts
+	_apply_fault_to_parts(parts, f)
+	_maybe_add_cosmetic_dust(j, parts)
+	j.case_id = built.case_id
+	j.parts = parts
+	j.pay = f.roll_labor()
+	return j
+
+
+## Çoklu arıza işi (2+ bağımsız arıza bir arada).
+func _job_multi(j: Dictionary, t) -> Dictionary:
+	j.kind = t.job_kind
+	j.goal = t.goal
+	var faults_list: Array = []
+	for fid in t.faults:
+		var ff = DB.jobs.fault(str(fid))
+		if ff != null:
+			faults_list.append(ff)
+	var prof: Dictionary = t.profile.duplicate(true)
+	for f in faults_list:
+		if f.part == "gpu" or f.kind == "vram_fault" or f.cable == "pcie_gpu":
+			prof["need_gpu"] = true
+			if f.cable == "pcie_gpu" and not prof.has("gpu_sku"):
+				prof["gpu_sku"] = "gpu_mid_8g"
+		if f.part == "hdd":
+			prof["need_sata"] = true
+			prof["sata_sku"] = "hdd_sata_1t"
+		elif f.part == "ssd" or f.cable == "sata":
+			prof["need_sata"] = true
+	prof = _progression_profile(prof)
+	var built := _build_compatible_pc(prof)
+	var parts: Array = built.parts
+	var part_pay := 0
+	var labor_pay := 0
+	var codes: Array[String] = []
+	for f in faults_list:
+		var app := _apply_fault_to_parts(parts, f)
+		if app.need_pay and not str(app.sku).is_empty():
+			part_pay += PM.price_sku(str(app.sku))
+		labor_pay += f.roll_labor()
+		codes.append(f.diag_code if f.part == "" else f.part)
+	var lead_f = faults_list[0] if not faults_list.is_empty() else null
+	j.broken = "+".join(codes)
+	j.intro = _intro_of(t, lead_f)
+	j.case_id = built.case_id
+	j.parts = parts
+	j.pay = part_pay + labor_pay + 60
 	return j
 
 

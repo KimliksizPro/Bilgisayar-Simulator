@@ -13,6 +13,7 @@ var center_label: Label
 var desktop: Control
 var clock: Label
 var temp_label: Label
+var _fx_layer: Control
 var _token := 0
 
 
@@ -31,6 +32,17 @@ func _ready() -> void:
 	screen.position = Vector3(0, 0.435, 0.0128)
 	add_child(screen)
 	MU.merge_static(self)
+	MU.interactable(self, Vector3(0.62, 0.42, 0.14), Vector3(0, 0.435, 0.0),
+		func(_p):
+			var dev = Game.bench_device
+			if dev != null and is_instance_valid(dev) and not dev.has_method("slot_open"):
+				return "BIOS & Servis Paneli  [E]"
+			return "",
+		func(_p):
+			var dev = Game.bench_device
+			if dev != null and is_instance_valid(dev) and not dev.has_method("slot_open") and Game.pc_service != null:
+				Game.sfx.ui_click()
+				Game.pc_service.open(dev))
 	show_off()
 
 
@@ -124,6 +136,10 @@ func _build_screen() -> void:
 	center_label.add_theme_font_size_override("font_size", 26)
 	center_box.add_child(center_label)
 	root.add_child(center_box)
+	_fx_layer = Control.new()
+	_fx_layer.size = root.size
+	_fx_layer.visible = false
+	root.add_child(_fx_layer)
 
 
 func _refresh() -> void:
@@ -136,7 +152,12 @@ func _reset(color: Color) -> void:
 	bg.color = color
 	desktop.visible = false
 	text.text = ""
+	text.add_theme_color_override("font_color", Color(0.85, 0.85, 0.85))
 	center_box.visible = false
+	if _fx_layer:
+		_fx_layer.visible = false
+		for c in _fx_layer.get_children():
+			c.queue_free()
 
 
 func show_off() -> void:
@@ -151,6 +172,107 @@ func show_no_signal() -> void:
 func show_no_boot() -> void:
 	_reset(Color(0, 0, 0))
 	text.text = "BilgiBIOS v2.6\n\nReboot and Select proper Boot device\nor Insert Boot Media in selected Boot device\nand press a key_"
+
+
+## GPU VRAM arızası: renkli glitch blokları ve bozuk kare uyarısı.
+func show_artifact(pc) -> void:
+	_reset(Color(0.06, 0.03, 0.10))
+	desktop.visible = true
+	if pc != null and "cpu_temp" in pc:
+		set_temp(int(pc.cpu_temp))
+	_fx_layer.visible = true
+	var cols := [Color(1.0, 0.15, 0.85, 0.72), Color(0.15, 1.0, 0.35, 0.72), Color(0.15, 0.9, 1.0, 0.65), Color(1.0, 0.9, 0.1, 0.65)]
+	for i in 14:
+		var r := ColorRect.new()
+		r.color = cols[i % cols.size()]
+		r.position = Vector2((i * 89) % 520, (i * 53) % 310)
+		r.size = Vector2(56 + (i * 23) % 90, 14 + (i * 11) % 32)
+		_fx_layer.add_child(r)
+	_fx_banner("GPU VRAM HATASI — GÖRÜNTÜ BOZUK", "Ekran kartı bellek modülleri arızalı!\nMultimetre ile ölçün ve ekran kartını değiştirin.", Color(0.55, 0.08, 0.42, 0.92))
+	_refresh()
+
+
+## Virüs / reklam yazılımı: sahte açılır pencerelerle dolu masaüstü.
+func show_virus(_pc) -> void:
+	_reset(Color(0.14, 0.04, 0.04))
+	desktop.visible = true
+	_fx_layer.visible = true
+	var popups := [
+		["TEHLİKE! SİSTEM ENFEKTE", Vector2(46, 36), Color(0.75, 0.1, 0.1)],
+		["HEMEN TIKLAYIN — ÖDÜL!", Vector2(280, 64), Color(0.8, 0.45, 0.05)],
+		["37 VİRÜS BULUNDU!", Vector2(120, 175), Color(0.68, 0.08, 0.25)],
+		["Antivirüs USB / Servis Paneli [E]", Vector2(290, 225), Color(0.15, 0.15, 0.22)],
+	]
+	for p in popups:
+		var box := PanelContainer.new()
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = p[2]
+		sb.border_color = Color(1, 1, 0.7)
+		sb.set_border_width_all(2)
+		sb.set_content_margin_all(8)
+		box.add_theme_stylebox_override("panel", sb)
+		box.position = p[1]
+		box.size = Vector2(250, 62)
+		var l := Label.new()
+		l.text = p[0]
+		l.add_theme_font_size_override("font_size", 14)
+		l.add_theme_color_override("font_color", Color.WHITE)
+		box.add_child(l)
+		_fx_layer.add_child(box)
+	_refresh()
+
+
+## Mavi ekran (BSOD): bozuk işletim sistemi.
+func show_bsod(code_text: String, detail: String) -> void:
+	_reset(Color(0.05, 0.28, 0.72))
+	text.add_theme_color_override("font_color", Color.WHITE)
+	text.text = ":(\n\nBilgisayarınız bir sorunla karşılaştı ve yeniden başlatılamıyor.\n\nDurdurma Kodu: %s\n\n%s\n\nMonitöre [E] basarak Servis Paneli'ni açabilirsiniz." % [code_text, detail]
+	_refresh()
+
+
+## BIOS uyarı / ayar ekranı (eski BIOS, boot sırası, CMOS sıfırlandı).
+func show_bios_warn(title: String, detail: String) -> void:
+	_reset(Color(0.06, 0.10, 0.24))
+	text.add_theme_color_override("font_color", Color(0.92, 0.95, 1.0))
+	text.text = "=== %s ===\n\n%s\n\n[E] tuşuyla Monitör / BilgiBIOS Ayarlarını açın." % [title, detail]
+	_refresh()
+
+
+## Masaüstü + belirgin üst uyarı afişi (sürücü hatası, disk dolu, SMART uyarısı).
+func show_desktop_warn(pc, banner_title: String, banner_detail: String) -> void:
+	_reset(Color(0.02, 0.04, 0.08))
+	desktop.visible = true
+	if pc != null and "cpu_temp" in pc:
+		set_temp(int(pc.cpu_temp))
+	_fx_layer.visible = true
+	_fx_banner(banner_title, banner_detail, Color(0.55, 0.14, 0.10, 0.92))
+	_refresh()
+
+
+func _fx_banner(title: String, detail: String, bg_col: Color) -> void:
+	var box := PanelContainer.new()
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = bg_col
+	sb.border_color = Color(1.0, 0.8, 0.35)
+	sb.set_border_width_all(2)
+	sb.set_content_margin_all(12)
+	box.add_theme_stylebox_override("panel", sb)
+	box.position = Vector2(70, 96)
+	box.size = Vector2(500, 145)
+	var v := VBoxContainer.new()
+	box.add_child(v)
+	var tl := Label.new()
+	tl.text = title
+	tl.add_theme_font_size_override("font_size", 20)
+	tl.add_theme_color_override("font_color", Color(1.0, 0.92, 0.45))
+	v.add_child(tl)
+	var dl := Label.new()
+	dl.text = detail
+	dl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	dl.add_theme_font_size_override("font_size", 15)
+	dl.add_theme_color_override("font_color", Color.WHITE)
+	v.add_child(dl)
+	_fx_layer.add_child(box)
 
 
 ## Dinamik BIOS POST ekranı: takılı anakart, CPU, RAM, GPU/iGPU, depolama, PSU ve watt bilgisi.

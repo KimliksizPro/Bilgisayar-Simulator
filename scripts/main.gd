@@ -16,11 +16,13 @@ const PROPS := preload("res://scripts/props.gd")
 const BENCH := preload("res://scripts/bench_mode.gd")  # tezgâh modu (yörünge kamera)
 const JOB_RACK := preload("res://scripts/job_rack.gd")  # bekleyen işler rafı
 const INV_PANEL := preload("res://scripts/inventory_panel.gd")  # Parça Dolabı seçici
+const PC_SERVICE := preload("res://scripts/pc_service_panel.gd")  # Monitör / BIOS & servis paneli
 
 const DESK_Y := 0.75
 
 var hud
 var inv_panel
+var pc_service
 var bench
 var delivery
 var monitor
@@ -58,6 +60,9 @@ func _ready() -> void:
 	inv_panel.pick_requested.connect(_on_cabinet_pick)
 	inv_panel.return_requested.connect(_on_cabinet_return)
 	add_child(inv_panel)
+	pc_service = PC_SERVICE.new()
+	add_child(pc_service)
+	Game.pc_service = pc_service
 	player = PLAYER.new()
 	player.position = Vector3(0.9, 0, -0.9)
 	player.rotation_degrees.y = 15
@@ -119,6 +124,8 @@ func _ready() -> void:
 		add_child(load("res://dev/multijob_test.gd").new())
 	if "--compattest" in OS.get_cmdline_user_args() and ResourceLoader.exists("res://dev/compat_test.gd"):
 		add_child(load("res://dev/compat_test.gd").new())
+	if "--diagtest" in OS.get_cmdline_user_args() and ResourceLoader.exists("res://dev/diag_test.gd"):
+		add_child(load("res://dev/diag_test.gd").new())
 
 
 ## Ana menü: akşamüstü, sokağın karşısından dükkânın vitrinine bakan, yavaşça süzülen kamera.
@@ -560,17 +567,16 @@ func _build_desk() -> void:
 	dl.light_color = Color(1.0, 0.85, 0.65)
 	dl.shadow_enabled = true
 	add_child(dl)
-	# tornavida ve kupa
-	PROPS.screwdriver(self, Vector3(0.955, DESK_Y + 0.0125, -2.25))
+	# kupa (tornavida artık _build_tools içinde etkileşimli alet)
 	PROPS.mug(self, Vector3(-1.0, DESK_Y, -2.6), Color(0.95, 0.95, 0.92), 200.0)
-	# arıza rehberi posteri
+	# bip kodları & POST arıza rehberi posteri
 	var poster := MU.rbox(self, Vector3(1.3, 0.85, 0.012), Vector3(-0.2, 1.8, -2.99), MU.mat(Color(0.97, 0.95, 0.9), 0, 0.8), 0.004)
 	MU.box(poster, Vector3(1.3, 0.12, 0.014), Vector3(0, 0.365, 0), MU.mat(Color(0.75, 0.15, 0.15), 0, 0.7))
-	var t1 := MU.label(poster, "ARIZA REHBERİ", Vector3(0, 0.365, 0.009), 64, Color.WHITE, Vector3.ZERO, 0.0012)
+	var t1 := MU.label(poster, "BİP & POST ARIZA REHBERİ", Vector3(0, 0.365, 0.009), 54, Color.WHITE, Vector3.ZERO, 0.0012)
 	t1.double_sided = false
-	var t2 := MU.label(poster, "• Hiçbir tepki yok  →  Güç Kaynağı (PSU)\n• Fan dönüyor, bip yok, görüntü yok  →  İşlemci (CPU)\n• Sürekli kısa bipler  →  RAM\n• 1 uzun 3 kısa bip  →  Ekran Kartı (GPU)\n• \"Boot device\" hatası  →  SSD\n• Açılıp kendi kendine kapanma  →  Toz / Termal Macun\n• Tek kısa bip  →  Her şey yolunda!", Vector3(0, -0.06, 0.009), 34, Color(0.12, 0.12, 0.14), Vector3.ZERO, 0.0011)
+	var t2 := MU.label(poster, "• Tepki yok → PSU / Ön Panel / 24-pin Kablo\n• Fan dönüyor, bip yok → CPU / Pin / 8-pin Kablo\n• Sürekli kısa bipler → RAM / Gevşek Modül [53/55]\n• 1 uzun 3 kısa bip → GPU / PCIe Kablo / VRAM [92/98]\n• \"Boot device\" → SSD / SATA Kablo / Boot Sırası\n• Mavi Ekran / Virüs → USB veya Monitör [E] Servis\n• Tek kısa bip → Donanım OK!", Vector3(0, -0.06, 0.009), 30, Color(0.12, 0.12, 0.14), Vector3.ZERO, 0.00105)
 	t2.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	t2.line_spacing = 6
+	t2.line_spacing = 5
 	t2.double_sided = false
 	for c in [Vector2(-0.6, 0.38), Vector2(0.6, 0.38), Vector2(-0.6, -0.38), Vector2(0.6, -0.38)]:
 		MU.sphere(poster, 0.008, Vector3(c.x, c.y, 0.008), MU.mat(Color(0.2, 0.4, 0.9), 0.3, 0.3))
@@ -586,15 +592,42 @@ func _build_desk() -> void:
 	MU.interactable(self, Vector3(0.46, 0.55, 0.46), Vector3(1.85, 0.27, -2.55), _bin_hint, _bin_use)
 
 
-## Masadaki aletler: termal macun ve basınçlı hava.
+## Masadaki aletler: 4 başlangıç aleti + 8 geliştirme ile açılan teşhis/servis aleti.
 func _build_tools() -> void:
-	var tools := [["paste", Vector3(0.95, DESK_Y + 0.016, -2.5), 20.0], ["air", Vector3(1.13, DESK_Y + 0.096, -2.42), 0.0]]
-	for t in tools:
+	var starter := [
+		["paste", Vector3(0.95, DESK_Y + 0.016, -2.5), 20.0],
+		["air", Vector3(1.13, DESK_Y + 0.096, -2.42), 0.0],
+		["screwdriver", Vector3(0.955, DESK_Y + 0.0125, -2.25), 15.0],
+		["ipa", Vector3(1.13, DESK_Y + 0.075, -2.26), -10.0],
+	]
+	for t in starter:
 		var tool = TOOL.new().setup(t[0])
+		MU.no_merge(tool)
 		add_child(tool)
 		tool.position = t[1]
 		tool.rotation_degrees.y = t[2]
 		tool.freeze = true
+	var unlocked := [
+		["psu_tester", Vector3(1.27, DESK_Y + 0.015, -2.55), -15.0],
+		["multimeter", Vector3(1.27, DESK_Y + 0.018, -2.35), -12.0],
+		["post_card", Vector3(1.05, DESK_Y + 0.010, -2.62), 10.0],
+		["thermal_cam", Vector3(1.27, DESK_Y + 0.060, -2.18), -20.0],
+		["ram_usb", Vector3(0.86, DESK_Y + 0.008, -2.62), 5.0],
+		["smart_usb", Vector3(0.92, DESK_Y + 0.008, -2.62), 5.0],
+		["antivirus_usb", Vector3(0.98, DESK_Y + 0.008, -2.62), 5.0],
+		["install_usb", Vector3(1.04, DESK_Y + 0.008, -2.52), 5.0],
+	]
+	for t in unlocked:
+		var tid := str(t[0])
+		var tool = TOOL.new().setup(tid)
+		MU.no_merge(tool)
+		add_child(tool)
+		tool.position = t[1]
+		tool.rotation_degrees.y = t[2]
+		tool.freeze = true
+		var arr: Array = _up_nodes.get(tid, [])
+		arr.append(tool)
+		_up_nodes[tid] = arr
 
 
 func _bin_hint(p) -> String:
@@ -885,8 +918,11 @@ func _build_upgrades() -> void:
 ## Satın alınanları göster, raf fiyat etiketlerini güncelle.
 func _refresh_upgrades() -> void:
 	for id in _up_nodes:
+		var vis := Game.has_upgrade(id)
 		for n in _up_nodes[id]:
-			n.visible = Game.has_upgrade(id)
+			n.visible = vis
+			if n is CollisionObject3D:
+				n.collision_layer = 2 if vis else 0
 	_refresh_stock()
 
 

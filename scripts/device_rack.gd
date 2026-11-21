@@ -6,7 +6,7 @@ const MU := preload("res://scripts/mesh_util.gd")
 const PM := preload("res://scripts/part_models.gd")
 
 const POS := Vector3(-2.35, 0.0, -2.955)   # arka duvar önü (raf arkası)
-const WIDTH := 1.2
+const WIDTH := 1.44
 const DEPTH := 0.26
 const LEVELS := [0.88, 1.16, 1.44, 1.72]
 const K := 1.25                             # raftaki model büyütmesi (küçük parçalar daha büyük)
@@ -52,7 +52,7 @@ static func build(main: Node3D) -> void:
 	for d in DB.parts.shelf_items(["laptop", "phone"]):
 		var info: Dictionary = PM.info(d.category)
 		var k := _scale_for(info, info.shelf_tilt)
-		entries.append({"def": d, "w": maxf(info.size.x * k, 0.3) + 0.04})
+		entries.append({"def": d, "w": maxf(info.size.x * k, 0.25) + 0.03})
 	var rows: Array = DB.parts.flow_rows(entries, WIDTH - 0.1, LEVELS.size())
 	for r in rows.size():
 		for e in rows[r].items:
@@ -89,7 +89,7 @@ static func _item(main: Node3D, root: Node3D, shelf_y: float, x: float, d: PartD
 		func(p): main._shelf_use_sku(p, sku_id))
 	it.action_alt = func(p): main._buy_sku(p, sku_id, true)  # F: muadil parça al
 	# fiyat etiketi: rafın ön kenarından sarkar
-	var tag := MU.box(root, Vector3(0.3, 0.054, 0.002), Vector3(x, shelf_y - 0.037, DEPTH + 0.002), MU.mat(Color(1.0, 0.92, 0.4)))
+	var tag := MU.box(root, Vector3(0.26, 0.054, 0.002), Vector3(x, shelf_y - 0.037, DEPTH + 0.002), MU.mat(Color(1.0, 0.92, 0.4)))
 	tag.name = "PriceTag"
 	var l := MU.label(root, "", Vector3(x, shelf_y - 0.037, DEPTH + 0.0035), 21, Color(0.1, 0.1, 0.1), Vector3.ZERO, 0.001)
 	l.double_sided = false

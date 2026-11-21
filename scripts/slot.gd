@@ -88,7 +88,12 @@ func get_hint(player) -> String:
 	if player.held and player.held.is_tool():
 		return pc.tool_hint(player.held, self)
 	if part:
+		if not part.seated:
+			return "RAM tam oturmamış — yerine it  [E]"
 		if player.held == null:
+			var blk: String = str(pc.can_remove_reason(name)) if pc.has_method("can_remove_reason") else ""
+			if blk != "":
+				return "%s  (%s)" % [part.display_name, blk]
 			return "Sök: %s  [E]" % part.display_name
 		return part.display_name
 	if player.held and not player.held.is_tool() and accepts_category(player.held.part_type):
@@ -109,7 +114,19 @@ func interact(player) -> void:
 	if player.held and player.held.is_tool():
 		pc.tool_use(player, player.held, self)
 		return
+	if part and not part.seated:
+		part.seated = true
+		part.transform = Transform3D.IDENTITY
+		Game.sfx.click()
+		pc.on_parts_changed()
+		Game.msg("RAM yuvaya tam oturtuldu!", Color(0.5, 1.0, 0.5))
+		return
 	if part and player.held == null:
+		var blk: String = str(pc.can_remove_reason(name)) if pc.has_method("can_remove_reason") else ""
+		if blk != "":
+			Game.sfx.error()
+			Game.msg(blk, Color(1.0, 0.75, 0.35))
+			return
 		player.pick_up(part)
 	elif part == null and player.held and not player.held.is_tool() and accepts_category(player.held.part_type):
 		var res := compat_check(player.held)
@@ -126,8 +143,13 @@ func interact(player) -> void:
 func install(p) -> void:
 	part = p
 	p.install_into(self)
+	if "seated" in p and not p.seated:
+		p.position = Vector3(0.008, 0.0, 0.0)
+		p.rotation_degrees = Vector3(0.0, 0.0, -7.0)
 	if accepts == "cpu":
 		pc.cpu_installed(p)
+	if pc.has_method("on_slot_installed"):
+		pc.on_slot_installed(name)
 	pc.on_parts_changed()
 
 

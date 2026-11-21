@@ -11,11 +11,7 @@
     "beep": [],
     "screen": "none",
     "msg": "Hiçbir tepki yok... Fanlar bile dönmüyor.",
-    "msg_color": [
-     1,
-     0.6,
-     0.4
-    ]
+    "msg_color": [1, 0.6, 0.4]
    },
    "customer_lines": [
     "Abi dün akşam bi patlama sesi geldi, şimdi düğmeye basınca hiçbir şey olmuyor.",
@@ -25,12 +21,9 @@
     "Usta düğmeye basıyorum, hiç ses yok, fanlar bile dönmüyor!",
     "Açmaya çalışıyorum abi, elektrik almıyor gibi, ses bile yok."
    ],
-   "hint": "İpucu: Güç gelmiyor — PSU'yu kontrol et.",
+   "hint": "İpucu: Güç gelmiyor — PSU'yu (veya güç kablolarını) kontrol et.",
    "difficulty": 1,
-   "labor": [
-    110,
-    160
-   ],
+   "labor": [110, 160],
    "min_day": 0,
    "min_rep": 0.0
   },
@@ -45,26 +38,19 @@
     "beep": [],
     "screen": "no_signal",
     "msg": "Fanlar dönüyor ama hiç bip sesi yok, ekran kapkara.",
-    "msg_color": [
-     1,
-     0.6,
-     0.4
-    ]
+    "msg_color": [1, 0.6, 0.4]
    },
    "customer_lines": [
     "Fanlar dönüyor ama ekrana hiçbir şey gelmiyor, ses de çıkarmıyor.",
     "Hız aşırtma yapayım dedim, bi koku geldi... şimdi açılmıyor."
    ],
    "fail_lines": [
-    "Fanlar dönüyor ama ekrana hiçbir şey gelmiyor, bip bip ötüyor.",
-    "Dönüyor usta ama ekran boş, bi de garip sesler çıkarıyor."
+    "Fanlar dönüyor ama ekrana hiçbir şey gelmiyor, açılmıyor.",
+    "Dönüyor usta ama ekran boş, sistem başlamıyor."
    ],
-   "hint": "İpucu: İşlemci sorunlu olabilir — CPU'yu kontrol et.",
+   "hint": "İpucu: İşlemci veya işlemci güç hattı sorunlu olabilir — CPU'yu kontrol et.",
    "difficulty": 1,
-   "labor": [
-    110,
-    160
-   ],
+   "labor": [110, 160],
    "min_day": 0,
    "min_rep": 0.0
   },
@@ -76,23 +62,10 @@
    "kind": "broken",
    "symptoms": {
     "led": "DRAM",
-    "beep": [
-     0.12,
-     0.12,
-     0.12,
-     0.12,
-     0.12,
-     0.12,
-     0.12,
-     0.12
-    ],
+    "beep": [0.12, 0.12, 0.12, 0.12, 0.12, 0.12, 0.12, 0.12],
     "screen": "no_signal",
     "msg": "Bip! Bip! Bip! Sürekli tekrar eden kısa bipler...",
-    "msg_color": [
-     1,
-     0.6,
-     0.4
-    ]
+    "msg_color": [1, 0.6, 0.4]
    },
    "customer_lines": [
     "Açınca sürekli bip bip bip diye ötüyor abi, kafayı yedim.",
@@ -102,12 +75,9 @@
     "Uzun uzun bipliyor usta, açılmıyor.",
     "Açılmaya çalışıyor ama sürekli bip sesi veriyor abi."
    ],
-   "hint": "İpucu: RAM hatalı ya da takılı değil — RAM'leri kontrol et.",
+   "hint": "İpucu: Bellek modülü hatalı ya da takılı değil — RAM'leri kontrol et.",
    "difficulty": 1,
-   "labor": [
-    90,
-    140
-   ],
+   "labor": [90, 140],
    "min_day": 0,
    "min_rep": 0.0
   },
@@ -119,19 +89,10 @@
    "kind": "broken",
    "symptoms": {
     "led": "VGA",
-    "beep": [
-     0.7,
-     0.13,
-     0.13,
-     0.13
-    ],
+    "beep": [0.7, 0.13, 0.13, 0.13],
     "screen": "no_signal",
     "msg": "1 uzun 3 kısa bip! Ekrana görüntü gelmiyor.",
-    "msg_color": [
-     1,
-     0.6,
-     0.4
-    ]
+    "msg_color": [1, 0.6, 0.4]
    },
    "customer_lines": [
     "Oyun oynarken ekran gitti, şimdi açınca bi uzun üç kısa bip sesi geliyor.",
@@ -143,10 +104,7 @@
    ],
    "hint": "İpucu: Ekran kartı arızalı olabilir — GPU'yu kontrol et.",
    "difficulty": 1,
-   "labor": [
-    90,
-    140
-   ],
+   "labor": [90, 140],
    "min_day": 0,
    "min_rep": 0.0
   },
@@ -158,16 +116,10 @@
    "kind": "broken",
    "symptoms": {
     "led": "BOOT",
-    "beep": [
-     0.15
-    ],
+    "beep": [0.15],
     "screen": "no_boot",
     "msg": "Tek bip, BIOS açıldı ama 'boot device' bulunamadı.",
-    "msg_color": [
-     1,
-     0.8,
-     0.4
-    ]
+    "msg_color": [1, 0.8, 0.4]
    },
    "customer_lines": [
     "Açılıyor ama 'boot device' diye bi şey yazıyor, Windows gelmiyor.",
@@ -177,12 +129,9 @@
     "Açılıyor ama 'boot device not found' yazıyor abi.",
     "Windows'a girmiyor usta, siyah ekranda disk yok yazıyor."
    ],
-   "hint": "İpucu: Açılış diski bulunamıyor — SSD'yi kontrol et.",
+   "hint": "İpucu: Açılış diski bulunamıyor — depolama birimini kontrol et.",
    "difficulty": 1,
-   "labor": [
-    90,
-    140
-   ],
+   "labor": [90, 140],
    "min_day": 0,
    "min_rep": 0.0
   },
@@ -194,16 +143,10 @@
    "kind": "overheat",
    "symptoms": {
     "led": "",
-    "beep": [
-     0.15
-    ],
+    "beep": [0.15],
     "screen": "boot",
     "msg": "Tek kısa bip... Bilgisayar açıldı ama fanlar çok yüksek sesle dönüyor.",
-    "msg_color": [
-     1,
-     0.85,
-     0.5
-    ]
+    "msg_color": [1, 0.85, 0.5]
    },
    "customer_lines": [
     "Oyun oynarken bilgisayar kendi kendine kapanıyor usta, fanlar da çok bağırıyor.",
@@ -214,16 +157,10 @@
    ],
    "hint": "İpucu: Aşırı ısınma — kasa tozunu temizle ya da CPU macununu yenile.",
    "difficulty": 1,
-   "labor": [
-    140,
-    240
-   ],
+   "labor": [140, 240],
    "min_day": 0,
    "min_rep": 0.0,
-   "dust": [
-    0.75,
-    1.0
-   ],
+   "dust": [0.75, 1.0],
    "dust_chance": 1.0,
    "paste_dry": false
   },
@@ -235,16 +172,10 @@
    "kind": "overheat",
    "symptoms": {
     "led": "",
-    "beep": [
-     0.15
-    ],
+    "beep": [0.15],
     "screen": "boot",
     "msg": "Tek kısa bip... Bilgisayar açıldı ama fanlar çok yüksek sesle dönüyor.",
-    "msg_color": [
-     1,
-     0.85,
-     0.5
-    ]
+    "msg_color": [1, 0.85, 0.5]
    },
    "customer_lines": [
     "Bilgisayar açılıyor ama biraz kullanınca kapanıyor usta. Kasa da sıcacık oluyor.",
@@ -255,16 +186,10 @@
    ],
    "hint": "İpucu: Aşırı ısınma — kasa tozunu temizle ya da CPU macununu yenile.",
    "difficulty": 1,
-   "labor": [
-    140,
-    240
-   ],
+   "labor": [140, 240],
    "min_day": 0,
    "min_rep": 0.0,
-   "dust": [
-    0.1,
-    0.3
-   ],
+   "dust": [0.1, 0.3],
    "dust_chance": 0.3,
    "paste_dry": true
   },
@@ -276,19 +201,10 @@
    "kind": "incompat",
    "symptoms": {
     "led": "DRAM",
-    "beep": [
-     0.12,
-     0.12,
-     0.12,
-     0.12
-    ],
+    "beep": [0.12, 0.12, 0.12, 0.12],
     "screen": "no_signal",
     "msg": "RAM çentiği anakartla uyumsuz (DDR4/DDR5)! Sistem açılmıyor.",
-    "msg_color": [
-     1,
-     0.6,
-     0.4
-    ]
+    "msg_color": [1, 0.6, 0.4]
    },
    "customer_lines": [
     "İnternetten RAM alıp taktım usta ama bilgisayar hiç açılmıyor, galiba DDR uyuşmadı.",
@@ -300,10 +216,7 @@
    ],
    "hint": "İpucu: Anakart ile RAM'in DDR nesli uyuşmuyor — uyumlu DDR4/DDR5 RAM tak.",
    "difficulty": 2,
-   "labor": [
-    110,
-    170
-   ],
+   "labor": [110, 170],
    "min_day": 0,
    "min_rep": 0.0
   },
@@ -318,11 +231,7 @@
     "beep": [],
     "screen": "none",
     "msg": "Güç kaynağı ekran kartı için yetersiz veya konnektörü uyumsuz!",
-    "msg_color": [
-     1,
-     0.55,
-     0.35
-    ]
+    "msg_color": [1, 0.55, 0.35]
    },
    "customer_lines": [
     "Canavar gibi ekran kartı aldım usta ama eski güç kaynağının kablosu uymuyor, açılmıyor da!",
@@ -334,10 +243,7 @@
    ],
    "hint": "İpucu: PSU yetersiz veya 12VHPWR kablosu yok — daha güçlü uyumlu bir PSU tak.",
    "difficulty": 2,
-   "labor": [
-    120,
-    180
-   ],
+   "labor": [120, 180],
    "min_day": 0,
    "min_rep": 0.0
   },
@@ -349,19 +255,10 @@
    "kind": "incompat",
    "symptoms": {
     "led": "VGA",
-    "beep": [
-     0.7,
-     0.13,
-     0.13,
-     0.13
-    ],
+    "beep": [0.7, 0.13, 0.13, 0.13],
     "screen": "no_signal",
     "msg": "Ekrana görüntü gelmiyor: bu işlemcide dahili grafik yok, ekran kartı gerekli.",
-    "msg_color": [
-     1,
-     0.6,
-     0.4
-    ]
+    "msg_color": [1, 0.6, 0.4]
    },
    "customer_lines": [
     "Ofis bilgisayarı topladım ekran kartsız ama ekrana hiç görüntü gelmiyor usta!",
@@ -373,11 +270,595 @@
    ],
    "hint": "İpucu: İşlemcide dahili grafik (iGPU) yok — uyumlu bir ekran kartı veya iGPU'lu CPU tak.",
    "difficulty": 2,
-   "labor": [
-    100,
-    160
-   ],
+   "labor": [100, 160],
    "min_day": 0,
+   "min_rep": 0.0
+  },
+  {
+   "id": "psu_underwatt",
+   "device": "pc",
+   "part": "psu",
+   "diag_code": "psu_watts",
+   "kind": "incompat",
+   "symptoms": {
+    "led": "",
+    "beep": [],
+    "screen": "none",
+    "msg": "Yetersiz PSU wattı! Sistem yük altında korumaya geçip kapanıyor.",
+    "msg_color": [1, 0.55, 0.35]
+   },
+   "customer_lines": [
+    "Sistem açılmaya çalışıp anında şalter gibi kapanıyor usta, PSU gücü yetmiyor galiba.",
+    "Parçaları yükselttim ama eski güç kaynağı yükü kaldırmıyor abi."
+   ],
+   "fail_lines": [
+    "Usta güç kaynağının wattı hâlâ yetersiz, sistem açılmıyor!"
+   ],
+   "hint": "İpucu: PSU toplam sistem wattını karşılamıyor — daha yüksek wattlı PSU tak.",
+   "difficulty": 2,
+   "labor": [110, 170],
+   "min_day": 2,
+   "min_rep": 0.0
+  },
+  {
+   "id": "cpu_bent_pins",
+   "device": "pc",
+   "part": "cpu",
+   "diag_code": "cpu_pins",
+   "kind": "pin_bend",
+   "symptoms": {
+    "led": "CPU",
+    "beep": [0.6, 0.6],
+    "screen": "no_signal",
+    "msg": "CPU soket hatası (2 uzun bip)! İşlemci pinleri eğilmiş olabilir.",
+    "msg_color": [1, 0.6, 0.4]
+   },
+   "customer_lines": [
+    "Macunu temizleyeyim derken işlemciyi düşürdüm usta, şimdi açılmıyor!",
+    "İşlemciyi söktüm taktım ama sokete otururken bir terslik oldu galiba."
+   ],
+   "fail_lines": [
+    "Usta işlemcide hâlâ pin temassızlığı var, sistem POST geçmiyor!"
+   ],
+   "hint": "İpucu: CPU pinleri eğik — soğutucuyu sök, tornavidayla pinleri düzelt ya da CPU'yu değiştir.",
+   "difficulty": 2,
+   "labor": [130, 190],
+   "min_day": 2,
+   "min_rep": 0.0
+  },
+  {
+   "id": "ram_unseated",
+   "device": "pc",
+   "part": "ram",
+   "diag_code": "ram_unseated",
+   "kind": "unseated",
+   "symptoms": {
+    "led": "DRAM",
+    "beep": [0.12, 0.12, 0.12, 0.12],
+    "screen": "no_signal",
+    "msg": "RAM algılanmıyor! Bellek yuvasına tam oturmamış olabilir.",
+    "msg_color": [1, 0.7, 0.4]
+   },
+   "customer_lines": [
+    "Kasa taşındıktan sonra açılmamaya başladı usta, içinde bir şey gevşemiş olabilir.",
+    "RAM'i çıkarıp sildim geri taktım ama çıt sesi gelmedi, ekran açılmıyor."
+   ],
+   "fail_lines": [
+    "Usta RAM hâlâ tam oturmamış, bilgisayar bipliyor!"
+   ],
+   "hint": "İpucu: RAM modülü yamuk/gevşek duruyor — kapağı açıp RAM'i yerine it.",
+   "difficulty": 1,
+   "labor": [70, 110],
+   "min_day": 1,
+   "min_rep": 0.0
+  },
+  {
+   "id": "gpu_artifact",
+   "device": "pc",
+   "part": "gpu",
+   "diag_code": "gpu_artifact",
+   "kind": "vram_fault",
+   "symptoms": {
+    "led": "VGA",
+    "beep": [0.15],
+    "screen": "artifact",
+    "msg": "Görüntü var ama ekranda renkli VRAM bozulmaları (artefakt) görünüyor!",
+    "msg_color": [1, 0.6, 0.4]
+   },
+   "customer_lines": [
+    "Ekranda pembe yeşil kareler çıkıyor usta, ekran kartının belleği mi bozuldu?",
+    "Oyun açınca çizgiler beliriyor, masaüstünde bile renkler karışıyor."
+   ],
+   "fail_lines": [
+    "Usta ekranda hâlâ renkli kareler ve çizgiler çıkıyor!"
+   ],
+   "hint": "İpucu: GPU VRAM artefakt veriyor — ekran kartını değiştir.",
+   "difficulty": 2,
+   "labor": [110, 160],
+   "min_day": 2,
+   "min_rep": 0.0
+  },
+  {
+   "id": "gpu_cable_unplugged",
+   "device": "pc",
+   "part": "",
+   "diag_code": "cable_gpu",
+   "kind": "cable",
+   "cable": "pcie_gpu",
+   "symptoms": {
+    "led": "VGA",
+    "beep": [0.7, 0.13, 0.13, 0.13],
+    "screen": "no_signal",
+    "msg": "1 uzun 3 kısa bip! Ekran kartı harici güç kablosu takılı değil.",
+    "msg_color": [1, 0.7, 0.35]
+   },
+   "customer_lines": [
+    "Kasanın içini temizledim ama ekran kartına giden bir kablo boşta kaldı, görüntü yok!",
+    "Ekran kartı fanları dönmüyor, monitöre sinyal gelmiyor usta."
+   ],
+   "fail_lines": [
+    "Usta ekran kartı güç kablosu hâlâ takılı değil, görüntü gelmiyor!"
+   ],
+   "hint": "İpucu: Ekran kartının PCIe güç kablosu çıkık — kapağı açıp fişi yerine tak.",
+   "difficulty": 1,
+   "labor": [70, 110],
+   "min_day": 1,
+   "min_rep": 0.0
+  },
+  {
+   "id": "hdd_bad_sector",
+   "device": "pc",
+   "part": "hdd",
+   "diag_code": "hdd_smart",
+   "kind": "smart_fail",
+   "symptoms": {
+    "led": "BOOT",
+    "beep": [0.15],
+    "screen": "disk_warn",
+    "msg": "Sistem açıldı ama SMART disk sağlığı kritik (bad sector uyarısı)!",
+    "msg_color": [1, 0.75, 0.35]
+   },
+   "customer_lines": [
+    "Bilgisayar acayip yavaşladı usta, diskten tıkırtı geliyor ve SMART hatası veriyor.",
+    "Dosyalar açılmıyor, disk sağlığı kritik uyarısı çıktı."
+   ],
+   "fail_lines": [
+    "Usta disk hâlâ bad sector uyarısı veriyor, verilerim gidecek!"
+   ],
+   "hint": "İpucu: Disk SMART sağlığı kritik (%35 altı) — arızalı diski değiştir.",
+   "difficulty": 2,
+   "labor": [100, 150],
+   "min_day": 2,
+   "min_rep": 0.0
+  },
+  {
+   "id": "mobo_dead",
+   "device": "pc",
+   "part": "mobo",
+   "diag_code": "mobo",
+   "kind": "broken",
+   "symptoms": {
+    "led": "",
+    "beep": [],
+    "screen": "none",
+    "msg": "Güç kaynağı sağlam ama anakart hiç tepki vermiyor.",
+    "msg_color": [1, 0.55, 0.4]
+   },
+   "customer_lines": [
+    "Düğmeye basıyorum tık yok usta. Başka PSU ile de denedim, yine açılmadı.",
+    "Kasa su sıçramasından sonra bir daha hiç tepki vermedi, anakart mı yandı?"
+   ],
+   "fail_lines": [
+    "Usta anakart hâlâ ölü, sistem hiç tepki vermiyor!"
+   ],
+   "hint": "İpucu: Anakart arızalı — soket ve RAM tipine uygun yeni anakart tak.",
+   "difficulty": 3,
+   "labor": [180, 260],
+   "min_day": 3,
+   "min_rep": 0.0
+  },
+  {
+   "id": "mobo_capacitor",
+   "device": "pc",
+   "part": "mobo",
+   "diag_code": "mobo_cap",
+   "kind": "capacitor",
+   "symptoms": {
+    "led": "",
+    "beep": [0.15, 0.6, 0.15],
+    "screen": "boot",
+    "msg": "Kısa-uzun-kısa bip! Anakartta şişmiş kondansatör: sistem kararsız, yükte kapanıyor.",
+    "msg_color": [1, 0.6, 0.35]
+   },
+   "customer_lines": [
+    "Bilgisayar açılıyor ama 2-3 saniye sonra şak diye kapanıyor usta, anakartın üstünde şişmiş bir şey var.",
+    "Açılışta kararsızlık var abi, kendiliğinden reset atıp kapanıyor."
+   ],
+   "fail_lines": [
+    "Usta anakarttaki şişmiş kondansatör hâlâ duruyor, sistem yine kapanıyor!"
+   ],
+   "hint": "İpucu: Anakart kondansatörleri şişmiş — uyumlu yeni anakartla değiştir.",
+   "difficulty": 3,
+   "labor": [170, 250],
+   "min_day": 3,
+   "min_rep": 0.0
+  },
+  {
+   "id": "cmos_dead",
+   "device": "pc",
+   "part": "cmos",
+   "diag_code": "cmos",
+   "kind": "broken",
+   "symptoms": {
+    "led": "BOOT",
+    "beep": [0.15, 0.15],
+    "screen": "cmos_warn",
+    "msg": "2 kısa bip! CMOS Checksum Error — BIOS saati ve ayarları sıfırlanıyor.",
+    "msg_color": [1, 0.8, 0.4]
+   },
+   "customer_lines": [
+    "Her açılışta BIOS tarihi 2001'e sıfırlanıyor usta, F1'e basmadan geçmiyor.",
+    "Fişi çekince bütün BIOS ayarları uçuyor abi, CMOS pili mi bitmiş?"
+   ],
+   "fail_lines": [
+    "Usta hâlâ CMOS Checksum hatası veriyor, saat sıfırlanıyor!"
+   ],
+   "hint": "İpucu: CMOS pili (CR2032) bitik veya eksik — anakarttaki pili değiştir.",
+   "difficulty": 1,
+   "labor": [60, 100],
+   "min_day": 1,
+   "min_rep": 0.0
+  },
+  {
+   "id": "fan_dead",
+   "device": "pc",
+   "part": "fan",
+   "diag_code": "fan",
+   "kind": "broken",
+   "symptoms": {
+    "led": "",
+    "beep": [0.15],
+    "screen": "boot",
+    "msg": "Sistem açıldı ama kasa fanlarından biri hiç dönmüyor!",
+    "msg_color": [1, 0.8, 0.4]
+   },
+   "customer_lines": [
+    "Kasa fanlarından biri tıkandı mı ne oldu, hiç dönmüyor usta.",
+    "İçerisi çok ısınıyor abi, baktım egzoz fanı durmuş."
+   ],
+   "fail_lines": [
+    "Usta kasa fanı hâlâ dönmüyor!"
+   ],
+   "hint": "İpucu: Kasa fanı arızalı — durmuş 120mm fanı yenisiyle değiştir.",
+   "difficulty": 1,
+   "labor": [60, 100],
+   "min_day": 1,
+   "min_rep": 0.0
+  },
+  {
+   "id": "cooler_dead",
+   "device": "pc",
+   "part": "cooler",
+   "diag_code": "cooler",
+   "kind": "broken",
+   "symptoms": {
+    "led": "CPU",
+    "beep": [0.15],
+    "screen": "boot",
+    "msg": "CPU Fan Error! İşlemci soğutucusu çalışmıyor, sıcaklık hızla yükseliyor.",
+    "msg_color": [1, 0.65, 0.35]
+   },
+   "customer_lines": [
+    "İşlemci fanı tamamen durdu usta, bilgisayar saniyeler içinde ısınıp kapanıyor.",
+    "Açılışta 'CPU Fan Error' uyarısı veriyor abi, fan dönmüyor."
+   ],
+   "fail_lines": [
+    "Usta CPU soğutucusu hâlâ çalışmıyor, işlemci yanacak!"
+   ],
+   "hint": "İpucu: CPU soğutucusu arızalı veya takılı değil — uyumlu soğutucu tak.",
+   "difficulty": 2,
+   "labor": [100, 150],
+   "min_day": 2,
+   "min_rep": 0.0
+  },
+  {
+   "id": "cable_24pin_loose",
+   "device": "pc",
+   "part": "",
+   "diag_code": "cable_24pin",
+   "kind": "cable",
+   "cable": "atx_24",
+   "symptoms": {
+    "led": "",
+    "beep": [],
+    "screen": "none",
+    "msg": "Hiçbir tepki yok! 24-pin anakart güç kablosu gevşemiş.",
+    "msg_color": [1, 0.7, 0.35]
+   },
+   "customer_lines": [
+    "Kabloları düzenlemeye çalıştım, ondan sonra bilgisayar hiç açılmadı usta.",
+    "Büyük kalın güç kablosu yerinden oynadı galiba, hiç elektrik yok."
+   ],
+   "fail_lines": [
+    "Usta hâlâ elektrik gelmiyor, 24-pin anakart kablosu gevşek mi?"
+   ],
+   "hint": "İpucu: 24-pin ATX güç kablosu çıkık/gevşek — anakarta tam oturt.",
+   "difficulty": 1,
+   "labor": [70, 110],
+   "min_day": 1,
+   "min_rep": 0.0
+  },
+  {
+   "id": "cable_cpu_loose",
+   "device": "pc",
+   "part": "",
+   "diag_code": "cable_cpu",
+   "kind": "cable",
+   "cable": "cpu_8",
+   "symptoms": {
+    "led": "CPU",
+    "beep": [],
+    "screen": "no_signal",
+    "msg": "Fanlar dönüyor ama CPU LED'i yanıyor — CPU 8-pin güç kablosu takılı değil!",
+    "msg_color": [1, 0.7, 0.35]
+   },
+   "customer_lines": [
+    "Yeni güç kaynağı taktım ama fanlar dönüp duruyor, ekrana görüntü gelmiyor.",
+    "İşlemcinin üst köşesindeki kabloyu takmayı mı unuttum acaba?"
+   ],
+   "fail_lines": [
+    "Usta işlemci güç kablosu hâlâ takılı değil, sistem başlamıyor!"
+   ],
+   "hint": "İpucu: CPU 8-pin (4+4) güç kablosu çıkık — anakartın üst köşesine tak.",
+   "difficulty": 1,
+   "labor": [70, 110],
+   "min_day": 1,
+   "min_rep": 0.0
+  },
+  {
+   "id": "cable_sata_loose",
+   "device": "pc",
+   "part": "",
+   "diag_code": "cable_sata",
+   "kind": "cable",
+   "cable": "sata",
+   "symptoms": {
+    "led": "BOOT",
+    "beep": [0.15],
+    "screen": "no_boot",
+    "msg": "Disk görünmüyor! SATA veri/güç kablosu yerinden çıkmış.",
+    "msg_color": [1, 0.8, 0.4]
+   },
+   "customer_lines": [
+    "SSD sağlamdı ama kasa sarsılınca BIOS'ta disk kayboldu usta.",
+    "Kırmızı ince kablo sallanıyor gibiydi, Windows açılmıyor şimdi."
+   ],
+   "fail_lines": [
+    "Usta disk hâlâ görünmüyor, SATA kablosu gevşek!"
+   ],
+   "hint": "İpucu: SATA veri/güç kablosu gevşek — diske bağlı SATA fişini tak.",
+   "difficulty": 1,
+   "labor": [60, 100],
+   "min_day": 1,
+   "min_rep": 0.0
+  },
+  {
+   "id": "cable_front_panel",
+   "device": "pc",
+   "part": "",
+   "diag_code": "cable_fp",
+   "kind": "cable",
+   "cable": "front_panel",
+   "symptoms": {
+    "led": "",
+    "beep": [],
+    "screen": "none",
+    "msg": "Güç düğmesi tepki vermiyor! Ön panel güç düğmesi kablosu çıkmış.",
+    "msg_color": [1, 0.7, 0.35]
+   },
+   "customer_lines": [
+    "Kasanın ön düğmesine basıyorum basıyorum hiç tık yok usta.",
+    "Anakartı temizlerken alttaki ince ön panel fişi çıktı galiba, düğme işlemiyor."
+   ],
+   "fail_lines": [
+    "Usta kasanın güç düğmesi hâlâ çalışmıyor!"
+   ],
+   "hint": "İpucu: Ön panel güç düğmesi (POWER SW) kablosu çıkık — anakarta tak.",
+   "difficulty": 1,
+   "labor": [60, 100],
+   "min_day": 1,
+   "min_rep": 0.0
+  },
+  {
+   "id": "sw_virus",
+   "device": "pc",
+   "part": "",
+   "diag_code": "sw_virus",
+   "kind": "software",
+   "sw_flag": "sw_virus",
+   "req_upgrade": "antivirus_usb",
+   "symptoms": {
+    "led": "",
+    "beep": [0.15],
+    "screen": "virus",
+    "msg": "Bilgisayar açıldı ama masaüstü reklam yazılımı ve virüs pencereleriyle dolu!",
+    "msg_color": [1, 0.5, 0.35]
+   },
+   "customer_lines": [
+    "Ücretsiz oyun indireyim dedim usta, ekran kendi kendine reklam açıp duruyor!",
+    "Bilgisayara virüs bulaşmış abi, tarayıcı delirmiş durumda."
+   ],
+   "fail_lines": [
+    "Usta virüsler hâlâ duruyor, ekrana reklamlar yağıyor!"
+   ],
+   "hint": "İpucu: Antivirüs USB'si ile kasayı tara veya monitörden Servis Paneli'ni aç.",
+   "difficulty": 1,
+   "labor": [90, 140],
+   "min_day": 1,
+   "min_rep": 0.0
+  },
+  {
+   "id": "sw_os_corrupt",
+   "device": "pc",
+   "part": "",
+   "diag_code": "sw_os_corrupt",
+   "kind": "software",
+   "sw_flag": "sw_os_corrupt",
+   "req_upgrade": "install_usb",
+   "symptoms": {
+    "led": "",
+    "beep": [0.15],
+    "screen": "os_bsod",
+    "msg": "İşletim sistemi açılırken mavi ekran veriyor: CRITICAL_PROCESS_DIED!",
+    "msg_color": [0.5, 0.75, 1.0]
+   },
+   "customer_lines": [
+    "Güncelleme ortasında elektrik kesildi, şimdi açılırken mavi ekran verip yeniden başlıyor.",
+    "Windows çökmüş usta, sıfırdan format atıp kurmak lazım."
+   ],
+   "fail_lines": [
+    "Usta bilgisayar hâlâ açılışta mavi ekran veriyor, işletim sistemi bozuk!"
+   ],
+   "hint": "İpucu: Kurulum USB'si ile veya monitör Servis Paneli'nden format atıp BilgiOS kur.",
+   "difficulty": 2,
+   "labor": [110, 160],
+   "min_day": 2,
+   "min_rep": 0.0
+  },
+  {
+   "id": "sw_driver",
+   "device": "pc",
+   "part": "",
+   "diag_code": "sw_driver",
+   "kind": "software",
+   "sw_flag": "sw_driver",
+   "symptoms": {
+    "led": "",
+    "beep": [0.15],
+    "screen": "driver_warn",
+    "msg": "Sürücü çakışması (Kod 43): ekran çözünürlüğü düşük, aygıtlar hatalı.",
+    "msg_color": [1, 0.8, 0.4]
+   },
+   "customer_lines": [
+    "Ekran kocaman piksel piksel oldu usta, Aygıt Yöneticisi'nde sarı ünlem var.",
+    "Yeni sürücü kurdum ama eski sürücüyle çakıştı herhalde, oyunlar açılmıyor."
+   ],
+   "fail_lines": [
+    "Usta sürücü hatası hâlâ devam ediyor, oyunlar açılmıyor!"
+   ],
+   "hint": "İpucu: Monitörden (E) Servis Paneli > Yazılım sekmesinde sürücüleri onar.",
+   "difficulty": 1,
+   "labor": [80, 120],
+   "min_day": 1,
+   "min_rep": 0.0
+  },
+  {
+   "id": "sw_boot_order",
+   "device": "pc",
+   "part": "",
+   "diag_code": "sw_boot_order",
+   "kind": "software",
+   "sw_flag": "sw_boot_order",
+   "symptoms": {
+    "led": "BOOT",
+    "beep": [0.15],
+    "screen": "boot_order",
+    "msg": "BIOS açılış sırası yanlış! Sistem ağdan (PXE) başlatmaya çalışıyor.",
+    "msg_color": [1, 0.8, 0.4]
+   },
+   "customer_lines": [
+    "BIOS'u kurcaladım usta, şimdi Windows yerine 'PXE Boot' yazısı çıkıp bekliyor.",
+    "Açılış sırası bozulmuş abi, disk sağlam ama sistem açılmıyor."
+   ],
+   "fail_lines": [
+    "Usta açılış sırası hâlâ yanlış, Windows'tan başlamıyor!"
+   ],
+   "hint": "İpucu: Monitörden (E) BIOS sekmesini açıp Boot Sırasını düzelt.",
+   "difficulty": 1,
+   "labor": [70, 110],
+   "min_day": 1,
+   "min_rep": 0.0
+  },
+  {
+   "id": "sw_xmp_off",
+   "device": "pc",
+   "part": "",
+   "diag_code": "sw_xmp_off",
+   "kind": "software",
+   "sw_flag": "sw_xmp_off",
+   "symptoms": {
+    "led": "",
+    "beep": [0.15],
+    "screen": "boot",
+    "msg": "Sistem açıldı ama RAM düşük temel frekansta (XMP kapalı) çalışıyor.",
+    "msg_color": [1, 0.85, 0.5]
+   },
+   "customer_lines": [
+    "3600 MHz RAM aldım ama görev yöneticisinde 2133 MHz görünüyor usta, performans düşük.",
+    "BIOS'tan XMP profilini açamadım abi, RAM yavaş çalışıyor."
+   ],
+   "fail_lines": [
+    "Usta RAM hâlâ düşük hızda çalışıyor, XMP açılmamış!"
+   ],
+   "hint": "İpucu: Monitörden (E) BIOS sekmesine girip XMP profilini etkinleştir.",
+   "difficulty": 2,
+   "labor": [70, 110],
+   "min_day": 2,
+   "min_rep": 0.0
+  },
+  {
+   "id": "sw_bios_update",
+   "device": "pc",
+   "part": "",
+   "diag_code": "sw_bios_update",
+   "kind": "software",
+   "sw_flag": "sw_bios_update",
+   "req_upgrade": "install_usb",
+   "symptoms": {
+    "led": "CPU",
+    "beep": [0.15],
+    "screen": "bios_old",
+    "msg": "Eski BIOS sürümü! Yeni işlemci için BIOS güncellemesi gerekiyor.",
+    "msg_color": [1, 0.75, 0.35]
+   },
+   "customer_lines": [
+    "Yeni nesil işlemci taktım ama BIOS 'CPU tanınmadı — güncelleme gerekli' diyor usta.",
+    "Anakartın BIOS'u çok eskiymiş abi, günceller misin?"
+   ],
+   "fail_lines": [
+    "Usta BIOS sürümü hâlâ eski, işlemciyi tam tanımıyor!"
+   ],
+   "hint": "İpucu: Kurulum/BIOS USB'si ile veya monitör BIOS sekmesinden BIOS'u güncelle.",
+   "difficulty": 2,
+   "labor": [110, 160],
+   "min_day": 3,
+   "min_rep": 0.0
+  },
+  {
+   "id": "sw_disk_full",
+   "device": "pc",
+   "part": "",
+   "diag_code": "sw_disk_full",
+   "kind": "software",
+   "sw_flag": "sw_disk_full",
+   "symptoms": {
+    "led": "",
+    "beep": [0.15],
+    "screen": "disk_full",
+    "msg": "C: diski %99 dolu! Geçici dosyalar sistemi kilitliyor.",
+    "msg_color": [1, 0.8, 0.4]
+   },
+   "customer_lines": [
+    "Diskte 1 MB bile yer kalmamış usta, bilgisayar sürünüyor ve hata veriyor.",
+    "Önbellek ve geçici dosyalar diski şişirmiş abi, bir temizlik yapar mısın?"
+   ],
+   "fail_lines": [
+    "Usta disk hâlâ %99 dolu, hiçbir şey kaydedemiyorum!"
+   ],
+   "hint": "İpucu: Monitörden (E) Servis Paneli > Yazılım sekmesinde Disk Temizliği yap.",
+   "difficulty": 1,
+   "labor": [70, 110],
+   "min_day": 1,
    "min_rep": 0.0
   },
   {
@@ -395,12 +876,9 @@
    "fail_lines": [
     "Usta bu laptop hâlâ donup mavi ekran veriyor!"
    ],
-   "hint": "",
+   "hint": "İpucu: Laptop RAM modülü arızalı.",
    "difficulty": 1,
-   "labor": [
-    120,
-    200
-   ],
+   "labor": [120, 200],
    "min_day": 0,
    "min_rep": 0.0
   },
@@ -418,12 +896,9 @@
    "fail_lines": [
     "Usta Windows hâlâ gelmiyor, 'boot device' diyor!"
    ],
-   "hint": "",
+   "hint": "İpucu: Laptop M.2 SSD diski arızalı.",
    "difficulty": 1,
-   "labor": [
-    120,
-    200
-   ],
+   "labor": [120, 200],
    "min_day": 0,
    "min_rep": 0.0
   },
@@ -442,12 +917,9 @@
    "fail_lines": [
     "Usta pil hâlâ şarj olmuyor, kabloyu çekince kapanıyor!"
    ],
-   "hint": "",
+   "hint": "İpucu: Laptop bataryası arızalı.",
    "difficulty": 1,
-   "labor": [
-    120,
-    200
-   ],
+   "labor": [120, 200],
    "min_day": 0,
    "min_rep": 0.0
   },
@@ -466,13 +938,130 @@
    "fail_lines": [
     "Usta ekran hâlâ kırık, hiçbir şey göremiyorum!"
    ],
-   "hint": "",
+   "hint": "İpucu: Laptop ekran paneli kırık.",
    "difficulty": 1,
-   "labor": [
-    120,
-    200
-   ],
+   "labor": [120, 200],
    "min_day": 0,
+   "min_rep": 0.0
+  },
+  {
+   "id": "laptop_kbd",
+   "device": "laptop",
+   "part": "lap_kbd",
+   "diag_code": "kbd",
+   "kind": "broken",
+   "symptoms": {},
+   "customer_lines": [
+    "Klavyenin yarısı basmıyor usta, bazı tuşlar da takılı kalıp 'aaaaaaaa' yazıyor.",
+    "Çalışırken klavyeye kola döküldü, tuşlar sapıttı abi."
+   ],
+   "fail_lines": [
+    "Usta klavye hâlâ basmıyor, yazı yazamıyorum!"
+   ],
+   "hint": "İpucu: Laptop düzken üst güverteden klavyeyi söküp değiştir.",
+   "difficulty": 1,
+   "labor": [90, 150],
+   "min_day": 1,
+   "min_rep": 0.0
+  },
+  {
+   "id": "laptop_wifi",
+   "device": "laptop",
+   "part": "lap_wifi",
+   "diag_code": "wifi",
+   "kind": "broken",
+   "symptoms": {},
+   "customer_lines": [
+    "Laptop Wi-Fi ağlarını hiç görmüyor usta, kablosuz adaptör yok diyor.",
+    "İnternet ikonu çarpılı kaldı abi, Bluetooth da kayboldu."
+   ],
+   "fail_lines": [
+    "Usta laptop hâlâ Wi-Fi ağlarını görmüyor!"
+   ],
+   "hint": "İpucu: Alt kapağı açıp M.2 Wi-Fi kartını değiştir.",
+   "difficulty": 2,
+   "labor": [90, 150],
+   "min_day": 2,
+   "min_rep": 0.0
+  },
+  {
+   "id": "laptop_dc",
+   "device": "laptop",
+   "part": "lap_dc",
+   "diag_code": "dc",
+   "kind": "broken",
+   "symptoms": {},
+   "customer_lines": [
+    "Şarj adaptörünü takıyorum ama soket sallanıyor, hiç elektrik almıyor usta.",
+    "Şarj girişinin içi yanmış gibi abi, kabloyu oynatmadan şarj etmiyor."
+   ],
+   "fail_lines": [
+    "Usta şarj girişi hâlâ temassızlık yapıyor, elektrik almıyor!"
+   ],
+   "hint": "İpucu: Alt kapağı açıp Laptop Şarj Soketi (DC) parçasını değiştir.",
+   "difficulty": 2,
+   "labor": [100, 160],
+   "min_day": 2,
+   "min_rep": 0.0
+  },
+  {
+   "id": "laptop_dust",
+   "device": "laptop",
+   "part": "",
+   "diag_code": "lap_dust",
+   "kind": "overheat",
+   "symptoms": {},
+   "customer_lines": [
+    "Laptopun fanı uçak motoru gibi bağırıyor, altı el yakıyor usta!",
+    "İki dakikada alev topuna dönüp kapanıyor abi, fan tozdan tıkandı herhalde."
+   ],
+   "fail_lines": [
+    "Usta laptop hâlâ toz içinde, yine çok ısınıyor!"
+   ],
+   "hint": "İpucu: Laptopu ters çevir, alt kapağı açıp Basınçlı Hava ile tozu üfle.",
+   "difficulty": 1,
+   "labor": [90, 140],
+   "min_day": 1,
+   "min_rep": 0.0
+  },
+  {
+   "id": "laptop_hinge",
+   "device": "laptop",
+   "part": "",
+   "diag_code": "lap_hinge",
+   "kind": "mechanical",
+   "symptoms": {},
+   "customer_lines": [
+    "Laptopun ekran menteşesi gevşemiş usta, kapağı açınca yan yatıyor ve çıtırdıyor.",
+    "Menteşe vidaları atmış abi, ekran kapağı sallanıp duruyor."
+   ],
+   "fail_lines": [
+    "Usta ekran menteşesi hâlâ sallanıyor!"
+   ],
+   "hint": "İpucu: Tornavidayı alıp laptopun gevşek menteşesini sık.",
+   "difficulty": 1,
+   "labor": [80, 130],
+   "min_day": 1,
+   "min_rep": 0.0
+  },
+  {
+   "id": "laptop_liquid",
+   "device": "laptop",
+   "part": "",
+   "diag_code": "lap_liquid",
+   "kind": "liquid",
+   "symptoms": {},
+   "customer_lines": [
+    "Laptopun üstüne kahve döküldü usta, açılır gibi olup oksit yüzünden hata veriyor!",
+    "Su sıçradıktan sonra anakartın içi yeşillenmiş gibi abi, kurtarabilir miyiz?"
+   ],
+   "fail_lines": [
+    "Usta içeride hâlâ sıvı/oksit izi var, kısa devre yapacak!"
+   ],
+   "hint": "İpucu: Alt kapağı aç ve IPA Temizleyici sprey ile sıvı oksitlenmesini temizle.",
+   "difficulty": 3,
+   "labor": [150, 220],
+   "min_day": 3,
    "min_rep": 0.0
   },
   {
@@ -490,12 +1079,9 @@
    "fail_lines": [
     "Usta pil hâlâ bitik, telefon açılır açılmaz kapanıyor!"
    ],
-   "hint": "",
+   "hint": "İpucu: Telefon bataryasını değiştir.",
    "difficulty": 1,
-   "labor": [
-    80,
-    140
-   ],
+   "labor": [80, 140],
    "min_day": 0,
    "min_rep": 0.0
   },
@@ -514,12 +1100,9 @@
    "fail_lines": [
     "Usta bu hâlâ şarj olmuyor ki!"
    ],
-   "hint": "",
+   "hint": "İpucu: USB-C şarj soketi modülünü değiştir.",
    "difficulty": 1,
-   "labor": [
-    80,
-    140
-   ],
+   "labor": [80, 140],
    "min_day": 0,
    "min_rep": 0.0
   },
@@ -538,13 +1121,110 @@
    "fail_lines": [
     "Usta ekran hâlâ paramparça!"
    ],
-   "hint": "",
+   "hint": "İpucu: Telefon ekran modülünü değiştir.",
    "difficulty": 1,
-   "labor": [
-    80,
-    140
-   ],
+   "labor": [80, 140],
    "min_day": 0,
+   "min_rep": 0.0
+  },
+  {
+   "id": "phone_cam",
+   "device": "phone",
+   "part": "tel_cam",
+   "diag_code": "cam",
+   "kind": "broken",
+   "symptoms": {},
+   "customer_lines": [
+    "Kamerayı açınca kapkara ekran geliyor usta, fotoğraf çekemiyorum.",
+    "Telefon düştükten sonra kamera odaklanmıyor ve hata veriyor."
+   ],
+   "fail_lines": [
+    "Usta kamera hâlâ açılmıyor, siyah ekran veriyor!"
+   ],
+   "hint": "İpucu: Ekranı kaldırıp telefon kamera modülünü değiştir.",
+   "difficulty": 1,
+   "labor": [80, 130],
+   "min_day": 1,
+   "min_rep": 0.0
+  },
+  {
+   "id": "phone_spk",
+   "device": "phone",
+   "part": "tel_spk",
+   "diag_code": "spk",
+   "kind": "broken",
+   "symptoms": {},
+   "customer_lines": [
+    "Arayınca karşı tarafa sesim gitmiyor, hoparlörden de hiç ses çıkmıyor usta.",
+    "Müzik sesi gitti abi, mikrofon da çalışmıyor."
+   ],
+   "fail_lines": [
+    "Usta telefondan hâlâ ses çıkmıyor!"
+   ],
+   "hint": "İpucu: Ekranı kaldırıp hoparlör & mikrofon modülünü değiştir.",
+   "difficulty": 1,
+   "labor": [70, 120],
+   "min_day": 1,
+   "min_rep": 0.0
+  },
+  {
+   "id": "phone_back",
+   "device": "phone",
+   "part": "tel_back",
+   "diag_code": "back",
+   "kind": "broken",
+   "symptoms": {},
+   "customer_lines": [
+    "Telefonun arka camı tuzla buz oldu usta, elime cam batıyor.",
+    "Ön ekran sağlam ama arka kapak camı tamamen çatladı abi."
+   ],
+   "fail_lines": [
+    "Usta arka cam hâlâ çatlak!"
+   ],
+   "hint": "İpucu: Kırık telefon arka camını yenisiyle değiştir.",
+   "difficulty": 1,
+   "labor": [70, 110],
+   "min_day": 1,
+   "min_rep": 0.0
+  },
+  {
+   "id": "phone_liquid",
+   "device": "phone",
+   "part": "",
+   "diag_code": "tel_liquid",
+   "kind": "liquid",
+   "symptoms": {},
+   "customer_lines": [
+    "Telefon yağmurda ıslandı usta, içinde nem ve oksit uyarısı çıkıyor!",
+    "Lavaboya düştü abi, kuruttum ama anakartta oksit kalmış."
+   ],
+   "fail_lines": [
+    "Usta telefonun içi hâlâ oksitli, sıvı uyarısı veriyor!"
+   ],
+   "hint": "İpucu: Ekranı kaldırıp IPA Temizleyici sprey ile oksitlenmeyi temizle.",
+   "difficulty": 2,
+   "labor": [110, 160],
+   "min_day": 2,
+   "min_rep": 0.0
+  },
+  {
+   "id": "phone_sw",
+   "device": "phone",
+   "part": "",
+   "diag_code": "tel_sw",
+   "kind": "software",
+   "symptoms": {},
+   "customer_lines": [
+    "Telefon açılış logosunda takılıp yeniden başlıyor (bootloop) usta, yazılım çökmüş!",
+    "Güncelleme yarıda kaldı abi, sistem açılmıyor — sıfırlamak lazım."
+   ],
+   "fail_lines": [
+    "Usta telefon hâlâ açılış logosunda takılı kalıyor!"
+   ],
+   "hint": "İpucu: Kurulum USB'si ile veya tezgâh panelinden telefon yazılımını sıfırla.",
+   "difficulty": 2,
+   "labor": [90, 140],
+   "min_day": 2,
    "min_rep": 0.0
   }
  ]

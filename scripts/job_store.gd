@@ -88,12 +88,19 @@ static func short_goal(rec: Dictionary) -> String:
 		return "GARANTİ dönüşü" + ex
 	match str(rec.get("kind", "")):
 		"overheat_dust", "overheat_paste": return "PC aşırı ısınıyor" + ex
-		"incompat_ram_ddr", "incompat_psu_gpu", "incompat_no_igpu": return "Uyumluluk sorunu" + ex
+		"incompat_ram_ddr", "incompat_psu_gpu", "incompat_no_igpu", "psu_underwatt": return "Uyumluluk / güç sorunu" + ex
 		"upgrade_gpu": return "Ekran kartı yükseltme" + ex
 		"upgrade_ram": return "RAM 32 GB yükseltme" + ex
 		"build": return "Sıfırdan PC toplama" + ex
 		"laptop": return "Laptop tamiri" + ex
 		"phone": return "Telefon tamiri" + ex
+	var k := str(rec.get("kind", ""))
+	if k.begins_with("cable_"):
+		return "PC kablo / güç kontrolü" + ex
+	if k.begins_with("sw_"):
+		return "Yazılım / BIOS servisi" + ex
+	if k.begins_with("multi_"):
+		return "Çoklu arıza tamiri" + ex
 	return "PC arızası" + ex
 
 
@@ -109,6 +116,7 @@ static func normalize(r: Dictionary) -> Dictionary:
 	out.accepted_abs = float(out.get("accepted_abs", out.due_abs - 24.0))
 	out.express = bool(out.get("express", false))
 	out.warranty = bool(out.get("warranty", false))
+	out.had_dust = bool(out.get("had_dust", false))
 	out.called = false  # yüklemede müşteri çağrısı yeniden değerlendirilir
 	out.status = str(out.get("status", "waiting_bench"))
 	out.location = str(out.get("location", "rack:0"))
@@ -129,6 +137,26 @@ static func normalize(r: Dictionary) -> Dictionary:
 		if is_pc:
 			var scid := str(st.get("case_id", out.get("case_id", "atx_mid")))
 			st["case_id"] = "atx_mid" if scid.is_empty() else scid
+			if st.has("cables") and st.cables is Dictionary:
+				var cb := {}
+				for ck in st.cables:
+					cb[str(ck)] = str(st.cables[ck])
+				st["cables"] = cb
+			st["cables_tidy"] = bool(st.get("cables_tidy", false))
+			if st.has("screws") and st.screws is Dictionary:
+				var sc := {}
+				for sk in st.screws:
+					sc[str(sk)] = bool(st.screws[sk])
+				st["screws"] = sc
+			var swa: Array = []
+			for sf in st.get("sw_faults", []):
+				swa.append(str(sf))
+			st["sw_faults"] = swa
+			st["post_card_active"] = bool(st.get("post_card_active", false))
+		else:
+			st["liquid_damage"] = bool(st.get("liquid_damage", false))
+			st["hinge_loose"] = bool(st.get("hinge_loose", false))
+			st["sw_fault"] = bool(st.get("sw_fault", false))
 		st.parts = _norm_parts(st.get("parts", []))
 		st.dust = float(st.get("dust", 0.0))
 		st.socket_paste = bool(st.get("socket_paste", false))
@@ -144,11 +172,14 @@ static func normalize(r: Dictionary) -> Dictionary:
 	return out
 
 
-## Parça listesini normalleştirir: v4 sözlükleri ve geriye dönük v3 dizileri desteklenir.
+## Parça listesini normalleştirir: v5/v4 sözlükleri (meta sözlükler dahil) ve geriye dönük v3 dizileri desteklenir.
 static func _norm_parts(parts: Array) -> Array:
 	var out := []
 	for p in parts:
 		if p is Dictionary:
+			if p.has("cables") or p.has("screws") or p.has("sw_faults") or p.has("flags"):
+				out.append(p.duplicate(true))
+				continue
 			var sn := str(p.get("slot", ""))
 			if sn == "dust" or p.has("dust"):
 				out.append({"slot": "dust", "amount": float(p.get("amount", p.get("dust", 0.0)))})
@@ -162,6 +193,11 @@ static func _norm_parts(parts: Array) -> Array:
 				"paste_ok": bool(p.get("paste_ok", true)),
 				"cheap": bool(p.get("cheap", false)),
 				"health": int(p.get("health", 100)),
+				"seated": bool(p.get("seated", true)),
+				"bent_pins": bool(p.get("bent_pins", false)),
+				"bad_caps": bool(p.get("bad_caps", false)),
+				"vram_bad": bool(p.get("vram_bad", false)),
+				"is_test_part": bool(p.get("is_test_part", false)),
 			})
 		elif p is Array and p.size() >= 4:
 			var q := [str(p[0]), str(p[1]), (float(p[2]) if str(p[0]) == "dust" else int(p[2])), bool(p[3])]
@@ -174,8 +210,7 @@ static func _norm_parts(parts: Array) -> Array:
 
 
 # ---------------------------------------------------------------- cihaz durumu
-## Cihazın parça durumunu v4 kayda yazılabilir sözlüğe çevirir:
-## case_id (PC için), parts: [{slot, sku, broken, paste_ok, cheap, health}], dust, socket_paste.
+## Cihazın parça durumunu v5 kayda yazılabilir sözlüğe çevirir.
 static func snapshot(dev) -> Dictionary:
 	var parts := []
 	for sn in dev.slots:
@@ -190,6 +225,11 @@ static func snapshot(dev) -> Dictionary:
 				"paste_ok": bool(p.paste_ok),
 				"cheap": bool(p.cheap),
 				"health": int(p.health) if "health" in p else 100,
+				"seated": bool(p.seated) if "seated" in p else true,
+				"bent_pins": bool(p.bent_pins) if "bent_pins" in p else false,
+				"bad_caps": bool(p.bad_caps) if "bad_caps" in p else false,
+				"vram_bad": bool(p.vram_bad) if "vram_bad" in p else false,
+				"is_test_part": bool(p.is_test_part) if "is_test_part" in p else false,
 			})
 	var out := {
 		"parts": parts,
@@ -198,10 +238,23 @@ static func snapshot(dev) -> Dictionary:
 	}
 	if "case_id" in dev:
 		out["case_id"] = str(dev.case_id)
+	if "cables" in dev:
+		out["cables"] = dev.cables.duplicate()
+		out["cables_tidy"] = bool(dev.cables_tidy)
+		out["screws"] = dev.screws.duplicate()
+		out["sw_faults"] = dev.sw_faults.duplicate()
+		out["post_card_active"] = bool(dev.post_card_active)
+	else:
+		if "liquid_damage" in dev:
+			out["liquid_damage"] = bool(dev.liquid_damage)
+		if "hinge_loose" in dev:
+			out["hinge_loose"] = bool(dev.hinge_loose)
+		if "sw_fault" in dev:
+			out["sw_fault"] = bool(dev.sw_fault)
 	return out
 
 
-## Boş yeni cihaza kayıtlı durumu kurar (v4 sözlükleri ve geriye dönük v3 dizileri destekler).
+## Boş yeni cihaza kayıtlı durumu kurar (v5/v4 sözlükleri ve geriye dönük v3 dizileri destekler).
 static func restore(dev, state: Dictionary) -> void:
 	var is_pc: bool = not dev.has_method("slot_open")
 	var raw_parts: Array = state.get("parts", [])
@@ -210,6 +263,9 @@ static func restore(dev, state: Dictionary) -> void:
 	var seen := {}
 	for p in raw_parts:
 		if p is Dictionary:
+			if p.has("cables") or p.has("screws") or p.has("sw_faults") or p.has("flags"):
+				fill.append(p)
+				continue
 			var sn := str(p.get("slot", ""))
 			if sn == "dust" or p.has("dust"):
 				if is_pc:
@@ -241,11 +297,43 @@ static func restore(dev, state: Dictionary) -> void:
 	for sn in cheap_slots:
 		if dev.slots.has(sn) and dev.slots[sn].part != null:
 			dev.slots[sn].part.make_cheap()
-	if "dust" in dev and float(state.get("dust", 0.0)) > 0.0:
-		dev.set_dust(float(state.dust))
+	# is_test_part bayrağını ve v5 cihaz/kasa durumunu geri yükle
+	if is_pc:
+		for p in raw_parts:
+			if p is Dictionary and p.has("slot") and bool(p.get("is_test_part", false)):
+				var sn := str(p.slot)
+				if dev.slots.has(sn) and dev.slots[sn].part != null:
+					dev.slots[sn].part.make_test_part()
+		if state.has("cables") and state.cables is Dictionary:
+			for ck in state.cables:
+				dev.cables[str(ck)] = str(state.cables[ck])
+		if state.has("cables_tidy"):
+			dev.cables_tidy = bool(state.cables_tidy)
+		if state.has("screws") and state.screws is Dictionary:
+			for sk in state.screws:
+				dev.screws[str(sk)] = bool(state.screws[sk])
+		if state.has("sw_faults"):
+			dev.sw_faults = []
+			for sf in state.sw_faults:
+				dev.sw_faults.append(str(sf))
+		if state.has("post_card_active"):
+			dev.post_card_active = bool(state.post_card_active)
+	else:
+		if state.has("liquid_damage"):
+			dev.liquid_damage = bool(state.liquid_damage)
+		if state.has("hinge_loose"):
+			dev.hinge_loose = bool(state.hinge_loose)
+		if state.has("sw_fault"):
+			dev.sw_fault = bool(state.sw_fault)
+	var d_amt := float(state.get("dust", 0.0))
+	if d_amt > 0.0:
+		if dev.has_method("set_dust"):
+			dev.set_dust(d_amt)
+		elif "dust" in dev:
+			dev.dust = d_amt
 	if "socket_paste" in dev and bool(state.get("socket_paste", false)):
 		dev.socket_paste = true
-		dev._update_visuals()
+	dev._update_visuals()
 
 
 # ---------------------------------------------------------------- kilit (rafta/elde cihaz etkileşimi kapalı)

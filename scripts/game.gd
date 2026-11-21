@@ -38,6 +38,7 @@ const DEV_ARGS := [
 	"--multijobtest",
 	"--jobshot",
 	"--compattest",
+	"--diagtest",
 ]
 
 # --- Ayarlanabilir sabitler ---
@@ -52,20 +53,31 @@ const RENT_RAISE_EVERY := 3               # kaç günde bir kira seviyesi artar
 const START_REP := 3.0
 const BANKRUPT_DAYS := 2                  # üst üste kaç gün eksi bakiye = iflas
 const SAVE_PATH := "user://save.json"
-const SAVE_VERSION := 4                   # kayıt şeması sürümü (eski kayıtlar _migrate ile çevrilir)
+const SAVE_VERSION := 5                   # kayıt şeması sürümü (eski kayıtlar _migrate ile çevrilir)
 
 const UPGRADE_LIST := [
-	{"id": "sign", "name": "Reklam Tabelası", "price": 400, "desc": "Müşteriler daha sık gelir."},
-	{"id": "wholesale", "name": "Toptan Anlaşma", "price": 600, "desc": "ParçaNet'te tüm parçalar %15 indirimli."},
-	{"id": "courier", "name": "Kurye Anlaşması", "price": 500, "desc": "Kargolar yarı sürede ve ücretsiz gelir."},
-	{"id": "coffee", "name": "Kahve Makinesi", "price": 350, "desc": "Müşteri sabrı %50 artar."},
-	{"id": "cert", "name": "Usta Sertifikası", "price": 800, "desc": "İş ücretleri %15 artar."},
+	{"id": "sign", "cat": "shop", "name": "Reklam Tabelası", "price": 400, "desc": "Müşteriler daha sık gelir."},
+	{"id": "wholesale", "cat": "shop", "name": "Toptan Anlaşma", "price": 600, "desc": "ParçaNet'te tüm parçalar %15 indirimli."},
+	{"id": "courier", "cat": "shop", "name": "Kurye Anlaşması", "price": 500, "desc": "Kargolar yarı sürede ve ücretsiz gelir."},
+	{"id": "coffee", "cat": "shop", "name": "Kahve Makinesi", "price": 350, "desc": "Müşteri sabrı %50 artar."},
+	{"id": "cert", "cat": "shop", "name": "Usta Sertifikası", "price": 800, "desc": "İş ücretleri %15 artar."},
+	{"id": "psu_tester", "cat": "tool", "name": "PSU Test Cihazı", "price": 180, "desc": "Güç kaynağının voltaj, watt ve kablo çıkışlarını ölçer."},
+	{"id": "multimeter", "cat": "tool", "name": "Dijital Multimetre", "price": 250, "desc": "Anakart, kondansatör, CMOS pili ve parça sağlamlığını ölçer."},
+	{"id": "post_card", "cat": "tool", "name": "POST Teşhis Kartı", "price": 220, "desc": "Debug LED'i olmayan ucuz anakartlarda bile POST hata kodunu gösterir."},
+	{"id": "thermal_cam", "cat": "tool", "name": "Termal Kamera", "price": 320, "desc": "Sıcaklık, toz oranı, kurumuş termal macun ve bozuk fanları görür."},
+	{"id": "ram_usb", "cat": "tool", "name": "RAM Test USB'si", "price": 160, "desc": "Hangi RAM yuvasının bozuk/gevşek olduğunu ve XMP durumunu tarar."},
+	{"id": "smart_usb", "cat": "tool", "name": "Disk SMART USB'si", "price": 160, "desc": "HDD/SSD sağlığını (%), bad sector ve disk doluluğunu ölçer."},
+	{"id": "antivirus_usb", "cat": "tool", "name": "Antivirüs USB'si", "price": 140, "desc": "Virüs/reklam yazılımı işlerini açar ve zararlı yazılımları temizler."},
+	{"id": "install_usb", "cat": "tool", "name": "Kurulum & BIOS USB'si", "price": 160, "desc": "Format & BIOS güncelleme işlerini açar ve uygular."},
+	{"id": "auto_screw", "cat": "tool", "name": "Elektrikli Tornavida", "price": 450, "desc": "Yan kapak, GPU ve M.2 vidalarını otomatik söker ve sıkar."},
+	{"id": "test_bench_parts", "cat": "tool", "name": "Yedek Test Parçaları", "price": 280, "desc": "Tezgâh modunda bilinen sağlam Test PSU ve Test RAM'leri açar."},
 ]
 
 var money := START_MONEY
 var jobs_done := 0
 var hud = null
 var player = null
+var pc_service = null
 ## Tezgâhta üzerinde çalışılan cihaz (PC kasası / laptop / telefon) ya da null.
 ## Tezgâh modu ve çoklu iş sistemi arasındaki ortak sözleşme: cihazı tezgâha koyan set_bench_device çağırır.
 var bench_device = null
@@ -718,6 +730,13 @@ func _migrate(d: Dictionary, from_version: int) -> Dictionary:
 			for j in d["jobs"]:
 				if j is Dictionary:
 					_migrate_job_v4(j)
+	if from_version < 5:
+		# v4 -> v5: Faz 3 kablolar, vidalar, yazılım bayrakları ve parça kusurları (varsayılanlar güvenli)
+		if d.has("jobs") and d["jobs"] is Array:
+			for j in d["jobs"]:
+				if j is Dictionary:
+					if not j.has("had_dust"):
+						j["had_dust"] = false
 	return d
 
 

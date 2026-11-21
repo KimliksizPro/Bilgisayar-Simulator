@@ -3,9 +3,12 @@ extends RefCounted
 
 var id := ""
 var device := "pc"            # pc / laptop / phone
-var part := ""                # bozulan parça türü ("psu", "lap_ram"...); aşırı ısınmada boş
+var part := ""                # bozulan parça türü ("psu", "lap_ram"...); aşırı ısınmada/kabloda/yazılımda boş olabilir
 var diag_code := ""           # teşhis kodu (nopower, cpu, ram, gpu, ssd, overheat; laptop/telefonda yuva adı)
-var kind := "broken"          # broken: parça bozuk, overheat: toz/macun
+var kind := "broken"          # broken / overheat / incompat / cable / software / pin_bend / unseated / vram_fault / smart_fail / capacitor / mechanical / liquid
+var cable := ""               # kablo arızasıysa kablo kimliği (atx_24, cpu_8, pcie_gpu, sata, front_panel)
+var sw_flag := ""             # yazılım arızasıysa bayrak kimliği
+var req_upgrade := ""         # bu arızayı içeren işin açılması için gereken geliştirme
 var symptoms := {}            # belirti verisi: led, beep (süre listesi), screen, msg, msg_color
 var customer_lines: Array = []  # müşterinin ilk anlatımı
 var fail_lines: Array = []    # teslim reddedilince müşteri cümlesi
@@ -27,6 +30,9 @@ static func from_dict(d: Dictionary):
 	f.part = str(d.get("part", ""))
 	f.diag_code = str(d.get("diag_code", ""))
 	f.kind = str(d.get("kind", "broken"))
+	f.cable = str(d.get("cable", ""))
+	f.sw_flag = str(d.get("sw_flag", ""))
+	f.req_upgrade = str(d.get("req_upgrade", ""))
 	f.symptoms = d.get("symptoms", {})
 	f.customer_lines = d.get("customer_lines", [])
 	f.fail_lines = d.get("fail_lines", [])

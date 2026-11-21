@@ -76,8 +76,18 @@ func _pc_repair() -> void:
 	assert(not bench.cam.is_position_behind(gp))
 	var res: Dictionary = bench._resolve(bench._ray_hit(sp))
 	assert(res.get("kind", "") == "widget", "cam kapak fareyle bulunamadı: %s" % [res])
+	# vidalar sıkılıyken yan kapak açılmamalı; sökülünce açılmalı
+	assert(pc.panel_screwed(), "yeni PC kapak vidaları sıkılı başlamalı")
 	bench.click(res)
-	assert(pc.panel_open, "kapak açılmadı")
+	assert(not pc.panel_open, "kapak vidaları sıkılıyken açılmamalı")
+	assert(pc.unscrew("panel_1") and pc.unscrew("panel_2"))
+	bench.click(res)
+	assert(pc.panel_open, "vidalar sökülünce kapak açılmadı")
+	# GPU vidası kilit/açma denemesi
+	if pc.part_in("gpu") != null:
+		pc.fasten_screw("gpu")
+		assert(bench.remove_part(pc.slots.gpu) == null, "GPU vidası sıkılıyken sökülmemeli")
+		pc.unscrew("gpu")
 	var slot = pc.slots.ram1
 	if pc.part_in("ram1") == null or not pc.part_in("ram1").broken:
 		slot = pc.slots.ram2
@@ -104,7 +114,9 @@ func _pc_repair() -> void:
 	assert(pc.powered)
 	bench.toggle_panel()
 	assert(not pc.panel_open)
-	assert(bench._looks_fixed(rec), "tamir tamam ipucu çıkmadı")
+	assert(not bench._looks_fixed(rec), "vidalar eksik iken tamir tamam görünmemeli")
+	pc.fasten_all()
+	assert(bench._looks_fixed(rec), "vidalar sıkılınca tamir tamam ipucu çıkmadı")
 	bench.exit()
 	await _wait_state("off")
 	assert(not Game.bench_active and get_viewport().get_camera_3d() == p.cam)

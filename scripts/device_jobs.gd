@@ -8,15 +8,16 @@ const PM := preload("res://scripts/part_models.gd")
 
 const CHANCE := 0.3   # tamir işlerinin yaklaşık bu kadarı laptop/telefon olur
 
-## Cihazın yuva -> parça türü tablosu (arıza tanımlarından: diag_code = yuva, part = parça türü).
+## Cihazın yuva -> parça türü tablosu (arıza tanımlarından: part'ı olan kayıtlar).
 static func slots(dev: String) -> Dictionary:
 	var table := {}
 	for f in DB.jobs.faults_for(dev):
-		table[f.diag_code] = f.part
+		if f.part != "":
+			table[f.diag_code] = f.part
 	return table
 
 
-## Yuvadaki arıza tanımı (laptop/telefon).
+## Yuvadaki veya bayraktaki arıza tanımı (laptop/telefon).
 static func fault_of(dev: String, slot: String):
 	return DB.jobs.fault_by_code(slot, dev)
 
@@ -31,18 +32,41 @@ static func make(j: Dictionary, device := "", force_broken := "") -> Dictionary:
 	var dev := device if device != "" else ("laptop" if randf() < 0.55 else "phone")
 	var t = DB.jobs.template("device_" + dev)
 	var table: Dictionary = slots(dev)
-	var broken: String = force_broken if table.has(force_broken) else table.keys().pick_random()
-	var f = fault_of(dev, broken)
+	var pool: Array = []
+	for f in DB.jobs.faults_for(dev):
+		if force_broken != "":
+			if f.diag_code == force_broken or f.id == force_broken:
+				pool.append(f)
+		else:
+			if Game.day >= f.min_day and (f.req_upgrade == "" or Game.has_upgrade(f.req_upgrade)):
+				pool.append(f)
+	if pool.is_empty():
+		for f in DB.jobs.faults_for(dev):
+			if f.part != "":
+				pool.append(f)
+	var f = pool.pick_random()
+	var broken: String = f.diag_code
 	var vague: Array = DB.jobs.text(t.intro_pool)
 	j.kind = t.job_kind
 	j.device = dev
 	j.broken = broken
 	j.intro = f.customer_lines.pick_random() if randf() < t.specific_chance else vague.pick_random()
 	j.goal = t.goal
-	j.pay = PM.price(f.part, 1) + f.roll_labor()
+	j.pay = (PM.price(f.part, 1) if f.part != "" else 0) + f.roll_labor()
 	var parts := []
 	for slot in table:
 		parts.append([slot, table[slot], 1, slot == broken])
+	match f.kind:
+		"overheat":
+			var lo: float = f.dust.x if f.dust.x > 0.0 else 0.7
+			var hi: float = f.dust.y if f.dust.y > lo else 0.95
+			parts.append({"flags": {"dust": randf_range(lo, hi)}})
+		"mechanical":
+			parts.append({"flags": {"hinge_loose": true}})
+		"liquid":
+			parts.append({"flags": {"liquid_damage": true}})
+		"software":
+			parts.append({"flags": {"sw_fault": true}})
 	j.parts = parts
 	return j
 

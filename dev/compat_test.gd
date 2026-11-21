@@ -320,7 +320,7 @@ func _test_random_pc_jobs(count: int) -> void:
 		return
 	var templates := []
 	for t in DB.jobs.templates():
-		if t.kind in ["sale", "device", "build"]:
+		if t.kind in ["sale", "device", "build", "incompat"]:
 			continue
 		if INCOMPAT_IDS.has(t.id) or INCOMPAT_IDS.has(t.fault):
 			continue

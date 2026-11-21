@@ -92,6 +92,26 @@ func squish() -> void:
 	play(tone(180.0, 0.1, 0.15))
 
 
+## Kısa metalik cırcır/vida sesi.
+func screw() -> void:
+	play(tone(1450.0, 0.025, 0.16, true))
+	await get_tree().create_timer(0.045).timeout
+	play(tone(1950.0, 0.028, 0.14, true))
+
+
+## Teşhis aleti tarama bipi.
+func beep_scan() -> void:
+	play(tone(1200.0, 0.05, 0.15))
+	await get_tree().create_timer(0.06).timeout
+	play(tone(1680.0, 0.08, 0.16))
+
+
+## IPA temizlik spreyi fıs sesi.
+func spray() -> void:
+	play(tone(2800.0, 0.06, 0.08, false))
+	hiss()
+
+
 func play(stream: AudioStream, pitch := 1.0) -> void:
 	for p in _players:
 		if not p.playing:

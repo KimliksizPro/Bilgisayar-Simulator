@@ -12,6 +12,7 @@ const PM := preload("res://scripts/part_models.gd")
 const T := preload("res://scripts/ui_theme.gd")
 const K := preload("res://scripts/ui_kit.gd")
 const PC_SCRIPT := preload("res://scripts/pc_case.gd")
+const PART := preload("res://scripts/part.gd")
 
 const TRANS := 0.35          # geçiş süresi (sn)
 const BENCH_FOV := 55.0
@@ -157,6 +158,9 @@ func _release_tray() -> void:
 	_tint_cur = null
 	for p in tray_parts:
 		if not is_instance_valid(p):
+			continue
+		if "is_test_part" in p and p.is_test_part:
+			p.queue_free()
 			continue
 		_set_tint(p, null)
 		var gt: Transform3D = p.global_transform
@@ -519,9 +523,10 @@ func _process(delta: float) -> void:
 				_finish_exit(not Game.ui_modal and Game.phase == "day")
 		"on":
 			cam.global_transform = _orbit_xf()
-			_update_hover()
-			_update_selected()
-			_update_glow()
+			if Game.pc_service == null or not Game.pc_service.is_open():
+				_update_hover()
+				_update_selected()
+				_update_glow()
 			_sig_t -= delta
 			if _sig_t <= 0.0:
 				_sig_t = 0.15
@@ -531,6 +536,8 @@ func _process(delta: float) -> void:
 # ---------------------------------------------------------------- girdi
 
 func _input(event: InputEvent) -> void:
+	if Game.pc_service != null and Game.pc_service.is_open():
+		return
 	# Tab / Esc önce arayüzden geçmesin: odaklı düğme Tab'ı yutmasın, Esc duraklatmayı açmasın
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.is_action_pressed("bench"):
@@ -552,7 +559,7 @@ func _input(event: InputEvent) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if state != "on":
+	if state != "on" or (Game.pc_service != null and Game.pc_service.is_open()):
 		return
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.physical_keycode == KEY_Q:
@@ -851,11 +858,35 @@ static func _spec_text(d: PartDef) -> String:
 	return " · ".join(out)
 
 
-func _part_spec_text(part) -> String:
+func _part_spec_text(part, slot = null) -> String:
 	if part == null:
 		return ""
 	var d: PartDef = part.def() if part.has_method("def") else DB.parts.def_for(part.part_type, part.tier)
-	return _spec_text(d)
+	var base := _spec_text(d)
+	var tags: Array[String] = []
+	if "seated" in part and not part.seated:
+		tags.append("Oturmamış!")
+	if "bent_pins" in part and part.bent_pins:
+		tags.append("Eğik pin!")
+	if "bad_caps" in part and part.bad_caps:
+		tags.append("Şişmiş kondansatör!")
+	if "is_test_part" in part and part.is_test_part:
+		tags.append("TEST PARÇASI")
+	if slot != null and device != null and device.has_method("slot_screwed") and device.slot_screwed(slot.name):
+		tags.append("Vidalı")
+	if Game.has_upgrade("smart_usb") and part.part_type in ["ssd", "nvme", "hdd"] and "health" in part:
+		tags.append("SMART %%%d" % int(part.health))
+	if Game.has_upgrade("multimeter"):
+		if part.broken:
+			tags.append("ARIZALI!")
+		elif "vram_bad" in part and part.vram_bad:
+			tags.append("VRAM Hatası!")
+		else:
+			tags.append("Sağlam ✓")
+	if tags.is_empty():
+		return base
+	var t_str := " · ".join(tags)
+	return t_str if base.is_empty() else (base + "\n" + t_str)
 
 
 func _tooltip_for(res: Dictionary) -> Array:
@@ -879,6 +910,10 @@ func _tooltip_for(res: Dictionary) -> Array:
 		return []
 	if tool != null:
 		var target = res.get("slot")
+		if k == "widget" and tool.tool_type == "screwdriver":
+			var wh := str(res.node.get_hint(self))
+			if wh != "":
+				return [wh.replace("[E]", "").strip_edges(), "", click, T.ACCENT]
 		if k in ["slot", "installed", "widget", "body"]:
 			return [tool.display_name, "", str(device.tool_hint(tool, target)).replace("[E]", click).replace("  ", " "), T.ACCENT]
 		return []
@@ -886,7 +921,12 @@ func _tooltip_for(res: Dictionary) -> Array:
 		"installed":
 			if not _slot_open(res.slot):
 				return []
-			return [res.part.display_name, _part_spec_text(res.part), "Sök  " + click, T.ACCENT]
+			if "seated" in res.part and not res.part.seated:
+				return [res.part.display_name, _part_spec_text(res.part, res.slot), "Yerine oturt  " + click, T.ACCENT]
+			if device.has_method("slot_screwed") and device.slot_screwed(res.slot.name):
+				var hint := "Vidayı otomatik sök & Sök  " if Game.has_upgrade("auto_screw") else "Önce vidasını sök!  "
+				return [res.part.display_name, _part_spec_text(res.part, res.slot), hint + click, T.ACCENT]
+			return [res.part.display_name, _part_spec_text(res.part, res.slot), "Sök  " + click, T.ACCENT]
 		"slot":
 			return ["Boş yuva: %s" % PM.type_name(res.slot.accepts), "", "Tepsiden parça seç, sonra tıkla", T.MUTED]
 		"tray":
@@ -912,7 +952,10 @@ func click(res: Dictionary) -> void:
 			select_part(res.part)
 		return
 	if tool != null:
-		if k == "slot" or k == "installed":
+		if k == "widget" and tool.tool_type == "screwdriver":
+			res.node.interact(self)
+			_sig = ""
+		elif k == "slot" or k == "installed":
 			use_tool(tool, res.slot)
 		elif k == "widget" or k == "body":
 			use_tool(tool, null)
@@ -960,13 +1003,27 @@ func can_install(slot, part) -> Dictionary:
 	return {"ok": true, "reason": "", "code": "ok", "severity": "ok"}
 
 
-## Takılı parçayı yuvadan söküp tepsiye koyar. Parçayı döndürür (olmadıysa null).
+## Takılı parçayı yuvadan söküp tepsiye koyar. Oturmamış RAM varsa önce yerine oturtur. Parçayı döndürür (olmadıysa null).
 func remove_part(slot):
 	if slot == null or slot.part == null:
 		return null
 	if not _slot_open(slot):
 		Game.msg("Önce kapağı aç.", Color(1, 0.8, 0.4))
 		return null
+	if "seated" in slot.part and not slot.part.seated:
+		slot.part.seated = true
+		slot.part.rotation_degrees = Vector3.ZERO
+		Game.sfx.click()
+		device.on_parts_changed()
+		Game.msg("RAM yuvasına tam oturtuldu!", Color(0.5, 1.0, 0.5))
+		_sig = ""
+		return null
+	if device.has_method("can_remove_reason"):
+		var why := str(device.can_remove_reason(slot.name))
+		if why != "":
+			Game.sfx.error()
+			Game.msg(why, Color(1.0, 0.72, 0.35))
+			return null
 	var part = slot.part
 	slot.detach()
 	tray_add(part)
@@ -1090,7 +1147,7 @@ func available_tools() -> Array:
 		return out
 	for n in get_parent().get_children():
 		if n != _stash_tool and n.has_method("is_tool") and n.is_tool() and n.get("tool_type") != null \
-				and (n as Node3D).global_position.distance_to(device.global_position) < 1.8:
+				and (n as Node3D).visible and (n as Node3D).global_position.distance_to(device.global_position) < 1.8:
 			out.append(n)
 	return out
 
@@ -1277,7 +1334,10 @@ func _refresh_side(force: bool) -> void:
 	if kind == "pc":
 		var cs := _pc_case_state()
 		var w := Compatibility.calc_watts(cs)
-		pc_sig = "%s|%s|%d|%d" % [str(cs.get("case_id", "")), cs.mobo.id if cs.mobo != null else "", int(w.draw), int(w.psu)]
+		pc_sig = "%s|%s|%d|%d|%s|%s|%s|%d|%s" % [str(cs.get("case_id", "")), cs.mobo.id if cs.mobo != null else "", int(w.draw), int(w.psu),
+			str(device.cables.values()), str(device.cables_tidy), str(device.screws_missing()), device.sw_faults.size(), str(device.post_card_active)]
+	else:
+		pc_sig = str(device.sw_fault) if "sw_fault" in device else ""
 	var sig := str([_looks_fixed(rec), str(rec.get("status", "")), ids, selected.get_instance_id() if selected else 0, tool.tool_type if tool else "", tn,
 		device.panel_open, device.powered, _ever_open, _ever_power, _ever_removed, _ever_installed, str(_job_dict().get("name", "")), pc_sig])
 	if sig == _sig and not force:
@@ -1337,6 +1397,47 @@ func _rebuild_side(tools: Array) -> void:
 	b1.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var b2 := K.button(row, "Kapat" if device.powered else "Güç", press_power, "", 14, Vector2(0, 32))
 	b2.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	if kind == "pc":
+		var miss_s := str(device.missing_screws_text()) if device.has_method("missing_screws_text") else ""
+		if miss_s != "":
+			var sl := K.label(vb, "⚠ Eksik vida: " + miss_s, 12, T.ACCENT)
+			sl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			sl.custom_minimum_size = Vector2(236, 0)
+		var loose_c := false
+		for cv in device.cables.values():
+			if str(cv) != "ok":
+				loose_c = true
+				break
+		if loose_c:
+			var cl := K.label(vb, "⚠ Gevşek/takılmamış kablo var!", 12, T.BAD)
+			cl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			cl.custom_minimum_size = Vector2(236, 0)
+		var act_row := HBoxContainer.new()
+		act_row.add_theme_constant_override("separation", 6)
+		vb.add_child(act_row)
+		var bm := K.button(act_row, "Monitör / BIOS", func():
+			if Game.pc_service:
+				Game.pc_service.open(device), "", 13, Vector2(0, 32))
+		bm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var bt := K.button(act_row, "Kablolar Düzenli ✓" if device.cables_tidy else "Kabloları Düzenle", func():
+			device.tidy_cables()
+			_sig = "", "", 13, Vector2(0, 32))
+		bt.disabled = device.cables_tidy
+		bt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	elif kind == "phone" and "sw_fault" in device and device.sw_fault:
+		K.button(vb, "Yazılım Sıfırla (Reset)", func():
+			device.fix_software()
+			Game.sfx.beep_scan()
+			Game.msg("Telefon yazılımı sıfırlandı!", Color(0.5, 1.0, 0.5))
+			_sig = "", "PrimaryButton", 14, Vector2(0, 32))
+	if kind == "pc" and Game.has_upgrade("test_bench_parts"):
+		K.label(vb, "TEST PARÇALARI", 11, T.MUTED, "SmallCaps")
+		var tp_row := HBoxContainer.new()
+		tp_row.add_theme_constant_override("separation", 4)
+		vb.add_child(tp_row)
+		for tp in [["Test PSU", "psu_750w"], ["DDR4 Test", "ram_ddr4_16g_rgb"], ["DDR5 Test", "ram_ddr5_16g"]]:
+			var btp := K.button(tp_row, tp[0], func(): _spawn_test_part(tp[1]), "", 12, Vector2(0, 30))
+			btp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	if not tools.is_empty():
 		K.label(vb, "ALETLER", 11, T.MUTED, "SmallCaps")
 		for t in tools:
@@ -1397,6 +1498,16 @@ func _build_pc_summary(vb: VBoxContainer) -> void:
 		K.label(vb, "Önerilen PSU: %d W+" % w.recommended, 12, w_col)
 
 
+func _spawn_test_part(sku_id: String) -> void:
+	if device == null or state == "off":
+		return
+	var p = PART.new().setup_sku(sku_id, false)
+	p.make_test_part()
+	tray_add(p)
+	Game.sfx.click()
+	Game.msg("Tepsiye eklendi: %s (teslimde çıkarın)." % p.display_name, Color(0.7, 0.9, 1.0))
+
+
 ## Tezgâh modunu zorla kapatan durum (boş = devam). Kendiliğinden kapanma şikâyetinin teşhisi için ayrı tutuldu.
 func _force_exit_reason() -> String:
 	if not is_instance_valid(device):
@@ -1405,7 +1516,7 @@ func _force_exit_reason() -> String:
 		return "tezgâhtaki cihaz değişti"
 	if Game.phase != "day":
 		return "gün bitti (%s)" % Game.phase
-	if Game.ui_modal:
+	if Game.ui_modal and not (Game.pc_service != null and Game.pc_service.is_open()):
 		return "bir menü açıldı"
 	return ""
 

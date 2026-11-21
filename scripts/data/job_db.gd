@@ -42,6 +42,9 @@ func load_all() -> void:
 			_err("İş '%s': ağırlık negatif" % t.id)
 		if t.fault != "" and not _faults.has(t.fault):
 			_err("İş '%s' bilinmeyen arızaya bağlı: %s" % [t.id, t.fault])
+		for fid in t.faults:
+			if not _faults.has(str(fid)):
+				_err("İş '%s' bilinmeyen çoklu arızaya bağlı: %s" % [t.id, str(fid)])
 		if t.intro_pool != "" and not _texts.has(t.intro_pool):
 			_err("İş '%s' bilinmeyen metin havuzu: %s" % [t.id, t.intro_pool])
 		_templates[t.id] = t

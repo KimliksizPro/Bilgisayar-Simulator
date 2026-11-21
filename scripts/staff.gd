@@ -453,10 +453,13 @@ func _start_repair(e, rec: Dictionary, p, pl: Dictionary, res: Array) -> void:
 		e.face_angle = atan2(tp.x - e.position.x, tp.z - e.position.z)
 		e.at_desk = true
 		if is_instance_valid(e.pc) and not e.pc.panel_open:
-			e.pc.toggle_panel())
+			if not e.pc.has_method("slot_open"):
+				e.pc.toggle_panel(true)
+			else:
+				e.pc.toggle_panel())
 
 
-## Bilgisayarın şu anki hâline ve işe göre yapılacaklar: değişecek SKU'lar, toz, macun.
+## Bilgisayarın şu anki hâline ve işe göre yapılacaklar: değişecek SKU'lar, toz, macun, arızalar.
 ## Stoktaki uyumlu parçayı Compatibility.check() ile seçer.
 static func make_plan(p, job: Dictionary) -> Dictionary:
 	var parts := []
@@ -476,7 +479,7 @@ static func make_plan(p, job: Dictionary) -> Dictionary:
 		var part = slot.part
 		var need_replace := false
 		var pref_sku := ""
-		if part and part.broken:
+		if part and (part.broken or ("bad_caps" in part and part.bad_caps) or ("vram_bad" in part and part.vram_bad) or ("health" in part and part.health < 35)):
 			need_replace = true
 			pref_sku = DB.parts.resolve_id(part.sku if not part.sku.is_empty() else Game.sku(part.part_type, part.tier))
 		elif part == null and essentials.has(sn):
@@ -516,7 +519,29 @@ static func make_plan(p, job: Dictionary) -> Dictionary:
 						_apply_hyp(hyp, rslot, DB.parts.get_def(rsku))
 	var cpu = p.part_in("cpu")
 	var cpu_new := parts.any(func(it): return it[0] == "cpu")
-	return {"parts": parts, "dust": p.dust > 0.02, "paste": cpu != null and not cpu_new and not cpu.paste_ok}
+	var unseated := false
+	for rn in ["ram1", "ram2", "ram3", "ram4"]:
+		var rp = p.part_in(rn)
+		if rp != null and "seated" in rp and not rp.seated:
+			unseated = true
+			break
+	var pins: bool = cpu != null and not cpu_new and "bent_pins" in cpu and cpu.bent_pins
+	var has_cables := false
+	if "cables" in p:
+		for cv in p.cables.values():
+			if str(cv) != "ok":
+				has_cables = true
+				break
+	var sw_list: Array = p.sw_faults.duplicate() if "sw_faults" in p else []
+	return {
+		"parts": parts,
+		"dust": p.dust > 0.02,
+		"paste": cpu != null and not cpu_new and not cpu.paste_ok,
+		"unseated": unseated,
+		"pins": pins,
+		"cables": has_cables,
+		"sw": sw_list,
+	}
 
 
 ## Verilen yuva için stoktan uyumlu bir SKU seçer (yoksa ilk uyumlu SKU'yu eksik bildirimi için döner).
@@ -642,9 +667,29 @@ func _finish(e) -> void:
 		p.clean_dust()
 	if pl.paste and p.part_in("cpu"):
 		p.part_in("cpu").paste_ok = true
+	if pl.get("unseated", false):
+		for rn in ["ram1", "ram2", "ram3", "ram4"]:
+			var rp = p.part_in(rn)
+			if rp != null and "seated" in rp and not rp.seated:
+				rp.seated = true
+				rp.rotation_degrees = Vector3.ZERO
+	if pl.get("pins", false) and p.part_in("cpu") != null:
+		p.part_in("cpu").straighten_pins()
+	if pl.get("cables", false) and p.has_method("fix_all_cables"):
+		p.fix_all_cables()
+	if p.has_method("fix_sw_fault"):
+		for sf in pl.get("sw", []):
+			p.fix_sw_fault(str(sf))
+	if p.has_method("fasten_all"):
+		p.fasten_all()
+	if p.has_method("_update_visuals"):
+		p._update_visuals()
 	Game.sfx.click()
 	if p.panel_open:
-		p.toggle_panel()
+		if not p.has_method("slot_open"):
+			p.toggle_panel(true)
+		else:
+			p.toggle_panel()
 	Game.change_rep(float(SD.trait_info(d.trait).rep))
 	var problem: String = jobs._problem_of(e.rec)
 	if problem != "":

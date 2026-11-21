@@ -170,6 +170,22 @@ func _test_v3_to_v4_migration() -> void:
 	_check(Game.warranty_list.size() == 1 and str(Game.warranty_list[0].get("sku", "")) == "ram_ddr4_16g_rgb", "(e) v4 garanti round-trip")
 	if supports_v4_jobs:
 		_check(Game.jobs_active.size() == 1 and str(Game.jobs_active[0].get("case_id", "")) == "atx_mid", "(e) v4 iş round-trip")
+	# 3) v4 -> v5 göçü (Faz 3 şeması: kablolar, vidalar, sw_faults varsayılanları)
+	var v4_disk := {
+		"version": 4,
+		"day": 6,
+		"money": 1250,
+		"upgrades": {"psu_tester": true},
+		"stock": {"psu_550w": 2},
+		"jobs": [v3_job.duplicate(true)],
+	}
+	_write_text(TEST_PATH, JSON.stringify(v4_disk))
+	_reset_memory()
+	_check(Game.load_game() and Game.money == 1250 and Game.day == 6 and Game.has_upgrade("psu_tester"), "(e) v4 -> v5 kayıt yükleme")
+	Game.phase = "day"
+	Game.save_game()
+	var saved_v5 := _read_dict(TEST_PATH)
+	_check(int(saved_v5.get("version", 0)) == 5, "(e) v5 sürüm numarası")
 
 
 func _check(ok: bool, what: String) -> void:

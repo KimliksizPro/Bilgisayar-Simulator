@@ -18,6 +18,7 @@ func _ready() -> void:
 		assert(not rec.is_empty(), "iş rafa alınamadı")
 		var pc = jobs.dev_to_bench(rec)
 		assert(pc.diagnose() == ("nopower" if type == "psu" else type), "teşhis yanlış: " + pc.diagnose())
+		pc.unscrew_all()
 		pc.toggle_panel()
 		var money_before: int = Game.money
 		await _reject_unfixed(jobs, p, rec)  # bitmeden teslim -> reddedilmeli
@@ -34,6 +35,7 @@ func _ready() -> void:
 		assert(p.held == null and slot.part != null)
 		pc.power_button()
 		assert(pc.powered and pc.diagnose() == "ok")
+		pc.fasten_all()
 		pc.toggle_panel()
 		await _deliver(jobs, p, rec)
 		assert(Game.money > money_before, "ödeme alınmadı")
@@ -57,10 +59,11 @@ func _ready() -> void:
 		assert(not pc.powered, "aşırı ısınınca kapanmadı")
 		# teslim edilemez
 		await _reject_unfixed(jobs, p, rec)
+		pc.unscrew_all()
 		pc.toggle_panel()
 		# 2) çözüm
 		var tools := main.get_children().filter(func(c): return c.has_method("is_tool") and c.is_tool())
-		assert(tools.size() == 2, "masada alet yok")
+		assert(tools.size() >= 4, "masada başlangıç aletleri yok")
 		if kind == "overheat_dust":
 			var air = tools.filter(func(c): return c.tool_type == "air")[0]
 			air.interact(p)
@@ -90,6 +93,7 @@ func _ready() -> void:
 		pc.power_button()
 		await get_tree().create_timer(6.0).timeout
 		assert(pc.powered and pc.cpu_temp < 50.0, "sağlıklı bilgisayar ısındı: %s" % pc.cpu_temp)
+		pc.fasten_all()
 		pc.toggle_panel()
 		await _deliver(jobs, p, rec)
 		print("OK %s" % kind)
@@ -235,6 +239,7 @@ func _eco_tests(main, jobs, p) -> void:
 	var j: Dictionary = jobs._make_job_of("repair_psu")
 	var rec: Dictionary = jobs.drop_off(j)
 	var pc = jobs.dev_to_bench(rec)
+	pc.unscrew_all()
 	pc.toggle_panel()
 	var slot = pc.slots.psu
 	slot.interact(p)
@@ -242,6 +247,7 @@ func _eco_tests(main, jobs, p) -> void:
 	main._buy(p, "psu", 1, true)  # muadil tak
 	slot.interact(p)
 	pc.power_button()
+	pc.fasten_all()
 	pc.toggle_panel()
 	Game.warranty_chance = 1.0
 	await _deliver(jobs, p, rec)
@@ -261,6 +267,7 @@ func _eco_tests(main, jobs, p) -> void:
 	rec = jobs.drop_off(j)
 	pc = jobs.dev_to_bench(rec)
 	assert(pc.diagnose() == "nopower", "garanti işinde teşhis: " + pc.diagnose())
+	pc.unscrew_all()
 	pc.toggle_panel()
 	slot = pc.slots.psu
 	slot.interact(p)
@@ -268,6 +275,7 @@ func _eco_tests(main, jobs, p) -> void:
 	main._buy(p, "psu", 1)
 	slot.interact(p)
 	pc.power_button()
+	pc.fasten_all()
 	pc.toggle_panel()
 	var money_b: int = Game.money
 	var rep_b: float = Game.rep
@@ -288,20 +296,20 @@ func _eco_tests(main, jobs, p) -> void:
 	assert(Game.used_listings.size() == Game.UM.COUNT, "ilan yok")
 	assert(Game.UM.generate(Game.day)[0].type == Game.used_listings[0].type, "ilanlar tohumlu değil")
 	var l: Dictionary = Game.used_listings[0]
-	assert(int(l.price) < Game.price_of(l.type, l.tier), "ikinci el pahalı")
-	var k: String = Game.sku(l.type, l.tier)
+	var k: String = str(l.get("sku", Game.sku(l.type, l.tier)))
+	assert(int(l.price) < Game.price_of_sku(k), "ikinci el pahalı")
 	Game.stock[k] = 0
 	Game.stock_dud.erase(k)
 	m = Game.money
 	assert(Game.UM.buy(int(l.id), 1) and Game.money == m - int(l.price) and l.sold, "ikinci el alınamadı")
-	assert(Game.stock_of(l.type, l.tier) == 1 and int(Game.stock_dud.get(k, 0)) == 1)
+	assert(Game.stock_of_sku(k) == 1 and int(Game.stock_dud.get(k, 0)) == 1)
 	assert(not Game.UM.buy(int(l.id), 1), "aynı ilan iki kez satıldı")
 	while p.held != null:
 		p.drop()
-	main._buy(p, l.type, l.tier)
-	assert(p.held != null and p.held.broken and Game.stock_of(l.type, l.tier) == 0, "gizli arızalı çıkmadı")
+	main._buy_sku(p, k)
+	assert(p.held != null and p.held.broken and Game.stock_of_sku(k) == 0, "gizli arızalı çıkmadı")
 	main._bin_use(p)
-	print("OK ikinci el: %s %%%d, %d TL (yeni %d TL)" % [l.type, l.cond, l.price, Game.price_of(l.type, l.tier)])
+	print("OK ikinci el: %s %%%d, %d TL (yeni %d TL)" % [l.type, l.cond, l.price, Game.price_of_sku(k)])
 	# 5) elektrik faturası formülü
 	var jt: int = Game.jobs_today
 	var up: Dictionary = Game.upgrades
@@ -340,7 +348,10 @@ func _reject_unfixed(jobs, p, rec: Dictionary) -> void:
 	await get_tree().create_timer(0.4).timeout
 	assert(str(rec.location) == "bench" and Game.bench_device == jobs.devices[t], "cihaz tezgâha geri dönmedi")
 	if was_open and not jobs.devices[t].panel_open:
-		jobs.devices[t].toggle_panel()  # taşırken kapak kapanmıştı: önceki hâline dön
+		if not jobs.devices[t].has_method("slot_open"):
+			jobs.devices[t].toggle_panel(true)  # taşırken kapak kapanmıştı: önceki hâline dön
+		else:
+			jobs.devices[t].toggle_panel()
 	# müşteri tezgâhta bekler: sabrı bitmeden kalsın, gerisini sonraki teslim yapar
 
 
