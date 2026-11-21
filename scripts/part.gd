@@ -18,6 +18,8 @@ var bent_pins := false  # CPU eğik pin hasarı
 var bad_caps := false   # anakart şişmiş kondansatör hasarı
 var vram_bad := false   # GPU VRAM artefakt arızası
 var is_test_part := false  # dükkânın yedek test parçası (teslimde bırakılamaz)
+var origin := ""           # "customer", "stock", "test"
+var origin_ticket := 0     # müşteri cihazından söküldüyse fiş no
 var display_name := ""
 var slot = null
 var rotors: Array = []
@@ -114,11 +116,37 @@ func _burn_mark() -> void:
 	d.name = "BurnCore"
 
 
+func origin_tag() -> String:
+	if is_test_part or origin == "test":
+		return "TEST"
+	if origin == "stock":
+		return "Yeni · Muadil" if cheap else "Yeni (Stok)"
+	if origin == "customer":
+		return ("Müşteri #%d" % origin_ticket) if origin_ticket > 0 else "Müşteriden söküldü"
+	return ""
+
+
+## Müşteri cihazından sökülünce kaynağını işaretler (zaten işaretliyse değiştirmez).
+func mark_pulled_from(dev) -> void:
+	if origin != "":
+		return
+	origin = "customer"
+	origin_ticket = 0
+	if Game.job_mgr != null and is_instance_valid(dev):
+		for tk in Game.job_mgr.devices:
+			if Game.job_mgr.devices[tk] == dev:
+				origin_ticket = int(tk)
+				return
+
+
 func get_hint(player) -> String:
 	if slot:
 		return slot.get_hint(player)
 	if player.held == null:
-		return "Elin dolu (cihaz taşıyorsun)" if Game.is_carrying() else "Al: %s  [E]" % display_name
+		if Game.is_carrying():
+			return "Elin dolu (cihaz taşıyorsun)"
+		var tag := origin_tag()
+		return ("Al: %s [%s]  [E]" % [display_name, tag]) if tag != "" else ("Al: %s  [E]" % display_name)
 	return ""
 
 
@@ -162,6 +190,8 @@ func make_cheap() -> void:
 ## Yedek test parçası: mavi TEST etiketi eklenir, müşteriye teslim edilemez.
 func make_test_part() -> void:
 	is_test_part = true
+	origin = "test"
+	origin_ticket = 0
 	var base_name := PM.display_name_sku(sku) if not sku.is_empty() else PM.display_name(part_type, tier)
 	display_name = base_name + " (TEST)"
 	var info: Dictionary = PM.info(part_type)

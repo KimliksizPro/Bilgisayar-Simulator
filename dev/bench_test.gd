@@ -39,6 +39,7 @@ func _ready() -> void:
 	assert(bench != null and bench.state == "off")
 	await _pc_repair()
 	await _laptop_repair()
+	await _part_stealing()
 	await _bench_lost()
 	print("BENCHTEST OK")
 	get_tree().quit()
@@ -123,6 +124,9 @@ func _pc_repair() -> void:
 	assert(bench._hl_meshes.is_empty(), "vurgu temizlenmedi")
 	assert(bench.remove_part(slot) == bad, "söküm başarısız")
 	assert(slot.part == null and bench.tray_parts.has(bad) and bad.get_parent() == bench._tray)
+	assert("origin" in good and good.origin == "stock", "stok parçası etiketlenmedi")
+	assert("origin" in bad and bad.origin == "customer" and bad.origin_ticket == t, "müşteri parçası etiketlenmedi")
+	assert(good.position.z < 0.0 and bad.position.z > 0.0, "tepside stok ve sökülen bölgeleri ayrılmadı (good.z=%.3f, bad.z=%.3f)" % [good.position.z, bad.position.z])
 	assert(bench.tray_parts.size() == 2)
 	assert(bench.can_install(pc.slots.cpu, good).ok == false)
 	assert(bench.can_install(pc.slots.gpu, good).ok == false)
@@ -200,6 +204,91 @@ func _laptop_repair() -> void:
 	assert(bench.tray_parts.is_empty() and bench.device == null)
 	assert(jobs.place_on_rack(jobs.rack.free_slot()))
 	print("OK bench: laptop tamiri, taşınınca çıkış")
+
+
+## Müşteri cihazından çalışan parçayı kendi stoğuna alma (Cebe At) ve yakalanma / kaçma testi.
+func _part_stealing() -> void:
+	# 1) Çalışan parçayı cebe atıp muadille değiştirme -> yakalanmadan teslim
+	Game.stock_dud.erase("gpu_entry_4g")
+	var rec: Dictionary = jobs.drop_off(jobs._make_job_of("repair_gpu"))
+	assert(not rec.is_empty())
+	var pc = jobs.dev_to_bench(rec)
+	assert(pc != null)
+	assert(bench.enter())
+	await _wait_state("on")
+	pc.unscrew_all()
+	bench.toggle_panel()
+	# Bozuk GPU'yu sağlam stok GPU ile değiştir
+	var bad_gpu = bench.remove_part(pc.slots.gpu)
+	assert(bad_gpu != null)
+	var good_gpu = main.PART.new().setup_sku("gpu_entry_4g", false)
+	main.add_child(good_gpu)
+	good_gpu.origin = "stock"
+	assert(bench.tray_add(good_gpu) and bench.select_part(good_gpu) and bench.install_selected(pc.slots.gpu))
+	# Çalışan müşteri RAM'ini sök -> cebe at -> yerine ucuz muadil RAM tak
+	var cust_ram = bench.remove_part(pc.slots.ram1)
+	assert(cust_ram != null and not cust_ram.broken and cust_ram.origin == "customer")
+	var st0: int = Game.stock_of_sku(cust_ram.sku)
+	var stolen0: int = int(Game.stats.get("stolen_parts", 0))
+	assert(bench.pocket_tray_part(cust_ram), "müşteri parçası stoğa alınamadı")
+	assert(Game.stock_of_sku("ram_ddr4_8g") == st0 + 1, "cebe atılan parça stoğa eklenmedi")
+	assert(int(Game.stats.get("stolen_parts", 0)) == stolen0 + 1)
+	var cheap_ram = main.PART.new().setup_sku("ram_ddr4_8g", false)
+	cheap_ram.make_cheap()
+	cheap_ram.origin = "stock"
+	main.add_child(cheap_ram)
+	assert(bench.tray_add(cheap_ram) and bench.select_part(cheap_ram) and bench.install_selected(pc.slots.ram1))
+	bench.toggle_panel()
+	pc.fasten_all()
+	var audit: Dictionary = jobs.audit_parts(rec, pc)
+	assert(not audit.stolen_items.is_empty(), "parça değişimi denetimde yakalanmadı")
+	bench.exit()
+	await _wait_state("off")
+	assert(jobs.pick_up_device(rec, p) == "")
+	await get_tree().create_timer(0.3).timeout
+	jobs.theft_catch_override = 0.0
+	jobs.call_pickup(rec)
+	var ok1: bool = await _wait_for(func(): return jobs.state == "waiting" and jobs.mode == "pickup", 60.0)
+	assert(ok1, "teslim müşterisi gelmedi")
+	var m0: int = Game.money
+	jobs._customer_talk(p)
+	assert(Game.money > m0, "yakalanmadan teslimde ödeme alınmalı")
+
+	# 2) Aynı senaryo bu kez teslimde yakalanır -> para cezası ve itibar düşüşü
+	var rec2: Dictionary = jobs.drop_off(jobs._make_job_of("repair_gpu"))
+	var pc2 = jobs.dev_to_bench(rec2)
+	assert(pc2 != null and bench.enter())
+	await _wait_state("on")
+	pc2.unscrew_all()
+	bench.toggle_panel()
+	bench.remove_part(pc2.slots.gpu)
+	var g2 = main.PART.new().setup_sku("gpu_entry_4g", false)
+	g2.origin = "stock"
+	main.add_child(g2)
+	assert(bench.tray_add(g2) and bench.select_part(g2) and bench.install_selected(pc2.slots.gpu))
+	var cr2 = bench.remove_part(pc2.slots.ram1)
+	assert(bench.pocket_tray_part(cr2))
+	var c2 = main.PART.new().setup_sku("ram_ddr4_8g", false)
+	c2.make_cheap()
+	c2.origin = "stock"
+	main.add_child(c2)
+	assert(bench.tray_add(c2) and bench.select_part(c2) and bench.install_selected(pc2.slots.ram1))
+	bench.toggle_panel()
+	pc2.fasten_all()
+	bench.exit()
+	await _wait_state("off")
+	assert(jobs.pick_up_device(rec2, p) == "")
+	await get_tree().create_timer(0.3).timeout
+	jobs.theft_catch_override = 1.0
+	jobs.call_pickup(rec2)
+	var ok2: bool = await _wait_for(func(): return jobs.state == "waiting" and jobs.mode == "pickup", 60.0)
+	assert(ok2, "teslim müşterisi #2 gelmedi")
+	var m1: int = Game.money
+	var r1: float = Game.rep
+	jobs._customer_talk(p)
+	assert(Game.money < m1 and Game.rep < r1, "yakalanınca ceza ve itibar düşüşü olmadı")
+	jobs.theft_catch_override = -1.0
+	print("OK bench: parça cebe atma, gizli/yakalanma teslimleri")
 
 
 ## Cihaz tezgâhtan gidince mod kapanır, tepsideki parçalar masaya serbest bırakılır.

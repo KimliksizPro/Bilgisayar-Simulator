@@ -19,6 +19,7 @@ var vm_vp: SubViewport
 var vm_rect: TextureRect
 var touch_controls
 var _held_layers := {}  # elde tutulan eşyanın orijinal görsel katmanları
+var _held_xform := Transform3D.IDENTITY
 
 
 func _ready() -> void:
@@ -63,21 +64,42 @@ func _build_viewmodel() -> void:
 	vm_cam.near = 0.01
 	vm_cam.far = 5.0
 	vm_cam.cull_mask = VM_LAYER
+	vm_cam.keep_aspect = cam.keep_aspect
 	vm_cam.environment = _viewmodel_env()
 	vm_vp.add_child(vm_cam)
 	add_child(vm_vp)
+	vm_cam.make_current()
 	var cl := CanvasLayer.new()
 	cl.layer = -1  # dünyanın üstünde, HUD'ın altında
 	vm_rect = TextureRect.new()
-	vm_rect.texture = vm_vp.get_texture()
-	vm_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
 	vm_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	vm_rect.stretch_mode = TextureRect.STRETCH_SCALE
+	vm_rect.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	vm_rect.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	vm_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vm_rect.texture = vm_vp.get_texture()
 	vm_rect.visible = false
 	cl.add_child(vm_rect)
+	vm_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(cl)
 	_sync_viewmodel_vp()
+
+
+func held_xform_for(p) -> Transform3D:
+	var e: Vector3 = p.hold_euler()
+	var b := Basis.from_euler(Vector3(deg_to_rad(e.x), deg_to_rad(e.y), deg_to_rad(e.z)))
+	var off: Vector3 = p.hold_offset() if p.has_method("hold_offset") else Vector3.ZERO
+	return Transform3D(b, off - (b * p.hold_center()))
+
+
+func _sync_viewmodel_cam() -> void:
+	if vm_cam == null or cam == null:
+		return
+	vm_cam.global_transform = cam.global_transform
+	vm_cam.fov = cam.fov
+	vm_cam.keep_aspect = cam.keep_aspect
+	if is_instance_valid(held) and held.get_parent() == hold:
+		held.transform = _held_xform
 
 
 ## Ana ortamın aynısı (gökyüzü aydınlatması, ton eşleme); yalnızca arka plan saydam, ekran-uzayı efektleri kapalı.
@@ -112,8 +134,7 @@ func _process(_delta: float) -> void:
 		vm_vp.render_target_update_mode = mode
 	if on:
 		_sync_viewmodel_vp()
-		vm_cam.global_transform = cam.global_transform
-		vm_cam.fov = cam.fov
+		_sync_viewmodel_cam()
 	if _is_touch_active():
 		if _is_mobile_os() and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
@@ -139,6 +160,8 @@ func _apply_look(delta_px: Vector2, mult := 1.0) -> void:
 	var dy: float = delta_px.y * (-1.0 if Settings.invert_y else 1.0)
 	_pitch = clamp(_pitch - dy * sens, deg_to_rad(-85), deg_to_rad(85))
 	cam.rotation.x = _pitch
+	if held != null:
+		_sync_viewmodel_cam()
 
 
 func _on_touch_interact() -> void:
@@ -206,6 +229,8 @@ func _physics_process(delta: float) -> void:
 	if global_position.y < -3.0:  # haritadan düştüyse dükkânın içine geri al
 		global_position = SAFE_POS
 		velocity = Vector3.ZERO
+	if held != null:
+		_sync_viewmodel_cam()
 	_update_target()
 
 
@@ -232,17 +257,25 @@ func pick_up(p) -> void:
 	p.linear_velocity = Vector3.ZERO
 	p.angular_velocity = Vector3.ZERO
 	held = p
-	# fizikten tamamen çık: kinematik donuk, çarpışma yok
-	p.freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
+	# fizikten tamamen çık: statik dondur (kinematik dondurma ilk fizik karede eski dünya konumunu geri yazabiliyordu)
+	p.freeze_mode = RigidBody3D.FREEZE_MODE_STATIC
 	p.freeze = true
 	p.collision_layer = 0
 	p.collision_mask = 0
-	p.reparent(hold, false)
+	if p.get_parent():
+		p.reparent(hold, false)
+	else:
+		hold.add_child(p)
 	_set_viewmodel_layer(p, true)
-	var e: Vector3 = p.hold_euler()
-	var b := Basis.from_euler(Vector3(deg_to_rad(e.x), deg_to_rad(e.y), deg_to_rad(e.z)))
-	var off: Vector3 = p.hold_offset() if p.has_method("hold_offset") else Vector3.ZERO
-	p.transform = Transform3D(b, off - (b * p.hold_center()))
+	_held_xform = held_xform_for(p)
+	p.transform = _held_xform
+	if p.has_method("reset_physics_interpolation"):
+		p.reset_physics_interpolation()
+	vm_rect.visible = true
+	vm_vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	_sync_viewmodel_vp()
+	vm_cam.make_current()
+	_sync_viewmodel_cam()
 	Game.sfx.pickup()
 
 
@@ -285,6 +318,7 @@ func drop() -> void:
 	p.global_transform = gt
 	p.collision_layer = 2
 	p.collision_mask = 1
+	p.freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
 	p.freeze = false
 	p.linear_velocity = -cam.global_transform.basis.z * 1.5 + velocity
 	Game.sfx.pickup()

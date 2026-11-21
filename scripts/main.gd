@@ -759,6 +759,8 @@ func _cabinet_hint(p) -> String:
 	if p.held:
 		if p.held.is_tool() or p.held.broken:
 			return "Parça Dolabı (bu parça dolaba konmaz)"
+		if "origin" in p.held and str(p.held.origin) == "customer":
+			return "Kendine al (stoğa at): %s [%s]  [E]" % [p.held.display_name, p.held.origin_tag()]
 		return "Dolaba geri koy: %s  [E]" % p.held.display_name
 	return "Parça Dolabı  [E]"
 
@@ -784,20 +786,27 @@ func _on_cabinet_return() -> void:
 		_return_held_to_stock(player)
 
 
-## Eldeki sağlam parçayı stoğa geri koyar.
+## Eldeki sağlam parçayı stoğa geri koyar (müşteri parçasıysa kendi stoğuna atar).
 func _return_held_to_stock(p) -> void:
 	if p.held == null or p.held.is_tool() or p.held.broken:
 		return
 	var id: String = DB.parts.resolve_id(p.held.sku if not p.held.sku.is_empty() else Game.sku(p.held.part_type, p.held.tier))
 	var part = p.release_held()
 	var was_cheap: bool = part.cheap
+	var from_cust: bool = "origin" in part and str(part.origin) == "customer"
+	var dname: String = part.display_name
 	part.queue_free()
 	if was_cheap:
 		Game.add_stock_cheap_sku(id, 1)
 	else:
 		Game.add_stock_sku(id, 1)
-	Game.sfx.click()
-	Game.msg("%s dolaba kondu (stok %d)." % [PM.display_name_sku(id) + (" (muadil)" if was_cheap else ""), Game.stock_cheap_of_sku(id) if was_cheap else Game.stock_of_sku(id)])
+	if from_cust:
+		Game.stats["stolen_parts"] = int(Game.stats.get("stolen_parts", 0)) + 1
+		Game.sfx.coin()
+		Game.msg("%s kendi stoğuna atıldı! (Teslimde müşteri fark edebilir!)" % dname, Color(1.0, 0.78, 0.25))
+	else:
+		Game.sfx.click()
+		Game.msg("%s dolaba kondu (stok %d)." % [PM.display_name_sku(id) + (" (muadil)" if was_cheap else ""), Game.stock_cheap_of_sku(id) if was_cheap else Game.stock_of_sku(id)])
 
 
 func _shelf_hint_sku(p, sku_id: String, dname: String) -> String:
@@ -855,6 +864,12 @@ func _buy_sku(p, sku_id: String, cheap := false) -> void:
 			return
 		var cp = PART.new().setup_sku(id, false)
 		cp.make_cheap()
+		cp.origin = "stock"
+		cp.origin_ticket = 0
+		cp.freeze_mode = RigidBody3D.FREEZE_MODE_STATIC
+		cp.freeze = true
+		cp.collision_layer = 0
+		cp.collision_mask = 0
 		add_child(cp)
 		p.pick_up(cp)
 		Game.sfx.click()
@@ -866,6 +881,12 @@ func _buy_sku(p, sku_id: String, cheap := false) -> void:
 			Game.hud.tip("order", "Parça bitince tezgahtaki laptopu aç: ParçaNet'ten sipariş ver, kurye getirsin.")
 		return
 	var part = PART.new().setup_sku(id, Game.take_was_dud)  # ikinci elden gizli arızalı çıkabilir
+	part.origin = "stock"
+	part.origin_ticket = 0
+	part.freeze_mode = RigidBody3D.FREEZE_MODE_STATIC
+	part.freeze = true
+	part.collision_layer = 0
+	part.collision_mask = 0
 	add_child(part)
 	p.pick_up(part)
 	Game.sfx.click()

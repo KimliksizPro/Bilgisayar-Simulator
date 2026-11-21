@@ -8,6 +8,18 @@ func _ready() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	Game.hud.visible = false
 	Game.new_game()
+	p.global_position = Vector3(-2.6, 0, -0.6)
+	p.rotation_degrees.y = 90
+	p.cam.rotation_degrees.x = -10
+	main._on_cabinet_pick("ram_ddr4_8g", false)
+	await get_tree().create_timer(0.2).timeout
+	p.rotation_degrees.y = 185
+	p.cam.rotation_degrees.x = -18
+	await get_tree().create_timer(0.3).timeout
+	await RenderingServer.frame_post_draw
+	get_viewport().get_texture().get_image().save_png(OS.get_user_data_dir() + "/hold_ram_vm.png")
+	p.release_held().queue_free()
+
 	p.global_position = Vector3(0.9, 0, -2.2)
 	p.rotation_degrees.y = 0
 	p.cam.rotation_degrees.x = -25

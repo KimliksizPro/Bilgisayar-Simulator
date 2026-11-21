@@ -42,6 +42,11 @@ var _pfill: StyleBoxTexture
 # merkez
 var crosshair: Control
 var corner_hint: Control   # sağ alttaki "Esc Duraklat" ipucu (tezgâh modunda gizlenir)
+var _held_card: PanelContainer
+var _held_accent: ColorRect
+var _held_lbl: Label
+var _held_sub: Label
+var _held_sig := ""
 var prompt: Control
 var prompt_key: Control
 var prompt_text: Label
@@ -165,6 +170,9 @@ func _apply_hud_scale() -> void:
 	if corner_hint:
 		corner_hint.pivot_offset = corner_hint.size
 		corner_hint.scale = sv
+	if _held_card:
+		_held_card.pivot_offset = _held_card.size
+		_held_card.scale = sv
 
 
 # ---------------------------------------------------------------- yapı
@@ -369,6 +377,9 @@ func set_bench_mode(active: bool) -> void:
 		crosshair.visible = not active
 	if corner_hint:
 		corner_hint.visible = not active
+	if _held_card and active:
+		_held_card.visible = false
+		_held_sig = ""
 	if toasts:
 		toasts.offset_left = 330 if active else 24
 		toasts.offset_bottom = -112 if active else -64
@@ -558,6 +569,39 @@ func _build_corner(root: Control) -> void:
 	K.keycap(h, "Esc", 14)
 	var l := K.label(h, "Duraklat", 15, T.TEXT, "MutedLabel")
 	l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+
+	# elde tutulan parça / alet kartı (sağ alt, Esc ipucunun üstünde)
+	var hc := K.panel(root, "HudCard")
+	hc.add_theme_stylebox_override("panel", T.flat(Color(0.06, 0.075, 0.11, 0.88), 7, Color(0.25, 0.32, 0.42, 0.72), 1, Vector2(10, 7), 4))
+	hc.anchor_left = 1.0
+	hc.anchor_right = 1.0
+	hc.anchor_top = 1.0
+	hc.anchor_bottom = 1.0
+	hc.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	hc.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	hc.offset_left = -20
+	hc.offset_right = -20
+	hc.offset_top = -56
+	hc.offset_bottom = -56
+	hc.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hc.resized.connect(func(): hc.pivot_offset = hc.size)
+	hc.visible = false
+	_held_card = hc
+	var hb := HBoxContainer.new()
+	hb.add_theme_constant_override("separation", 8)
+	hb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hc.add_child(hb)
+	_held_accent = ColorRect.new()
+	_held_accent.custom_minimum_size = Vector2(3, 0)
+	_held_accent.color = T.ACCENT
+	_held_accent.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hb.add_child(_held_accent)
+	var hv := VBoxContainer.new()
+	hv.add_theme_constant_override("separation", 1)
+	hv.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hb.add_child(hv)
+	_held_lbl = K.label(hv, "", 14, T.TEXT, "BoldLabel")
+	_held_sub = K.label(hv, "", 11, T.MUTED)
 
 
 # ---------------------------------------------------------------- modallar
@@ -972,6 +1016,45 @@ func _process(delta: float) -> void:
 			var has_key := h.contains("[E]")
 			prompt_key.visible = has_key
 			prompt_text.text = h.replace("[E]", "").replace("  ", " ").strip_edges()
+	_refresh_held_card(p)
+
+
+func _refresh_held_card(p) -> void:
+	if _held_card == null:
+		return
+	var h = p.held if (p != null and not Game.bench_active and Game.started and Game.phase == "day") else null
+	if h == null or not is_instance_valid(h):
+		_held_card.visible = false
+		_held_sig = ""
+		return
+	var tag := ""
+	var col := T.INFO
+	if h.has_method("is_tool") and h.is_tool():
+		tag = "Alet"
+		col = T.INFO
+	else:
+		var otag := str(h.origin_tag()) if h.has_method("origin_tag") else ""
+		var orig := str(h.get("origin")) if "origin" in h else ""
+		if orig == "stock":
+			col = T.GOOD
+		elif orig == "customer":
+			col = T.ACCENT
+		elif "is_test_part" in h and h.is_test_part:
+			col = T.INFO
+		tag = otag if otag != "" else "Parça"
+		if Game.has_upgrade("multimeter") and "broken" in h and h.broken:
+			tag += " · ARIZALI"
+			col = T.BAD
+	var sig := "%s|%s|%s" % [str(h.display_name), tag, str(col)]
+	if sig != _held_sig:
+		_held_sig = sig
+		_held_lbl.text = str(h.display_name)
+		_held_sub.text = "%s  ·  [G] Bırak" % tag
+		_held_sub.add_theme_color_override("font_color", col)
+		_held_accent.color = col
+		_held_card.reset_size()
+		_held_card.pivot_offset = _held_card.size
+	_held_card.visible = true
 
 
 ## Para kartının altında: yoldaki/kapıdaki kargo sayısı ve en yakın varış.

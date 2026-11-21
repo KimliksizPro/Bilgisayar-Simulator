@@ -60,6 +60,7 @@ var mode := ""                         # dropoff / sale / pickup
 var arrivals_enabled := true           # false: kendiliğinden yeni müşteri gelmez
 var force_jobs: Array = []             # doluysa sıradaki bırakma/satış müşterisi bu işlerden gelir
 var force_express := -1                # -1 rastgele, 0 hiç, 1 hep ekspres
+var theft_catch_override := -1.0       # <0: normal olasılık, 0.0: yakalanmaz, 1.0: yakalanır
 
 var pc: Object:                        # tezgâhtaki cihaz (eski adla)
 	get: return Game.bench_device
@@ -122,11 +123,13 @@ func _process(delta: float) -> void:
 				_arrival_t = _arrival_delay()
 			else:
 				_arrival_t = 1.0
-	# teslim günü gelen işlerin müşterileri
+	# teslim günü gelen işlerin müşterileri + parça değişimi fark edenlerin geri dönüşü
 	_due_t -= delta
 	if _due_t <= 0.0:
 		_due_t = 0.5
 		_check_due()
+		if Game.running and Game.clock >= 9.5:
+			_check_theft_alerts()
 	_vis_t -= delta
 	if _vis_t <= 0.0:
 		_vis_t = 0.5
@@ -489,6 +492,29 @@ func _spawn_device(rec: Dictionary, fresh := false):
 		ST.restore(dev, rec.state)
 	else:
 		dev.fill(rec.parts)
+	# müşteriden gelen tüm takılı parçaları işaretle; eksiltme/değiştirme kontrolü için başlangıç durumunu sakla
+	var capture_orig: bool = fresh and not DJ.is_device(rec) and str(rec.get("kind", "")) != "build" and not bool(rec.get("warranty", false)) and not rec.has("orig_parts")
+	var orig := {}
+	for sn in dev.slots:
+		var sp = dev.slots[sn].part
+		if sp == null:
+			continue
+		if "origin" in sp and str(sp.origin) == "":
+			sp.origin = "customer"
+			sp.origin_ticket = t
+		if capture_orig:
+			var raw_sku: String = sp.sku if not sp.sku.is_empty() else DB.parts.id_for(sp.part_type, sp.tier)
+			var sid: String = DB.parts.resolve_id(raw_sku) if not raw_sku.is_empty() else raw_sku
+			orig[str(sn)] = {
+				"sku": sid,
+				"tier": int(sp.tier),
+				"price": int(sp.value()),
+				"broken": bool(sp.broken),
+				"cheap": bool(sp.cheap),
+				"name": str(sp.display_name),
+			}
+	if capture_orig and not orig.is_empty():
+		rec["orig_parts"] = orig
 	devices[t] = dev
 	tags[t] = ST.attach_tag(dev, rec, func(_p): return _tag_hint(rec), func(p): _tag_use(rec, p))
 	if on_bench:
@@ -842,11 +868,87 @@ func _wrong_line(got: Dictionary, want: Dictionary) -> String:
 	return lines.pick_random()
 
 
+## Teslim kontrolü: müşterinin çalışan parçalarından eksilen veya daha düşük değerliye indirilen var mı?
+func audit_parts(rec: Dictionary, dev = null) -> Dictionary:
+	var out := {"stolen_items": [], "stolen_value": 0, "catch_chance": 0.0}
+	if rec.is_empty() or DJ.is_device(rec) or str(rec.get("kind", "")) == "build" or bool(rec.get("warranty", false)):
+		return out
+	var d = dev if dev != null else devices.get(int(rec.get("ticket", -1)))
+	if d == null or not is_instance_valid(d):
+		return out
+	var orig_parts = rec.get("orig_parts", {})
+	if not (orig_parts is Dictionary) or orig_parts.is_empty():
+		return out
+	var critical_missing := false
+	for sn in orig_parts:
+		var op = orig_parts[sn]
+		if not (op is Dictionary) or bool(op.get("broken", false)):
+			continue
+		var orig_price: int = int(op.get("price", 0))
+		var cur = d.part_in(str(sn)) if d.has_method("part_in") else null
+		if cur == null:
+			out.stolen_items.append({"kind": "missing", "slot": str(sn), "orig_name": str(op.get("name", sn)), "cur_name": "", "diff": orig_price})
+			out.stolen_value += orig_price
+			if str(sn) in ["gpu", "cpu", "psu", "mobo"]:
+				critical_missing = true
+		else:
+			var cur_price: int = int(cur.value())
+			var downgraded: bool = cur_price < orig_price - 5
+			var cheap_swap: bool = (not bool(op.get("cheap", false))) and bool(cur.cheap) and cur_price <= orig_price + 5
+			if downgraded or cheap_swap:
+				var diff: int = maxi(10, orig_price - cur_price)
+				out.stolen_items.append({"kind": "downgrade", "slot": str(sn), "orig_name": str(op.get("name", sn)), "cur_name": str(cur.display_name), "diff": diff})
+				out.stolen_value += diff
+	if not out.stolen_items.is_empty():
+		if int(out.stolen_value) >= 100 or critical_missing:
+			out.catch_chance = 0.55
+		elif int(out.stolen_value) >= 40:
+			out.catch_chance = 0.35
+		else:
+			out.catch_chance = 0.20
+	return out
+
+
+func _check_theft_alerts() -> void:
+	for i in range(Game.theft_alerts.size() - 1, -1, -1):
+		var a: Dictionary = Game.theft_alerts[i]
+		if int(a.get("due", 999)) <= Game.day:
+			Game.theft_alerts.remove_at(i)
+			var refund: int = maxi(15, roundi(float(a.get("value", 30)) * 0.5))
+			Game.add_money(-refund, false)
+			Game.change_rep(-0.4)
+			Game.sfx.error()
+			if hud:
+				hud.pop_money(-refund)
+			Game.msg("%s evde %s değişimini fark edip 1 yıldız yorum attı! (-%d TL iade, -0.4 itibar)" % [
+				str(a.get("name", "Müşteri")), str(a.get("item", "parça")), refund], Color(1.0, 0.45, 0.3))
+
+
 ## Başarılı teslim: ödeme, itibar, istatistik; cihaz müşteriyle gider.
 func _complete(e: Dictionary) -> void:
 	var rec: Dictionary = e.rec
 	var c = e.customer
 	var dev = devices.get(int(rec.ticket))
+	var audit := audit_parts(rec, dev)
+	var stole_something: bool = not audit.stolen_items.is_empty()
+	if stole_something:
+		var caught: bool = (theft_catch_override >= 0.5) if theft_catch_override >= 0.0 else (randf() < float(audit.catch_chance))
+		if caught:
+			var first: Dictionary = audit.stolen_items[0]
+			var fine: int = maxi(25, roundi(float(audit.stolen_value) * 0.75))
+			var rep_loss: float = clampf(0.45 + float(audit.stolen_value) * 0.002, 0.5, 0.85)
+			Game.add_money(-fine, false)
+			Game.change_rep(-rep_loss)
+			Game.sfx.error()
+			if hud:
+				hud.pop_money(-fine)
+			Game.msg("YAKALANDIN! %s parça değişimini fark etti (-%d TL tazminat, -%.1f itibar)!" % [
+				str(rec.name), fine, rep_loss], Color(1.0, 0.3, 0.25))
+			var line := ("Usta dur bi saniye! Benim %s nereye uçtu?! Parçamı çalmışsın!" % str(first.orig_name)) if str(first.kind) == "missing" else (
+				"Hey usta, benim %s vardı içinde, bu %s ne?! Beni mi kandırıyorsun?!" % [str(first.orig_name), str(first.cur_name)])
+			_remove_record(rec, true, c.global_position + Vector3(0, 1.0, 0.1))
+			_finish_entry(e, line, true, 2.2)
+			return
 	WARRANTY.on_delivered(dev, rec)  # muadil parça takıldıysa geri dönüş riski kaydedilir
 	# erken bitirme: hazır olduğu an, kabul ile teslim arasının ilk yarısındaysa "hızlı"
 	var ready_t: float = float(rec.get("ready_abs", Game.now_abs()))
@@ -881,6 +983,15 @@ func _complete(e: Dictionary) -> void:
 	hud.pop_money(total_pay)
 	var extra_msg := ("  (" + ", ".join(tip_notes) + ")" if not tip_notes.is_empty() else "")
 	Game.msg("+%d TL kazandın!" % total_pay + ("  (hızlı servis, itibar arttı)" if fast else "") + extra_msg, Color(0.5, 1, 0.5))
+	if stole_something:
+		Game.msg("%s parça değişimini fark etmedi! (Tahmini kâr: ~%d TL)" % [str(rec.name), int(audit.stolen_value)], Color(0.95, 0.78, 0.3))
+		if theft_catch_override < 0.0 and randf() < 0.35:
+			Game.theft_alerts.append({
+				"due": Game.day + randi_range(1, 2),
+				"name": str(rec.name),
+				"item": str(audit.stolen_items[0].orig_name),
+				"value": int(audit.stolen_value),
+			})
 	_remove_record(rec, true, c.global_position + Vector3(0, 1.0, 0.1))
 	_finish_entry(e, ["Eline sağlık usta, sağ ol!", "Helal olsun, tıkır tıkır çalışıyor!",
 		"Çok teşekkürler, herkese seni önereceğim!"].pick_random())

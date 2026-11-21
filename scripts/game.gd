@@ -147,6 +147,7 @@ var stock_dud := {}               # "tür:seviye" -> orijinal stoğun içindeki 
 var take_was_dud := false         # son take_stock() arızalı parça verdi mi
 var warranty_list: Array = []     # bekleyen garanti dönüşleri: {due, name, type, tier}
 var warranty_chance := WARRANTY_CHANCE
+var theft_alerts: Array = []      # parça değişimini sonradan fark eden müşteriler: {due, name, item, value}
 var used_listings: Array = []     # bugünün ikinci el ilanları
 var _loaded_used_sold: Array = [] # kayıttan gelen satılmış ilan id'leri (günlük üretimde bir kez uygulanır)
 var utility_today := 0
@@ -483,6 +484,7 @@ func _reset_economy() -> void:
 	stock_cheap = {}
 	stock_dud = {}
 	warranty_list = []
+	theft_alerts = []
 	used_listings = []
 	_loaded_used_sold = []
 
@@ -491,6 +493,7 @@ func _save_economy(d: Dictionary) -> void:
 	d.stock_cheap = stock_cheap
 	d.stock_dud = stock_dud
 	d.warranty = warranty_list
+	d.theft_alerts = theft_alerts
 	# satılmış ikinci el ilanları (gün sonu özeti kaydıysa yarın taze ilan gelir)
 	var sold_ids := []
 	if phase != "summary":
@@ -515,6 +518,10 @@ func _load_economy(d: Dictionary) -> void:
 		var wsku := str(w.get("sku", DB.parts.id_for(wt, wtier)))
 		warranty_list.append({"due": int(w.get("due", day)), "name": str(w.get("name", "Müşteri")),
 			"type": wt, "tier": wtier, "sku": wsku})
+	for a in d.get("theft_alerts", []):
+		if a is Dictionary:
+			theft_alerts.append({"due": int(a.get("due", day + 1)), "name": str(a.get("name", "Müşteri")),
+				"item": str(a.get("item", "parça")), "value": int(a.get("value", 0))})
 
 
 func patience_mult() -> float:
@@ -574,7 +581,7 @@ func new_game() -> void:
 	upgrades = {}
 	rent_level = 0
 	debt_days = 0
-	stats = {"total_income": 0, "total_jobs": 0, "total_sales": 0}
+	stats = {"total_income": 0, "total_jobs": 0, "total_sales": 0, "stolen_parts": 0}
 	stock = START_STOCK.duplicate()
 	_reset_economy()
 	orders = []
@@ -901,7 +908,7 @@ func load_game() -> bool:
 		upgrades[str(id)] = true
 	var st = d.get("stats", {})
 	stats = {"total_income": int(st.get("total_income", 0)), "total_jobs": int(st.get("total_jobs", 0)),
-		"total_sales": int(st.get("total_sales", 0))}
+		"total_sales": int(st.get("total_sales", 0)), "stolen_parts": int(st.get("stolen_parts", 0))}
 	stock = {}
 	var sd = d.get("stock", START_STOCK)
 	for k in sd:

@@ -260,7 +260,10 @@ func refresh() -> void:
 	if p != null and p.held != null:
 		_held_row.visible = true
 		var can_ret: bool = not p.held.is_tool() and not p.held.broken
-		_held_l.text = "Elinde: %s" % p.held.display_name + ("" if can_ret else " (dolaba konmaz)")
+		var tag: String = str(p.held.origin_tag()) if p.held.has_method("origin_tag") else ""
+		var from_cust: bool = "origin" in p.held and str(p.held.origin) == "customer"
+		_held_l.text = "Elinde: %s" % p.held.display_name + (("  [%s]" % tag) if tag != "" else "") + ("" if can_ret else " (dolaba konmaz)")
+		_return_btn.text = "Kendine Al (Stoğa)" if from_cust else "Dolaba Geri Koy"
 		_return_btn.visible = can_ret
 	elif Game.is_carrying():
 		_held_row.visible = true

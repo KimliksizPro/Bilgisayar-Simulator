@@ -169,6 +169,23 @@ static func normalize(r: Dictionary) -> Dictionary:
 		for k in ["min_tier", "ram_gb"]:
 			if out.target.has(k):
 				out.target[k] = int(out.target[k])
+	if out.has("orig_parts"):
+		if out.orig_parts is Dictionary:
+			var norm_orig := {}
+			for sn in out.orig_parts:
+				var op = out.orig_parts[sn]
+				if op is Dictionary:
+					norm_orig[str(sn)] = {
+						"sku": DB.parts.resolve_id(str(op.get("sku", ""))),
+						"tier": int(op.get("tier", 1)),
+						"price": int(op.get("price", 0)),
+						"broken": bool(op.get("broken", false)),
+						"cheap": bool(op.get("cheap", false)),
+						"name": str(op.get("name", "")),
+					}
+			out["orig_parts"] = norm_orig
+		else:
+			out.erase("orig_parts")
 	return out
 
 
@@ -198,6 +215,8 @@ static func _norm_parts(parts: Array) -> Array:
 				"bad_caps": bool(p.get("bad_caps", false)),
 				"vram_bad": bool(p.get("vram_bad", false)),
 				"is_test_part": bool(p.get("is_test_part", false)),
+				"origin": str(p.get("origin", "")),
+				"origin_ticket": int(p.get("origin_ticket", 0)),
 			})
 		elif p is Array and p.size() >= 4:
 			var q := [str(p[0]), str(p[1]), (float(p[2]) if str(p[0]) == "dust" else int(p[2])), bool(p[3])]
@@ -230,6 +249,8 @@ static func snapshot(dev) -> Dictionary:
 				"bad_caps": bool(p.bad_caps) if "bad_caps" in p else false,
 				"vram_bad": bool(p.vram_bad) if "vram_bad" in p else false,
 				"is_test_part": bool(p.is_test_part) if "is_test_part" in p else false,
+				"origin": str(p.origin) if "origin" in p else "",
+				"origin_ticket": int(p.origin_ticket) if "origin_ticket" in p else 0,
 			})
 	var out := {
 		"parts": parts,
@@ -297,13 +318,18 @@ static func restore(dev, state: Dictionary) -> void:
 	for sn in cheap_slots:
 		if dev.slots.has(sn) and dev.slots[sn].part != null:
 			dev.slots[sn].part.make_cheap()
-	# is_test_part bayrağını ve v5 cihaz/kasa durumunu geri yükle
+	# is_test_part ve parça kökenini (origin) ile v5 cihaz/kasa durumunu geri yükle
+	for p in raw_parts:
+		if p is Dictionary and p.has("slot"):
+			var sn := str(p.slot)
+			if dev.slots.has(sn) and dev.slots[sn].part != null:
+				var dp = dev.slots[sn].part
+				if bool(p.get("is_test_part", false)):
+					dp.make_test_part()
+				elif p.has("origin") and "origin" in dp:
+					dp.origin = str(p.get("origin", ""))
+					dp.origin_ticket = int(p.get("origin_ticket", 0))
 	if is_pc:
-		for p in raw_parts:
-			if p is Dictionary and p.has("slot") and bool(p.get("is_test_part", false)):
-				var sn := str(p.slot)
-				if dev.slots.has(sn) and dev.slots[sn].part != null:
-					dev.slots[sn].part.make_test_part()
 		if state.has("cables") and state.cables is Dictionary:
 			for ck in state.cables:
 				dev.cables[str(ck)] = str(state.cables[ck])

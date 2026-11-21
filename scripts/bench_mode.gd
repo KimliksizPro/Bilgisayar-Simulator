@@ -249,6 +249,14 @@ func _build_tray() -> void:
 	for x in [-1, 1]:
 		MU.rbox(_tray, Vector3(0.007, 0.014, TRAY_D), Vector3(x * (TRAY_W / 2.0 - 0.0035), 0.007, 0), rim_m, 0.002)
 	MU.box(_tray, Vector3(TRAY_W - 0.02, 0.0008, 0.002), Vector3(0, TRAY_TOP + 0.0004, 0.0), line_m)
+	var stock_bar_m := MU.mat(Color(0.22, 0.78, 0.45), 0.1, 0.85)
+	var pulled_bar_m := MU.mat(Color(0.95, 0.65, 0.16), 0.1, 0.85)
+	MU.box(_tray, Vector3(TRAY_W - 0.12, 0.001, 0.0025), Vector3(-0.045, TRAY_TOP + 0.0005, -TRAY_D / 2.0 + 0.011), stock_bar_m)
+	MU.box(_tray, Vector3(TRAY_W - 0.02, 0.001, 0.0025), Vector3(0, TRAY_TOP + 0.0005, 0.002), pulled_bar_m)
+	var l_st := MU.label(_tray, "YENİ / STOK", Vector3(-TRAY_W / 2.0 + 0.068, TRAY_TOP + 0.0014, -TRAY_D / 2.0 + 0.022), 26, Color(0.55, 0.96, 0.68), Vector3(-90, 0, 0), 0.00022)
+	l_st.double_sided = false
+	var l_pu := MU.label(_tray, "SÖKÜLEN (MÜŞTERİ)", Vector3(-TRAY_W / 2.0 + 0.095, TRAY_TOP + 0.0014, 0.015), 26, Color(1.0, 0.80, 0.42), Vector3(-90, 0, 0), 0.00022)
+	l_pu.double_sided = false
 	var l := MU.label(_tray, "PARÇA TEPSİSİ", Vector3(0, 0.010, TRAY_D / 2.0 + 0.0005), 34, Color(0.75, 0.85, 0.95), Vector3.ZERO, 0.00022)
 	l.double_sided = false
 
@@ -1072,6 +1080,14 @@ func _hl_key(res: Dictionary) -> String:
 			return "amber"
 	if k == "tool" and tool == res.get("tool"):
 		return "amber"
+	if k == "tray" and res.get("part") != null:
+		var pt = res.part
+		var orig: String = str(pt.get("origin")) if "origin" in pt else ""
+		if orig == "stock":
+			return "green"
+		if "is_test_part" in pt and pt.is_test_part:
+			return "cyan"
+		return "amber"
 	return "cyan"
 
 
@@ -1198,6 +1214,10 @@ func _part_spec_text(part, slot = null) -> String:
 		tags.append("Şişmiş kondansatör!")
 	if "is_test_part" in part and part.is_test_part:
 		tags.append("TEST PARÇASI")
+	elif part.has_method("origin_tag"):
+		var otag := str(part.origin_tag())
+		if otag != "" and (slot == null or ( "origin" in part and str(part.origin) == "stock")):
+			tags.append(otag)
 	if slot != null and device != null and device.has_method("slot_screwed") and device.slot_screwed(slot.name):
 		tags.append("Vidalı")
 	if Game.has_upgrade("smart_usb") and part.part_type in ["ssd", "nvme", "hdd"] and "health" in part:
@@ -1279,7 +1299,13 @@ func _tooltip_for(res: Dictionary) -> Array:
 				return []
 			return ["Boş yuva: %s" % PM.type_name(res.slot.accepts), "", "Tepsiden veya Stoktan parça seç", T.MUTED]
 		"tray":
-			return [res.part.display_name, _part_spec_text(res.part), "Seç  " + click, HL_CYAN]
+			var t_col := HL_CYAN
+			if "origin" in res.part:
+				if str(res.part.origin) == "stock":
+					t_col = T.GOOD
+				elif str(res.part.origin) == "customer":
+					t_col = T.ACCENT
+			return [res.part.display_name, _part_spec_text(res.part), "Seç  " + click, t_col]
 		"widget":
 			var h := str(res.node.get_hint(self))
 			if h == "":
@@ -1379,6 +1405,8 @@ func remove_part(slot):
 			return null
 	var part = slot.part
 	slot.detach()
+	if part.has_method("mark_pulled_from"):
+		part.mark_pulled_from(device)
 	tray_add(part)
 	_ever_removed = true
 	Game.sfx.pickup()
@@ -1427,6 +1455,8 @@ func take_from_stock(sku_id: String, cheap := false, auto_select := true):
 			Game.msg("%s stokta yok!" % PM.display_name_sku(id), Color(1.0, 0.5, 0.4))
 			return null
 		part = PART.new().setup_sku(id, Game.take_was_dud)
+	part.origin = "stock"
+	part.origin_ticket = 0
 	tray_add(part)
 	Game.sfx.pickup()
 	if auto_select:
@@ -1435,8 +1465,17 @@ func take_from_stock(sku_id: String, cheap := false, auto_select := true):
 	return part
 
 
-## Tepsideki sağlam (ve test olmayan) parçayı tekrar dükkân rafına iade eder.
+## Tepsideki sağlam (ve test olmayan) parçayı dükkân stoğuna koyar (müşteri parçasıysa cebe atar).
 func return_tray_part(part) -> bool:
+	return _store_tray_part(part, false)
+
+
+## Müşteriden sökülen sağlam parçayı kendi dükkân stoğuna alır (teslimde yakalanma riski taşır).
+func pocket_tray_part(part) -> bool:
+	return _store_tray_part(part, true)
+
+
+func _store_tray_part(part, as_pocket: bool) -> bool:
 	if part == null or not tray_parts.has(part):
 		return false
 	if part.broken:
@@ -1451,6 +1490,7 @@ func return_tray_part(part) -> bool:
 		_layout_tray()
 		_sig = ""
 		return true
+	var from_cust: bool = as_pocket or ("origin" in part and str(part.origin) == "customer")
 	if selected == part:
 		cancel_selection()
 	tray_parts.erase(part)
@@ -1460,9 +1500,14 @@ func return_tray_part(part) -> bool:
 		Game.add_stock_cheap_sku(id, 1)
 	else:
 		Game.add_stock_sku(id, 1)
-	Game.msg("%s dükkân stoğuna geri kondu." % part.display_name, Color(0.65, 0.9, 1.0))
+	if from_cust:
+		Game.stats["stolen_parts"] = int(Game.stats.get("stolen_parts", 0)) + 1
+		Game.sfx.coin()
+		Game.msg("%s kendi stoğuna atıldı! (Teslimde müşteri fark edebilir!)" % part.display_name, Color(1.0, 0.78, 0.25))
+	else:
+		Game.sfx.click()
+		Game.msg("%s dükkân stoğuna geri kondu." % part.display_name, Color(0.65, 0.9, 1.0))
 	part.queue_free()
-	Game.sfx.click()
 	_layout_tray()
 	_sig = ""
 	return true
@@ -1618,27 +1663,41 @@ func _footprint(part, b: Basis) -> AABB:
 
 
 func _layout_tray() -> void:
-	var iw := TRAY_W - 0.06
-	var id := TRAY_D - 0.06
-	var cx := -iw / 2.0
-	var rz := -id / 2.0
-	var row_d := 0.0
+	var iw := TRAY_W - 0.05
+	var stock_list: Array = []
+	var pulled_list: Array = []
 	for p in tray_parts:
 		if p == selected or not is_instance_valid(p):
 			continue
+		var orig: String = str(p.get("origin")) if "origin" in p else ""
+		var is_test: bool = "is_test_part" in p and p.is_test_part
+		if orig == "stock" or orig == "test" or is_test:
+			stock_list.append(p)
+		else:
+			pulled_list.append(p)
+	_layout_tray_zone(stock_list, iw, -TRAY_D / 2.0 + 0.032, true)
+	_layout_tray_zone(pulled_list, iw, 0.028, false)
+
+
+func _layout_tray_zone(list: Array, iw: float, z_start: float, avoid_dish: bool) -> void:
+	var cx := -iw / 2.0
+	var rz := z_start
+	var row_d := 0.0
+	for p in list:
 		var b := _flat_basis(p)
 		var bb := _footprint(p, b)
 		var fx := bb.size.x
 		var fz := bb.size.z
 		# sağ arka köşedeki manyetik vida tabağını boş bırak
-		var row_right := (iw / 2.0 - 0.095) if rz < -id / 2.0 + 0.095 else iw / 2.0
+		var row_right := (iw / 2.0 - 0.092) if (avoid_dish and rz < -TRAY_D / 2.0 + 0.115) else iw / 2.0
 		if cx + fx > row_right and cx > -iw / 2.0 + 0.001:
-			rz += row_d + 0.012
+			rz += row_d + 0.008
 			cx = -iw / 2.0
 			row_d = 0.0
+			row_right = (iw / 2.0 - 0.092) if (avoid_dish and rz < -TRAY_D / 2.0 + 0.115) else iw / 2.0
 		var target := Vector3(cx + fx / 2.0, TRAY_TOP + bb.size.y / 2.0 + 0.0005, rz + fz / 2.0)
 		p.transform = Transform3D(b, target - bb.get_center())
-		cx += fx + 0.012
+		cx += fx + 0.010
 		row_d = maxf(row_d, fz)
 
 
@@ -1921,6 +1980,13 @@ func _build_tab_job(vb: VBoxContainer, rec: Dictionary) -> void:
 			var dl := K.label(vb, "⚠ Kasa içi tozlu (%%%d)" % roundi(device.dust * 100.0), 12, T.ACCENT)
 			dl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			dl.custom_minimum_size = Vector2(260, 0)
+		if Game.job_mgr != null and not rec.is_empty():
+			var audit: Dictionary = Game.job_mgr.audit_parts(rec, device)
+			if not audit.stolen_items.is_empty():
+				var wl := K.label(vb, "! Müşterinin %s parçası eksik/düşük — teslimde fark edilebilir (%%%d risk)" % [
+					str(audit.stolen_items[0].orig_name), roundi(float(audit.catch_chance) * 100.0)], 12, T.ACCENT)
+				wl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+				wl.custom_minimum_size = Vector2(260, 0)
 		var bt := K.button(vb, "Kablolar Düzenli ✓ (+30 TL bahşiş)" if device.cables_tidy else "Kabloları Düzenle (+30 TL)", func():
 			device.tidy_cables()
 			_sig = "", "", 13, Vector2(0, 32))
@@ -2017,24 +2083,32 @@ func _build_tab_tray(vb: VBoxContainer) -> void:
 	for p in tray_parts:
 		if not is_instance_valid(p):
 			continue
+		var is_test: bool = "is_test_part" in p and p.is_test_part
+		var orig: String = str(p.get("origin")) if "origin" in p else ""
+		var otag: String = str(p.origin_tag()) if p.has_method("origin_tag") else ""
+		var border_col := T.INFO if is_test else (T.GOOD if orig == "stock" else (T.ACCENT if orig == "customer" else Color(1, 1, 1, 0.06)))
 		var card := K.panel(vb, "InsetPanel")
-		card.add_theme_stylebox_override("panel", T.flat(Color(0, 0, 0, 0.25), 5, Color(1, 1, 1, 0.06), 1, Vector2(8, 6)))
+		card.add_theme_stylebox_override("panel", T.flat(Color(0, 0, 0, 0.25), 5, border_col, 1, Vector2(8, 6)))
 		var pv := VBoxContainer.new()
 		pv.add_theme_constant_override("separation", 4)
 		card.add_child(pv)
 		var sel: bool = p == selected
 		K.label(pv, p.display_name, 13, T.ACCENT if sel else T.TEXT, "BoldLabel")
-		var is_test: bool = "is_test_part" in p and p.is_test_part
-		var cond := "Test Parçası" if is_test else ("ARIZALI" if p.broken else "Sağlam")
-		K.label(pv, cond, 11, T.INFO if is_test else (T.BAD if p.broken else T.GOOD))
+		var status_txt := "Test Parçası" if is_test else ("ARIZALI" if p.broken else "Sağlam")
+		var cond := ("%s · %s" % [otag, status_txt]) if otag != "" and not is_test else status_txt
+		var cond_col := T.INFO if is_test else (T.BAD if p.broken else (T.GOOD if orig == "stock" else T.ACCENT))
+		K.label(pv, cond, 11, cond_col)
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 4)
 		pv.add_child(row)
 		var bs := K.button(row, "İptal" if sel else "Seç", (cancel_selection if sel else select_part.bind(p)), "PrimaryButton" if sel else "", 12, Vector2(0, 26))
 		bs.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		if not p.broken and not is_test:
-			var br := K.button(row, "Rafa", func(): return_tray_part(p), "", 12, Vector2(58, 26))
-		var bx := K.button(row, "At", func(): scrap_tray_part(p), "", 12, Vector2(46, 26))
+			if orig == "customer":
+				K.button(row, "Cebe At", func(): pocket_tray_part(p), "", 12, Vector2(68, 26))
+			else:
+				K.button(row, "Rafa", func(): return_tray_part(p), "", 12, Vector2(58, 26))
+		K.button(row, "At", func(): scrap_tray_part(p), "", 12, Vector2(46, 26))
 
 
 func _rebuild_dock(tools: Array) -> void:

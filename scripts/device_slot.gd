@@ -35,6 +35,8 @@ func interact(player) -> void:
 		pc.tool_use(player, player.held, self)
 		return
 	if part and player.held == null:
+		if part.has_method("mark_pulled_from"):
+			part.mark_pulled_from(pc)
 		player.pick_up(part)
 	elif part == null and player.held and player.held.part_type == accepts:
 		install(player.release_held())

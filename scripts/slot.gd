@@ -127,6 +127,8 @@ func interact(player) -> void:
 			Game.sfx.error()
 			Game.msg(blk, Color(1.0, 0.75, 0.35))
 			return
+		if part.has_method("mark_pulled_from"):
+			part.mark_pulled_from(pc)
 		player.pick_up(part)
 	elif part == null and player.held and not player.held.is_tool() and accepts_category(player.held.part_type):
 		var res := compat_check(player.held)
