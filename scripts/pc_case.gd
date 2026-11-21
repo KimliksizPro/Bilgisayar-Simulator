@@ -39,7 +39,9 @@ var slots := {}
 var monitor = null
 var powered := false
 var panel_open := false
+var flat_mode := false
 var panel_pivot: Node3D
+var _panel_tw: Tween = null
 var case_fans: Array = []
 var rgb_mats: Array = []
 var hum: AudioStreamPlayer3D
@@ -1189,11 +1191,40 @@ func toggle_panel(force := false) -> void:
 	elif not panel_open and Game.has_upgrade("auto_screw"):
 		screws["panel_1"] = true
 		screws["panel_2"] = true
-	var tw := create_tween()
-	tw.tween_property(panel_pivot, "rotation:y", deg_to_rad(100.0) if panel_open else 0.0, 0.45) \
-		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	_apply_panel_pose()
 	Game.sfx.click()
 	_update_visuals(null if dust <= 0.0 else dust > 0.04)
+
+
+## Tezgâh modunda kasa yatırıldığında cam yan kapağı kasanın arkasına yaslar; kalkınca menteşeye geri oturtur.
+func set_flat_mode(on: bool, instant := false) -> void:
+	if flat_mode == on and not instant:
+		return
+	flat_mode = on
+	_apply_panel_pose(instant)
+
+
+func _apply_panel_pose(instant := false) -> void:
+	if panel_pivot == null:
+		return
+	var rest_pos := Vector3(case_w / 2.0 - 0.002, 0.0, -case_d / 2.0)
+	var target_pos := rest_pos
+	var target_rot := Vector3.ZERO
+	if panel_open:
+		if flat_mode:
+			target_pos = Vector3(-case_w / 2.0 + 0.01, case_h + 0.06, -case_d / 2.0)
+			target_rot = Vector3(0.0, 0.0, deg_to_rad(-80.0))
+		else:
+			target_rot = Vector3(0.0, deg_to_rad(100.0), 0.0)
+	if _panel_tw and _panel_tw.is_valid():
+		_panel_tw.kill()
+	if instant:
+		panel_pivot.position = target_pos
+		panel_pivot.rotation = target_rot
+		return
+	_panel_tw = create_tween().set_parallel(true)
+	_panel_tw.tween_property(panel_pivot, "position", target_pos, 0.4).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	_panel_tw.tween_property(panel_pivot, "rotation", target_rot, 0.4).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 
 
 func power_button() -> void:

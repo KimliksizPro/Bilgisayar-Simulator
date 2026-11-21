@@ -357,6 +357,25 @@ func _place_jobs_list() -> void:
 		_jobs_holder.offset_top = 30.0 + _job_card.size.y * s + 20.0 * s
 
 
+## Tezgâh modunda birinci şahıs arayüz kartlarını gizler, çıkınca geri açar; bildirimleri tezgâh kenarına kaydırır.
+func set_bench_mode(active: bool) -> void:
+	if _money_card:
+		_money_card.visible = not active
+	if _job_holder:
+		_job_holder.visible = not active
+	if _jobs_holder:
+		_jobs_holder.visible = not active
+	if crosshair:
+		crosshair.visible = not active
+	if corner_hint:
+		corner_hint.visible = not active
+	if toasts:
+		toasts.offset_left = 330 if active else 24
+		toasts.offset_bottom = -112 if active else -64
+	if tip_card:
+		tip_card.offset_top = 80 if active else 26
+
+
 func _refresh_jobs() -> void:
 	_jobs_sig = ""
 	_rebuild_jobs()

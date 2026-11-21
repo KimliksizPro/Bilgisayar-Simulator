@@ -75,7 +75,7 @@ func _ready() -> void:
 	jobs.monitor = monitor
 	jobs.hud = hud
 	jobs.rack = job_rack
-	jobs.pc_spot = Transform3D(Basis.from_euler(Vector3(0, deg_to_rad(-90), 0)), Vector3(0.45, DESK_Y + 0.012, -2.52))
+	jobs.pc_spot = Transform3D(Basis.from_euler(Vector3(0, deg_to_rad(-90), 0)), Vector3(0.36, DESK_Y + 0.012, -2.52))
 	add_child(jobs)
 	jobs.start()
 	delivery = DELIVERY.new()
@@ -545,7 +545,9 @@ func _build_desk() -> void:
 			MU.rbox(self, Vector3(0.05, DESK_Y - 0.05, 0.05), Vector3(x, (DESK_Y - 0.05) / 2, z), leg, 0.01)
 	MU.rbox(self, Vector3(2.5, 0.08, 0.03), Vector3(0.25, DESK_Y - 0.09, -2.85), leg, 0.008)
 	MU.static_box(self, Vector3(2.6, DESK_Y, 0.8), Vector3(0.25, DESK_Y / 2, -2.5), null)
-	MU.rbox(self, Vector3(1.0, 0.004, 0.5), Vector3(0.55, DESK_Y + 0.002, -2.45), MU.mat(Color(0.12, 0.3, 0.55), 0, 0.95), 0.002)
+	# anti-statik ESD tamir matı ve arka sağda alet düzenleyici tepsi
+	MU.rbox(self, Vector3(1.36, 0.004, 0.56), Vector3(0.66, DESK_Y + 0.002, -2.47), MU.mat(Color(0.10, 0.22, 0.36), 0, 0.95), 0.002)
+	MU.rbox(self, Vector3(0.76, 0.008, 0.12), Vector3(1.00, DESK_Y + 0.004, -2.74), MU.mat(Color(0.08, 0.09, 0.11), 0.2, 0.8), 0.004)
 	monitor = MONITOR.new()
 	monitor.position = Vector3(-0.5, DESK_Y, -2.72)
 	add_child(monitor)
@@ -595,10 +597,10 @@ func _build_desk() -> void:
 ## Masadaki aletler: 4 başlangıç aleti + 8 geliştirme ile açılan teşhis/servis aleti.
 func _build_tools() -> void:
 	var starter := [
-		["paste", Vector3(0.95, DESK_Y + 0.016, -2.5), 20.0],
-		["air", Vector3(1.13, DESK_Y + 0.096, -2.42), 0.0],
-		["screwdriver", Vector3(0.955, DESK_Y + 0.0125, -2.25), 15.0],
-		["ipa", Vector3(1.13, DESK_Y + 0.075, -2.26), -10.0],
+		["screwdriver", Vector3(1.04, DESK_Y + 0.014, -2.28), 82.0],
+		["paste", Vector3(1.04, DESK_Y + 0.016, -2.44), 80.0],
+		["air", Vector3(1.13, DESK_Y + 0.096, -2.46), -15.0],
+		["ipa", Vector3(1.13, DESK_Y + 0.075, -2.29), -10.0],
 	]
 	for t in starter:
 		var tool = TOOL.new().setup(t[0])
@@ -608,14 +610,14 @@ func _build_tools() -> void:
 		tool.rotation_degrees.y = t[2]
 		tool.freeze = true
 	var unlocked := [
-		["psu_tester", Vector3(1.27, DESK_Y + 0.015, -2.55), -15.0],
-		["multimeter", Vector3(1.27, DESK_Y + 0.018, -2.35), -12.0],
-		["post_card", Vector3(1.05, DESK_Y + 0.010, -2.62), 10.0],
-		["thermal_cam", Vector3(1.27, DESK_Y + 0.060, -2.18), -20.0],
-		["ram_usb", Vector3(0.86, DESK_Y + 0.008, -2.62), 5.0],
-		["smart_usb", Vector3(0.92, DESK_Y + 0.008, -2.62), 5.0],
-		["antivirus_usb", Vector3(0.98, DESK_Y + 0.008, -2.62), 5.0],
-		["install_usb", Vector3(1.04, DESK_Y + 0.008, -2.52), 5.0],
+		["ram_usb", Vector3(0.66, DESK_Y + 0.008, -2.74), 0.0],
+		["smart_usb", Vector3(0.72, DESK_Y + 0.008, -2.74), 0.0],
+		["antivirus_usb", Vector3(0.78, DESK_Y + 0.008, -2.74), 0.0],
+		["install_usb", Vector3(0.84, DESK_Y + 0.008, -2.74), 0.0],
+		["post_card", Vector3(0.92, DESK_Y + 0.010, -2.74), 5.0],
+		["psu_tester", Vector3(1.03, DESK_Y + 0.015, -2.73), -10.0],
+		["multimeter", Vector3(1.14, DESK_Y + 0.018, -2.70), -12.0],
+		["thermal_cam", Vector3(1.25, DESK_Y + 0.060, -2.66), -20.0],
 	]
 	for t in unlocked:
 		var tid := str(t[0])

@@ -35,6 +35,7 @@ func _ready() -> void:
 	# 1) kapak kapalı, cam kapağın üstünde tooltip
 	bench.mouse_override = _screen_of(pc, Vector3(0.108, 0.23, 0.0))
 	await _shot("1_closed")
+	pc.unscrew_all()
 	bench.toggle_panel()
 	await get_tree().create_timer(0.7).timeout
 	# 2) açık, GPU üzerinde tooltip

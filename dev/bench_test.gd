@@ -67,10 +67,33 @@ func _pc_repair() -> void:
 	assert(not Game.hud.corner_hint.visible, "Esc ipucu gizlenmedi")
 	assert(p.held == null and bench.tray_parts.has(good), "elde tutulan parça tepsiye inmedi")
 	await _wait_state("on")
+	assert(bench.is_laid_flat() and pc.flat_mode, "PC tezgâh moduna girince yatmadı")
+	bench.toggle_lay_flat()
+	assert(not bench.is_laid_flat() and not pc.flat_mode, "PC dikleştirme çalışmadı")
+	bench.toggle_lay_flat()
+	await get_tree().create_timer(0.45).timeout
+	assert(bench.is_laid_flat() and pc.flat_mode, "PC yeniden yatmadı")
 	assert(get_viewport().get_camera_3d() == bench.cam, "yörünge kamera aktif değil")
 	await get_tree().create_timer(0.6).timeout
 	assert(Game.clock > clock0, "tezgâh modunda saat akmadı")
 	assert(not bench._looks_fixed(rec), "bozuk cihaz tamir görünüyor")
+	# masadaki 3D alet tıklanabilmeli
+	var desk_tools: Array = bench.available_tools()
+	assert(not desk_tools.is_empty(), "masada alet bulunamadı")
+	var tres: Dictionary = bench._resolve({"collider": desk_tools[0]})
+	assert(tres.get("kind", "") == "tool", "masadaki alet tanınmadı")
+	bench.click(tres)
+	assert(bench.tool == desk_tools[0], "alet seçilmedi")
+	bench.click(tres)
+	assert(bench.tool == null, "alet bırakılmadı")
+	# doğrudan stok çekmecesinden parça alma & iade
+	var st_before: int = Game.stock_of_sku("ram_ddr4_8g")
+	if st_before < 1:
+		Game.add_stock_sku("ram_ddr4_8g", 1)
+		st_before = 1
+	var stk_p = bench.take_from_stock("ram_ddr4_8g", false, false)
+	assert(stk_p != null and Game.stock_of_sku("ram_ddr4_8g") == st_before - 1 and bench.tray_parts.has(stk_p), "stoktan tepsiye alınamadı")
+	assert(bench.return_tray_part(stk_p) and Game.stock_of_sku("ram_ddr4_8g") == st_before, "tepsiden rafa iade çalışmadı")
 	var gp: Vector3 = pc.global_transform * Vector3(pc.W / 2.0 - 0.002, pc.H / 2.0, 0.0)
 	var sp: Vector2 = bench.cam.unproject_position(gp)
 	assert(not bench.cam.is_position_behind(gp))
@@ -93,6 +116,11 @@ func _pc_repair() -> void:
 		slot = pc.slots.ram2
 	var bad = slot.part
 	assert(bad != null and bad.broken)
+	# takılı parça üstüne gelince sarı kutu değil Fresnel kenar vurgusu açılmalı
+	bench._set_hl({"kind": "installed", "slot": slot, "part": bad, "node": bad})
+	assert(not bench._hl.visible and not bench._hl_meshes.is_empty() and bench._hl_meshes[0].material_overlay != null, "Fresnel kenar vurgusu aktif değil")
+	bench._clear_hl()
+	assert(bench._hl_meshes.is_empty(), "vurgu temizlenmedi")
 	assert(bench.remove_part(slot) == bad, "söküm başarısız")
 	assert(slot.part == null and bench.tray_parts.has(bad) and bad.get_parent() == bench._tray)
 	assert(bench.tray_parts.size() == 2)
@@ -119,6 +147,7 @@ func _pc_repair() -> void:
 	assert(bench._looks_fixed(rec), "vidalar sıkılınca tamir tamam ipucu çıkmadı")
 	bench.exit()
 	await _wait_state("off")
+	assert(not bench.is_laid_flat() and not pc.flat_mode, "çıkışta PC dikleşmedi")
 	assert(not Game.bench_active and get_viewport().get_camera_3d() == p.cam)
 	assert(Game.hud.corner_hint.visible)
 	assert(not can_capture or Input.mouse_mode == Input.MOUSE_MODE_CAPTURED, "fare geri yakalanmadı")
