@@ -14,7 +14,10 @@ const VIEWS := {
 	"customers": [Vector3(-0.5, 1.5, 1.2), Vector3(-0.5, 1.25, -0.6), 50.0],
 	"faces": [Vector3(-0.5, 1.68, 0.1), Vector3(-0.5, 1.6, -0.6), 50.0],
 	"counter_phone": [Vector3(-0.8, 1.35, 0.85), Vector3(-0.72, 1.03, 1.18), 35.0],
-	"shelf": [Vector3(-1.6, 1.3, -0.7), Vector3(-3.75, 1.0, -0.7), 85.0],
+	"shelf": [Vector3(-1.7, 1.3, -0.85), Vector3(-3.7, 1.08, -0.85), 65.0],
+	"cabinet_angle": [Vector3(-1.65, 1.5, 0.35), Vector3(-3.7, 1.08, -0.85), 65.0],
+	"cabinet_detail": [Vector3(-2.6, 1.58, -0.83), Vector3(-3.7, 1.49, -0.85), 65.0],
+	"fault_guide": [Vector3(-0.1, 1.85, -1.35), Vector3(-0.1, 1.85, -2.965), 65.0],
 	"rack": [Vector3(-2.35, 1.35, -1.6), Vector3(-2.35, 1.35, -2.95), 55.0],
 }
 

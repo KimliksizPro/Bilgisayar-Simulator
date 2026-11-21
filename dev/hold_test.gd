@@ -26,15 +26,22 @@ func _ready() -> void:
 	var p = Game.player
 	await get_tree().create_timer(0.5).timeout
 	Game.new_game()
+	var cabinet_hit = main.get_node("PartsCabinet/CabinetInteract")
+	cabinet_hit.interact(p)
+	assert(main.inv_panel.is_open(), "dolaba E ile bakınca parça seçici açılmadı")
+	main.inv_panel.close()
+	var stock_before := Game.stock_of_sku("ram_ddr4_8g")
 	# Parça Dolabı akışı: dolaptan RAM alma
 	main._on_cabinet_pick("ram_ddr4_8g", false)
 	var ram = p.held
+	assert(Game.stock_of_sku("ram_ddr4_8g") == stock_before - 1, "dolaptan alırken stok azalmadı")
 	assert(ram != null and "origin" in ram and ram.origin == "stock", "dolaptan alınan RAM stok işaretli değil")
 	assert(ram.freeze and ram.freeze_mode == RigidBody3D.FREEZE_MODE_STATIC, "tutulan RAM statik dondurulmadı")
 	assert(ram.collision_layer == 0 and ram.collision_mask == 0)
 	assert(p.vm_cam.current, "viewmodel kamerası aktif değil")
 	await _lag(p, "dolap_ram")
-	p.release_held().queue_free()
+	cabinet_hit.interact(p)
+	assert(p.held == null and Game.stock_of_sku("ram_ddr4_8g") == stock_before, "dolaba iade çalışmadı")
 
 	main._buy(p, "gpu", 1)
 	var part = p.held
@@ -69,6 +76,8 @@ func _ready() -> void:
 	part.queue_free()
 	p.pick_up(tool)
 	assert(tool.freeze_mode == RigidBody3D.FREEZE_MODE_STATIC and tool.freeze)
+	cabinet_hit.interact(p)
+	assert(p.held == tool, "alet dolaba iade edilmemeli")
 	p.drop()
 	assert(not tool.freeze)
 	print("HOLDTEST OK")

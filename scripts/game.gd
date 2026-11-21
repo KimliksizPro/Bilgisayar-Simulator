@@ -22,6 +22,8 @@ const JOB_STORE := preload("res://scripts/job_store.gd")
 # geliştirici bayrakları (her biri ayrı satırda: paralel dallarda çakışmasın)
 const DEV_ARGS := [
 	"--propshot",
+	"--inventoryshot",
+	"--inventorytest",
 	"--shot",
 	"--uishot",
 	"--perf",

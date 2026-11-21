@@ -16,6 +16,8 @@ const PROPS := preload("res://scripts/props.gd")
 const BENCH := preload("res://scripts/bench_mode.gd")  # tezgâh modu (yörünge kamera)
 const JOB_RACK := preload("res://scripts/job_rack.gd")  # bekleyen işler rafı
 const INV_PANEL := preload("res://scripts/inventory_panel.gd")  # Parça Dolabı seçici
+const PARTS_CABINET := preload("res://scripts/parts_cabinet.gd")  # açık raflı atölye dolabı
+const FAULT_GUIDE := preload("res://scripts/fault_guide.gd")  # tek dokulu, hizalı arıza posteri
 const PC_SERVICE := preload("res://scripts/pc_service_panel.gd")  # Monitör / BIOS & servis paneli
 
 const DESK_Y := 0.75
@@ -97,6 +99,10 @@ func _ready() -> void:
 		add_child(load("res://dev/perf.gd").new())
 	if "--propshot" in OS.get_cmdline_user_args() and ResourceLoader.exists("res://dev/props_shot.gd"):
 		add_child(load("res://dev/props_shot.gd").new())
+	if "--inventoryshot" in OS.get_cmdline_user_args():
+		add_child(load("res://dev/inventory_shot.gd").new())
+	if "--inventorytest" in OS.get_cmdline_user_args():
+		add_child(load("res://dev/inventory_test.gd").new())
 	if "--partshot" in OS.get_cmdline_user_args() and ResourceLoader.exists("res://dev/parts_shot.gd"):
 		add_child(load("res://dev/parts_shot.gd").new())
 	if "--jobdisttest" in OS.get_cmdline_user_args() and ResourceLoader.exists("res://dev/job_dist_test.gd"):
@@ -571,17 +577,7 @@ func _build_desk() -> void:
 	add_child(dl)
 	# kupa (tornavida artık _build_tools içinde etkileşimli alet)
 	PROPS.mug(self, Vector3(-1.0, DESK_Y, -2.6), Color(0.95, 0.95, 0.92), 200.0)
-	# bip kodları & POST arıza rehberi posteri
-	var poster := MU.rbox(self, Vector3(1.3, 0.85, 0.012), Vector3(-0.2, 1.8, -2.99), MU.mat(Color(0.97, 0.95, 0.9), 0, 0.8), 0.004)
-	MU.box(poster, Vector3(1.3, 0.12, 0.014), Vector3(0, 0.365, 0), MU.mat(Color(0.75, 0.15, 0.15), 0, 0.7))
-	var t1 := MU.label(poster, "BİP & POST ARIZA REHBERİ", Vector3(0, 0.365, 0.009), 54, Color.WHITE, Vector3.ZERO, 0.0012)
-	t1.double_sided = false
-	var t2 := MU.label(poster, "• Tepki yok → PSU / Ön Panel / 24-pin Kablo\n• Fan dönüyor, bip yok → CPU / Pin / 8-pin Kablo\n• Sürekli kısa bipler → RAM / Gevşek Modül [53/55]\n• 1 uzun 3 kısa bip → GPU / PCIe Kablo / VRAM [92/98]\n• \"Boot device\" → SSD / SATA Kablo / Boot Sırası\n• Mavi Ekran / Virüs → USB veya Monitör [E] Servis\n• Tek kısa bip → Donanım OK!", Vector3(0, -0.06, 0.009), 30, Color(0.12, 0.12, 0.14), Vector3.ZERO, 0.00105)
-	t2.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	t2.line_spacing = 5
-	t2.double_sided = false
-	for c in [Vector2(-0.6, 0.38), Vector2(0.6, 0.38), Vector2(-0.6, -0.38), Vector2(0.6, -0.38)]:
-		MU.sphere(poster, 0.008, Vector3(c.x, c.y, 0.008), MU.mat(Color(0.2, 0.4, 0.9), 0.3, 0.3))
+	FAULT_GUIDE.build(self)
 	# hurda kutusu
 	var bin_m := MU.mat(Color(0.2, 0.38, 0.28), 0.5, 0.45)
 	MU.lathe(self, PackedVector2Array([Vector2(0, 0), Vector2(0.195, 0), Vector2(0.2, 0.012), Vector2(0.2, 0.012), Vector2(0.221, 0.48),
@@ -657,100 +653,18 @@ func _bin_use(p) -> void:
 
 
 func _build_shelf() -> void:
-	# Kompakt atölye Parça Dolabı (~1.55m genişlik, çekmeceler + camlı vitrin)
-	var x0 := -3.72
-	var zc := -0.85
-	var cab_w := 1.54   # Z boyunca genişlik
-	var cab_d := 0.46   # X boyunca derinlik
-	var cab_h := 2.12
-	var body_m := MU.mat(Color(0.14, 0.16, 0.19), 0.55, 0.42)
-	var trim_m := MU.mat(Color(0.22, 0.24, 0.28), 0.7, 0.35)
-	var accent_m := MU.mat(Color(0.92, 0.64, 0.14), 0.35, 0.4)
-	var drawer_m := MU.mat(Color(0.20, 0.22, 0.26), 0.45, 0.45)
-	var handle_m := MU.mat(Color(0.76, 0.78, 0.82), 0.9, 0.25)
-	var wood := MU.pbr("laminate", 1.0)
-
-	# ana çarpışma + gövde (arka, yanlar, alt, üst, orta tezgâh)
-	MU.static_box(self, Vector3(cab_d, cab_h, cab_w), Vector3(x0, cab_h * 0.5, zc), null)
-	MU.rbox(self, Vector3(0.03, cab_h, cab_w), Vector3(x0 - cab_d * 0.5 + 0.015, cab_h * 0.5, zc), body_m, 0.006)
-	for sz in [-1.0, 1.0]:
-		MU.rbox(self, Vector3(cab_d, cab_h, 0.035), Vector3(x0, cab_h * 0.5, zc + sz * (cab_w * 0.5 - 0.0175)), body_m, 0.008)
-	MU.rbox(self, Vector3(cab_d, 0.05, cab_w), Vector3(x0, 0.025, zc), trim_m, 0.008)
-	MU.rbox(self, Vector3(cab_d + 0.02, 0.04, cab_w + 0.02), Vector3(x0 + 0.01, 1.04, zc), wood, 0.008)
-	MU.rbox(self, Vector3(cab_d + 0.02, 0.04, cab_w + 0.02), Vector3(x0 + 0.01, cab_h - 0.02, zc), trim_m, 0.008)
-
-	# alt bölüm: 2 sütun x 4 satır etiketli atölye çekmeceleri
-	var drawer_labels := [
-		["ANAKART", "CPU"],
-		["RAM", "GPU"],
-		["DEPOLAMA", "PSU"],
-		["SOĞUTMA", "DİĞER"],
-	]
-	var col_w := (cab_w - 0.11) * 0.5
-	var row_h := 0.21
-	for row in 4:
-		var dy := 0.90 - row * 0.235
-		for col in 2:
-			var dz := zc + (-col_w * 0.5 - 0.012 if col == 0 else col_w * 0.5 + 0.012)
-			MU.rbox(self, Vector3(0.03, row_h, col_w), Vector3(x0 + cab_d * 0.5 - 0.01, dy, dz), drawer_m, 0.006)
-			# alüminyum kulp
-			MU.rbox(self, Vector3(0.02, 0.016, 0.16), Vector3(x0 + cab_d * 0.5 + 0.012, dy + 0.045, dz), handle_m, 0.004)
-			# çekmece etiket plakası
-			MU.box(self, Vector3(0.004, 0.052, 0.24), Vector3(x0 + cab_d * 0.5 + 0.006, dy - 0.025, dz), MU.mat(Color(0.95, 0.92, 0.82), 0, 0.6))
-			var dl := MU.label(self, drawer_labels[row][col], Vector3(x0 + cab_d * 0.5 + 0.010, dy - 0.025, dz), 32, Color(0.12, 0.12, 0.14), Vector3(0, 90, 0), 0.001)
-			dl.double_sided = false
-
-	# üst bölüm: camlı vitrin + 2 iç raf + LED şerit + seçkin vitrin modelleri
-	var inner_back := MU.mat(Color(0.11, 0.13, 0.16), 0.2, 0.6)
-	MU.box(self, Vector3(0.01, 1.0, cab_w - 0.08), Vector3(x0 - cab_d * 0.5 + 0.036, 1.56, zc), inner_back)
-	for sy in [1.42, 1.76]:
-		MU.rbox(self, Vector3(cab_d - 0.08, 0.022, cab_w - 0.08), Vector3(x0 - 0.01, sy, zc), wood, 0.004)
-		MU.box(self, Vector3(0.008, 0.004, cab_w - 0.14), Vector3(x0 + 0.16, sy - 0.013, zc), MU.mat(Color(1.0, 0.94, 0.82), 0, 0.5, 3.2))
-	MU.box(self, Vector3(0.008, 0.004, cab_w - 0.14), Vector3(x0 + 0.16, cab_h - 0.045, zc), MU.mat(Color(1.0, 0.94, 0.82), 0, 0.5, 3.2))
-	# vitrin içi dekoratif seçkin parçalar (statik sergileme)
-	var showcase := [
-		["mobo_am5_atx", Vector3(x0 + 0.02, 1.24, zc - 0.48), 0.92],
-		["gpu_gamer_12g", Vector3(x0 + 0.02, 1.18, zc + 0.04), 1.05],
-		["psu_750w", Vector3(x0 + 0.03, 1.13, zc + 0.48), 1.0],
-		["cooler_tower", Vector3(x0 + 0.01, 1.56, zc - 0.42), 1.05],
-		["ram_ddr5_32g_rgb", Vector3(x0 + 0.03, 1.55, zc - 0.06), 1.15],
-		["fan_120_rgb", Vector3(x0 + 0.04, 1.56, zc + 0.36), 1.1],
-	]
-	for sc_item in showcase:
-		var built := PM.build_sku(sc_item[0])
-		var sn: Node3D = built.node
-		sn.scale = Vector3.ONE * float(sc_item[2])
-		sn.position = sc_item[1]
-		add_child(sn)
-	# camlı kapak çerçevesi
-	var gx := x0 + cab_d * 0.5 - 0.006
-	MU.box(self, Vector3(0.004, 0.98, cab_w - 0.10), Vector3(gx, 1.57, zc), MU.glass())
-	MU.rbox(self, Vector3(0.016, 1.02, 0.026), Vector3(gx + 0.004, 1.57, zc), trim_m, 0.004)
-	for sz in [-0.04, 0.04]:
-		MU.rbox(self, Vector3(0.018, 0.12, 0.014), Vector3(gx + 0.016, 1.48, zc + sz), handle_m, 0.004)
-
-	# üst tabela panosu + sıcak vitrin ışığı
-	MU.rbox(self, Vector3(0.06, 0.20, cab_w + 0.02), Vector3(x0 + cab_d * 0.5 - 0.02, cab_h + 0.10, zc), body_m, 0.008)
-	MU.box(self, Vector3(0.064, 0.018, cab_w + 0.02), Vector3(x0 + cab_d * 0.5 - 0.02, cab_h + 0.01, zc), accent_m)
-	var title := MU.label(self, "PARÇA DOLABI", Vector3(x0 + cab_d * 0.5 + 0.015, cab_h + 0.12, zc), 72, Color(1.0, 0.78, 0.25), Vector3(0, 90, 0), 0.0018)
-	title.double_sided = false
-	var sub := MU.label(self, "E: Parça Seç / İade  ·  I: Hızlı Aç", Vector3(x0 + cab_d * 0.5 + 0.015, cab_h + 0.045, zc), 28, Color(0.85, 0.87, 0.9), Vector3(0, 90, 0), 0.0012)
-	sub.double_sided = false
-	var sl := OmniLight3D.new()
-	sl.position = Vector3(x0 + 0.32, 1.65, zc)
-	sl.omni_range = 2.2
-	sl.light_energy = 0.85
-	sl.light_color = Color(1.0, 0.94, 0.84)
-	add_child(sl)
-
-	# tek etkileşim alanı: dolabı aç veya eldeki parçayı geri koy
-	MU.interactable(self, Vector3(cab_d + 0.12, cab_h, cab_w), Vector3(x0 + 0.04, cab_h * 0.5, zc),
+	var cabinet := PARTS_CABINET.build(self)
+	# Görselle aynı yerel ölçüler: tek alanla parça seç / iade et.
+	var hit = MU.interactable(cabinet,
+		Vector3(PARTS_CABINET.WIDTH, PARTS_CABINET.HEIGHT, PARTS_CABINET.DEPTH + 0.08),
+		Vector3(0, PARTS_CABINET.HEIGHT * 0.5, PARTS_CABINET.DEPTH * 0.5 + 0.04),
 		_cabinet_hint, _cabinet_use)
-
-	# personel ve testler için tüm PC SKU konumlarını dolap önüne kaydet
+	hit.name = "CabinetInteract"
+	# Personel ve testlerin SKU hedefleri dolabın önünde kalır.
 	Game.shelf_pos = {}
+	var pickup := cabinet.to_global(Vector3(0, 1.0, PARTS_CABINET.DEPTH + 0.12))
 	for d in DB.parts.shelf_items(["pc"]):
-		Game.shelf_pos[d.id] = Vector3(x0 + cab_d * 0.5 + 0.12, 1.0, zc)
+		Game.shelf_pos[d.id] = pickup
 
 
 func _cabinet_hint(p) -> String:

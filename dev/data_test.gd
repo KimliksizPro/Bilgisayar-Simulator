@@ -3,6 +3,7 @@ extends Node
 ## tablolarla birebir aynı sonuç verdiğini denetler. Başarılıysa "DATATEST OK" yazar.
 
 const PM := preload("res://scripts/part_models.gd")
+const CABINET := preload("res://scripts/parts_cabinet.gd")
 
 # ESKİ sabit tablolar (part_models.gd / device_parts.gd / game.gd): [tür, seviye, ad, fiyat]
 const OLD := [
@@ -106,7 +107,7 @@ func _ready() -> void:
 		assert(Game.CATALOG.has(it), "eski katalog öğesi eksik: " + str(it))
 	for k in Game.START_STOCK:
 		assert(db.has_def(k), "stok anahtarı çözülmüyor: " + k)
-	# raf: tüm 34 PC SKU'su 5 satırlı rafa taşmadan sığmalı (main.gd: length=4.0, max_w=3.8, min_w=0.24)
+	# Genel raf yerleşim yardımcısı: 34 PC SKU'su 5 satıra taşmadan sığmalı.
 	var pc_shelf: Array = db.shelf_items(["pc"])
 	assert(pc_shelf.size() == 34 and db.shelf_items(["laptop", "phone"]).size() == 13, "raf ürün sayısı")
 	var shelf_entries := []
@@ -125,6 +126,7 @@ func _ready() -> void:
 		assert(Game.shelf_pos.has(d.id), "raf konumu yok: " + d.id)
 	for d in db.shelf_items(["laptop", "phone"]):
 		assert(Game.shelf_pos.has(d.id), "mobil raf konumu yok: " + d.id)
+	assert(_test_cabinet(pc_shelf), "dolap testi başarısız")
 	# eski biçimli kayıt yüklenebiliyor (v1/v3 "tür:seviye" -> v4 SKU göçü)
 	var old_path := Game.save_path
 	Game.save_path = "user://datatest_save.json"
@@ -138,3 +140,24 @@ func _ready() -> void:
 	Game.save_path = old_path
 	print("DATATEST OK")
 	get_tree().quit()
+
+
+func _test_cabinet(pc_parts: Array) -> bool:
+	var cabinet := get_parent().get_node_or_null("PartsCabinet") as Node3D
+	assert(cabinet != null, "malzeme dolabı kurulmadı")
+	var hit := cabinet.get_node_or_null("CabinetInteract") as StaticBody3D
+	assert(hit != null, "dolap etkileşim alanı yok")
+	var collisions := hit.find_children("*", "CollisionShape3D", false, false)
+	assert(collisions.size() == 1, "dolapta tek etkileşim şekli olmalı")
+	var shape := (collisions[0] as CollisionShape3D).shape as BoxShape3D
+	assert(shape.size.is_equal_approx(Vector3(CABINET.WIDTH, CABINET.HEIGHT, CABINET.DEPTH + 0.08)), "dolap ölçüleri ile etkileşim alanı uyuşmuyor")
+	# Statik mesh birleştirmesi sonrası üç yükseklikte dolaba bakıp erişilebilmeli.
+	for y in [0.4, 1.2, 1.95]:
+		var ray := PhysicsRayQueryParameters3D.create(cabinet.to_global(Vector3(0, y, 1.3)), cabinet.to_global(Vector3(0, y, 0.2)), 3)
+		var result := cabinet.get_world_3d().direct_space_state.intersect_ray(ray)
+		assert(not result.is_empty() and result.collider == hit, "dolap etkileşimi engelleniyor: y=" + str(y))
+	var pickup := cabinet.to_global(Vector3(0, 1.0, CABINET.DEPTH + 0.12))
+	for d in pc_parts:
+		assert(Game.shelf_pos[d.id].is_equal_approx(pickup), "SKU hedefi dolap önünde değil: " + d.id)
+	assert(cabinet.find_children("*", "Light3D", true, false).is_empty(), "dolap kendi spotunu eklememeli")
+	return true
