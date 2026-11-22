@@ -25,6 +25,7 @@ var slot = null
 var rotors: Array = []
 var rgb_mats: Array = []
 var _defect_node: Node3D = null
+var _place_tw: Tween = null
 
 
 ## Kanonik kurulum: SKU kimliği ile parçayı oluşturur.
@@ -238,3 +239,65 @@ func _clear_defect_node() -> void:
 	if _defect_node != null and is_instance_valid(_defect_node):
 		_defect_node.queue_free()
 	_defect_node = null
+
+
+## Parça türüne göre masa/tepsi üstünde en okunaklı düz yatış yönelimini döndürür.
+static func flat_basis_for(ptype: String) -> Basis:
+	var b := Basis.IDENTITY
+	match ptype:
+		"ram":
+			# Etiketli +Z yüzü yukarı (+Y), uzunluk ekseni +X boyunca yatay
+			b = Basis(Vector3(0.0, 0.0, 1.0), Vector3(1.0, 0.0, 0.0), Vector3(0.0, 1.0, 0.0))
+		"gpu":
+			# Fanlı/markalı taraf yukarı (+Y), arka plaka aşağıda, uzunluk ekseni X boyunca yatay
+			b = Basis(Vector3.UP, PI * 0.5) * Basis(Vector3.RIGHT, PI)
+		"mobo", "cpu", "cooler", "nvme", "fan", "cmos":
+			b = Basis.from_euler(Vector3(0.0, 0.0, PI * 0.5))
+		_:
+			b = Basis.IDENTITY
+	var info: Dictionary = PM.info(ptype)
+	if not info.is_empty():
+		var bb: AABB = Transform3D(b, Vector3.ZERO) * AABB(info.center - info.size * 0.5, info.size)
+		if ptype != "ram" and ptype != "gpu" and bb.size.z > bb.size.x * 1.2:
+			b = Basis(Vector3.UP, PI * 0.5) * b
+	return b
+
+
+func cancel_place() -> void:
+	if _place_tw != null and _place_tw.is_valid():
+		_place_tw.kill()
+	_place_tw = null
+
+
+## Parçayı hedef dünya dönüşümüne statik dondurulmuş ve fizikle uyumlu biçimde nazikçe koyar.
+func place_at(parent: Node, target_xf: Transform3D, smooth := true) -> void:
+	cancel_place()
+	slot = null
+	linear_velocity = Vector3.ZERO
+	angular_velocity = Vector3.ZERO
+	freeze_mode = RigidBody3D.FREEZE_MODE_STATIC
+	freeze = true
+	collision_layer = 2
+	collision_mask = 1
+	visible = true
+	if get_parent() != parent:
+		if get_parent() != null:
+			reparent(parent, true)
+		else:
+			parent.add_child(self)
+	if smooth and is_inside_tree() and global_position.distance_to(target_xf.origin) <= 2.4:
+		_place_tw = create_tween()
+		_place_tw.tween_property(self, "global_transform", target_xf, 0.2).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		_place_tw.tween_callback(_sync_physics_body)
+	else:
+		global_transform = target_xf
+		_sync_physics_body()
+
+
+func _sync_physics_body() -> void:
+	if not is_inside_tree():
+		return
+	force_update_transform()
+	PhysicsServer3D.body_set_state(get_rid(), PhysicsServer3D.BODY_STATE_TRANSFORM, global_transform)
+	if has_method("reset_physics_interpolation"):
+		reset_physics_interpolation()

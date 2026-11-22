@@ -1045,11 +1045,13 @@ func _refresh_held_card(p) -> void:
 		if Game.has_upgrade("multimeter") and "broken" in h and h.broken:
 			tag += " · ARIZALI"
 			col = T.BAD
-	var sig := "%s|%s|%s" % [str(h.display_name), tag, str(col)]
+	var pdi: Dictionary = p.put_down_info() if p.has_method("put_down_info") else {}
+	var drop_lbl := str(pdi.get("label", "Bırak"))
+	var sig := "%s|%s|%s|%s" % [str(h.display_name), tag, str(col), drop_lbl]
 	if sig != _held_sig:
 		_held_sig = sig
 		_held_lbl.text = str(h.display_name)
-		_held_sub.text = "%s  ·  [G] Bırak" % tag
+		_held_sub.text = "%s  ·  [Sağ Tık / G] %s" % [tag, drop_lbl]
 		_held_sub.add_theme_color_override("font_color", col)
 		_held_accent.color = col
 		_held_card.reset_size()

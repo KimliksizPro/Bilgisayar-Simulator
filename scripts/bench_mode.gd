@@ -13,8 +13,8 @@ const ST := preload("res://scripts/job_store.gd")
 
 const TRANS := 0.35          # kamera / kasa yatırma geçiş süresi (sn)
 const BENCH_FOV := 55.0
-const TRAY_W := 0.40
-const TRAY_D := 0.34
+const TRAY_W := 0.42
+const TRAY_D := 0.36
 const TRAY_TOP := 0.008
 const PC_FLAT_X := 0.32
 const PC_MAT_Z := -2.50
@@ -59,12 +59,15 @@ var hovered := {}            # fare altındaki hedef (_resolve sonucu)
 var mouse_override := Vector2(-1, -1)  # >= 0 ise gerçek fare yerine bu konum (dev/test)
 
 var _tray: Node3D
+var _dish_root: Node3D
 var _dish_screws: Array = []
 var _hl: MeshInstance3D      # boş yuva / büyük cam kapak için köşe çerçevesi
 var _hl_mat: StandardMaterial3D
 var _rim_shader: Shader
 var _hl_rim_mats := {}       # key -> ShaderMaterial
 var _hl_meshes: Array = []
+var _tool_hl_meshes: Array = []
+var _hl_tool_cur = null
 
 var _laid_flat := false
 var _stand_xf := Transform3D.IDENTITY
@@ -148,8 +151,11 @@ func _ready() -> void:
 
 func _exit_tree() -> void:
 	_clear_hl()
+	_clear_tool_hl()
 	if state != "off":
 		Game.bench_active = false
+		if Game.job_mgr != null and Game.job_mgr.has_method("sync_bench_spot"):
+			Game.job_mgr.sync_bench_spot()
 
 
 func is_laid_flat() -> bool:
@@ -201,7 +207,7 @@ func _place_tray() -> void:
 	var desk_y: float = float(get_parent().get("DESK_Y")) if get_parent().get("DESK_Y") != null else 0.75
 	match kind:
 		"pc":
-			_tray.global_position = Vector3(0.80, desk_y + 0.005, -2.37)
+			_tray.global_position = Vector3(0.81, desk_y + 0.005, -2.38)
 		"laptop":
 			_tray.global_position = Vector3(o.x + 0.02, desk_y + 0.005, o.z + 0.33)
 		_:
@@ -214,6 +220,7 @@ func _place_tray() -> void:
 func _release_tray() -> void:
 	selected = null
 	tool = null
+	_clear_tool_hl()
 	_tint_cur = null
 	for p in tray_parts:
 		if not is_instance_valid(p):
@@ -248,30 +255,42 @@ func _build_tray() -> void:
 		MU.rbox(_tray, Vector3(TRAY_W, 0.014, 0.007), Vector3(0, 0.007, z * (TRAY_D / 2.0 - 0.0035)), rim_m, 0.002)
 	for x in [-1, 1]:
 		MU.rbox(_tray, Vector3(0.007, 0.014, TRAY_D), Vector3(x * (TRAY_W / 2.0 - 0.0035), 0.007, 0), rim_m, 0.002)
-	MU.box(_tray, Vector3(TRAY_W - 0.02, 0.0008, 0.002), Vector3(0, TRAY_TOP + 0.0004, 0.0), line_m)
+	# iki renkli bölge zemini: üstte yeni/stok, altta sökülen müşteri parçaları
+	var zone_w := TRAY_W - 0.020
+	var top_d := TRAY_D * 0.5 - 0.018
+	var bot_d := TRAY_D * 0.5 - 0.018
+	MU.box(_tray, Vector3(zone_w, 0.0012, top_d), Vector3(0.0, TRAY_TOP + 0.0002, -TRAY_D * 0.25 + 0.002), MU.mat(Color(0.07, 0.13, 0.11), 0.05, 0.90))
+	MU.box(_tray, Vector3(zone_w, 0.0012, bot_d), Vector3(0.0, TRAY_TOP + 0.0002, TRAY_D * 0.25 - 0.002), MU.mat(Color(0.14, 0.11, 0.08), 0.05, 0.90))
+	MU.box(_tray, Vector3(TRAY_W - 0.02, 0.0009, 0.0022), Vector3(0, TRAY_TOP + 0.0005, 0.0), line_m)
 	var stock_bar_m := MU.mat(Color(0.22, 0.78, 0.45), 0.1, 0.85)
 	var pulled_bar_m := MU.mat(Color(0.95, 0.65, 0.16), 0.1, 0.85)
-	MU.box(_tray, Vector3(TRAY_W - 0.12, 0.001, 0.0025), Vector3(-0.045, TRAY_TOP + 0.0005, -TRAY_D / 2.0 + 0.011), stock_bar_m)
-	MU.box(_tray, Vector3(TRAY_W - 0.02, 0.001, 0.0025), Vector3(0, TRAY_TOP + 0.0005, 0.002), pulled_bar_m)
-	var l_st := MU.label(_tray, "YENİ / STOK", Vector3(-TRAY_W / 2.0 + 0.068, TRAY_TOP + 0.0014, -TRAY_D / 2.0 + 0.022), 26, Color(0.55, 0.96, 0.68), Vector3(-90, 0, 0), 0.00022)
+	MU.box(_tray, Vector3(TRAY_W - 0.125, 0.0011, 0.0026), Vector3(-0.048, TRAY_TOP + 0.0007, -TRAY_D / 2.0 + 0.011), stock_bar_m)
+	MU.box(_tray, Vector3(TRAY_W - 0.02, 0.0011, 0.0026), Vector3(0, TRAY_TOP + 0.0007, 0.0025), pulled_bar_m)
+	var l_st := MU.label(_tray, "YENİ / STOK", Vector3(-TRAY_W / 2.0 + 0.074, TRAY_TOP + 0.0016, -TRAY_D / 2.0 + 0.024), 34, Color(0.55, 0.96, 0.68), Vector3(-90, 0, 0), 0.00026)
 	l_st.double_sided = false
-	var l_pu := MU.label(_tray, "SÖKÜLEN (MÜŞTERİ)", Vector3(-TRAY_W / 2.0 + 0.095, TRAY_TOP + 0.0014, 0.015), 26, Color(1.0, 0.80, 0.42), Vector3(-90, 0, 0), 0.00022)
+	var l_pu := MU.label(_tray, "SÖKÜLEN · MÜŞTERİ", Vector3(-TRAY_W / 2.0 + 0.102, TRAY_TOP + 0.0016, 0.018), 34, Color(1.0, 0.80, 0.42), Vector3(-90, 0, 0), 0.00026)
 	l_pu.double_sided = false
-	var l := MU.label(_tray, "PARÇA TEPSİSİ", Vector3(0, 0.010, TRAY_D / 2.0 + 0.0005), 34, Color(0.75, 0.85, 0.95), Vector3.ZERO, 0.00022)
+	var l := MU.label(_tray, "PARÇA TEPSİSİ", Vector3(0, 0.010, TRAY_D / 2.0 + 0.0005), 36, Color(0.75, 0.85, 0.95), Vector3.ZERO, 0.00024)
 	l.double_sided = false
 
-	# sağ arka köşede manyetik vida tabağı
+	# sağ arka köşede tıklanabilir manyetik vida tabağı
 	var dish_c := Vector3(TRAY_W / 2.0 - 0.056, TRAY_TOP + 0.001, -TRAY_D / 2.0 + 0.056)
-	MU.cyl(_tray, 0.044, 0.003, dish_c, rim_m, Vector3.ZERO, 20)
-	MU.cyl(_tray, 0.038, 0.0036, dish_c + Vector3(0, 0.0005, 0), MU.mat(Color(0.12, 0.13, 0.16), 0.7, 0.35), Vector3.ZERO, 20)
+	_dish_root = Node3D.new()
+	_dish_root.name = "ScrewDish"
+	_dish_root.position = dish_c
+	_tray.add_child(_dish_root)
+	MU.cyl(_dish_root, 0.044, 0.003, Vector3.ZERO, rim_m, Vector3.ZERO, 20)
+	MU.cyl(_dish_root, 0.038, 0.0036, Vector3(0, 0.0005, 0), MU.mat(Color(0.12, 0.13, 0.16), 0.7, 0.35), Vector3.ZERO, 20)
+	var l_dish := MU.label(_dish_root, "VİDA", Vector3(0, 0.0038, 0.028), 24, Color(0.75, 0.84, 0.94), Vector3(-90, 0, 0), 0.00020)
+	l_dish.double_sided = false
 	var sm := MU.mat(Color(0.8, 0.84, 0.9), 0.9, 0.25)
 	_dish_screws = []
 	for i in 4:
 		var ang := float(i) * PI * 0.5 + 0.4
-		var sp := dish_c + Vector3(cos(ang) * 0.016, 0.0038, sin(ang) * 0.016)
+		var sp := Vector3(cos(ang) * 0.016, 0.0038, sin(ang) * 0.016)
 		var sc := Node3D.new()
 		sc.position = sp
-		_tray.add_child(sc)
+		_dish_root.add_child(sc)
 		MU.cyl(sc, 0.0032, 0.002, Vector3.ZERO, sm, Vector3.ZERO, 8)
 		sc.visible = false
 		_dish_screws.append(sc)
@@ -468,7 +487,7 @@ func _rebuild_keys() -> void:
 	if touch:
 		pairs = [["SÜRÜKLE", "Döndür"], ["İKİ PARMAK", "Yakınlaştır"], ["DOKUN", "Sök / Tak"]]
 	else:
-		pairs = [["SAĞ TIK", "Döndür"], ["TEKERLEK", "Yakınlaştır"], ["F", "Yatır / Dik"], ["Q E", "90°"], ["TAB", "Çık"]]
+		pairs = [["SAĞ TIK", "Döndür"], ["TEKERLEK", "Yakınlaştır"], ["1-9", "Alet"], ["F", "Yatır / Dik"], ["Q E", "90°"], ["C", "Kamera"], ["TAB", "Çık"]]
 	for pair in pairs:
 		K.keycap(_dock_keys, pair[0], 11)
 		K.label(_dock_keys, pair[1], 13, T.MUTED)
@@ -561,6 +580,8 @@ func enter() -> bool:
 	state = "entering"
 	_t = 0.0
 	Game.bench_active = true
+	if Game.job_mgr != null and Game.job_mgr.has_method("sync_bench_spot"):
+		Game.job_mgr.sync_bench_spot()
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	p.target = null
 	p.hint = ""
@@ -603,6 +624,7 @@ func exit(immediate := false) -> void:
 		return
 	cancel_selection()
 	tool = null
+	_clear_tool_hl()
 	_rmb = false
 	_mmb = false
 	_touches.clear()
@@ -642,6 +664,9 @@ func _finish_exit(capture: bool) -> void:
 	_case_t = 1.0
 	state = "off"
 	Game.bench_active = false
+	if Game.job_mgr != null and Game.job_mgr.has_method("sync_bench_spot"):
+		Game.job_mgr.sync_bench_spot()
+	_clear_tool_hl()
 	_ui_root.visible = false
 	var p = Game.player
 	if p:
@@ -789,6 +814,7 @@ func _process(delta: float) -> void:
 				_finish_exit(not Game.ui_modal and Game.phase == "day")
 		"on":
 			cam.global_transform = _orbit_xf()
+			_refresh_tool_hl()
 			if Game.pc_service == null or not Game.pc_service.is_open():
 				_update_hover()
 				_update_selected()
@@ -833,6 +859,19 @@ func _unhandled_input(event: InputEvent) -> void:
 			_yaw_goal -= PI / 2.0
 		elif event.physical_keycode == KEY_F:
 			toggle_lay_flat()
+		elif event.physical_keycode == KEY_C:
+			_frame_camera(false)
+			Game.sfx.click()
+		elif event.physical_keycode == KEY_R:
+			_quick_store_tray_part()
+		elif event.physical_keycode == KEY_X or event.physical_keycode == KEY_DELETE:
+			_quick_scrap_tray_part()
+		elif event.physical_keycode >= KEY_1 and event.physical_keycode <= KEY_9:
+			var tools := available_tools()
+			var idx := int(event.physical_keycode - KEY_1)
+			if idx < tools.size():
+				select_tool(tools[idx])
+				Game.sfx.click()
 	elif event is InputEventScreenTouch:
 		_handle_touch(event)
 		get_viewport().set_input_as_handled()
@@ -844,12 +883,15 @@ func _unhandled_input(event: InputEvent) -> void:
 			MOUSE_BUTTON_LEFT:
 				if event.pressed:
 					if not _over_gui():
-						click(_resolve(_ray_hit(event.position)))
+						click(_pick_at(event.position))
 				else:
 					if selected != null and not _over_gui():
-						var res := _resolve(_ray_hit(event.position))
-						if res.get("kind", "") in ["slot", "installed"]:
+						var res := _pick_at(event.position)
+						var rk: String = res.get("kind", "")
+						if rk == "slot" or rk == "installed":
 							install_selected(res.slot)
+						elif rk == "scrap_bin":
+							scrap_tray_part(selected)
 			MOUSE_BUTTON_RIGHT:
 				if event.pressed:
 					_rmb = true
@@ -859,6 +901,7 @@ func _unhandled_input(event: InputEvent) -> void:
 					if _rmb_moved < 8.0 and (selected != null or tool != null):
 						cancel_selection()
 						tool = null
+						_refresh_tool_hl()
 						_sig = ""
 			MOUSE_BUTTON_MIDDLE:
 				_mmb = event.pressed
@@ -905,11 +948,14 @@ func _handle_touch(event: InputEventScreenTouch) -> void:
 		_touches.erase(event.index)
 		if was_single:
 			if _touch_moved < 16.0:
-				click(_resolve(_ray_hit(event.position)))
+				click(_pick_at(event.position))
 			elif selected != null:
-				var res := _resolve(_ray_hit(event.position))
-				if res.get("kind", "") in ["slot", "installed"]:
+				var res := _pick_at(event.position)
+				var rk: String = res.get("kind", "")
+				if rk == "slot" or rk == "installed":
 					install_selected(res.slot)
+				elif rk == "scrap_bin":
+					scrap_tray_part(selected)
 		if _touches.is_empty():
 			_touch_pos = Vector2(-1, -1)
 			_touch_was_pinch = false
@@ -946,6 +992,8 @@ func _ray_hit(mp: Vector2) -> Dictionary:
 	var ex: Array = []
 	if Game.player:
 		ex.append(Game.player.get_rid())
+	if Game.job_mgr != null and Game.job_mgr.get("bench_spot") != null and is_instance_valid(Game.job_mgr.bench_spot):
+		ex.append(Game.job_mgr.bench_spot.get_rid())
 	var q := PhysicsRayQueryParameters3D.create(from, to, 3, ex)
 	q.collide_with_areas = true
 	var r := get_world_3d().direct_space_state.intersect_ray(q)
@@ -961,6 +1009,8 @@ func _resolve(hit: Dictionary) -> Dictionary:
 	var c = hit.get("collider")
 	if c == null or not is_instance_valid(c):
 		return {}
+	if c.name == "ScrapBin":
+		return {"kind": "scrap_bin", "node": c} if selected != null else {}
 	if c.has_method("is_tool") and c.is_tool() and c.visible:
 		return {"kind": "tool", "node": c, "tool": c}
 	if device == null or not is_instance_valid(device):
@@ -970,6 +1020,8 @@ func _resolve(hit: Dictionary) -> Dictionary:
 			return {"kind": "installed", "node": c, "slot": c.slot, "part": c}
 		if tray_parts.has(c):
 			return {"kind": "tray", "node": c, "part": c}
+		if c.slot == null and c.visible and c.global_position.distance_to(device.global_position) < 1.8:
+			return {"kind": "loose_part", "node": c, "part": c}
 		return {}
 	if "accepts" in c and "pc" in c:
 		if device.is_ancestor_of(c):
@@ -980,6 +1032,91 @@ func _resolve(hit: Dictionary) -> Dictionary:
 	if c.has_method("interact") and "action" in c:
 		return {"kind": "widget", "node": c}
 	return {"kind": "body", "node": c}
+
+
+func _ray_hits_local_aabb(xf: Transform3D, box: AABB, ray_from: Vector3, ray_dir: Vector3) -> float:
+	var inv := xf.affine_inverse()
+	var lf := inv * ray_from
+	var ld := (inv.basis * ray_dir).normalized()
+	var hit_pt = box.intersects_ray(lf, ld)
+	if hit_pt == null:
+		return -1.0
+	var world_pt := xf * (hit_pt as Vector3)
+	var t := (world_pt - ray_from).dot(ray_dir)
+	return t if t >= 0.0 else -1.0
+
+
+## Fizik ışını küçük/yassı parçanın kenarını sıyırdığında tepsi, serbest parça, alet ve vida tabağını AABB ile yakalar.
+func _pick_nearby_ray(ray_from: Vector3, ray_dir: Vector3, max_dist: float) -> Dictionary:
+	var best_t := max_dist + 0.025
+	var best := {}
+	var pad := Vector3(0.014, 0.012, 0.014)
+	for p in tray_parts:
+		if p == selected or not is_instance_valid(p) or not p.visible:
+			continue
+		var info: Dictionary = PM.info(p.part_type)
+		var sz: Vector3 = info.size if not info.is_empty() else Vector3(0.06, 0.02, 0.06)
+		var ctr: Vector3 = info.center if not info.is_empty() else Vector3.ZERO
+		var box := AABB(ctr - sz * 0.5 - pad, sz + pad * 2.0)
+		var t := _ray_hits_local_aabb(p.global_transform, box, ray_from, ray_dir)
+		if t >= 0.0 and t < best_t:
+			best_t = t
+			best = {"kind": "tray", "node": p, "part": p}
+	if get_parent() != null and device != null and is_instance_valid(device):
+		for n in get_parent().get_children():
+			if not ("part_type" in n and n.has_method("is_tool") and not n.is_tool()):
+				continue
+			if n == selected or not is_instance_valid(n) or not n.visible or n.slot != null or tray_parts.has(n):
+				continue
+			if (n as Node3D).global_position.distance_to(device.global_position) >= 1.8:
+				continue
+			var info: Dictionary = PM.info(n.part_type)
+			var sz: Vector3 = info.size if not info.is_empty() else Vector3(0.06, 0.02, 0.06)
+			var ctr: Vector3 = info.center if not info.is_empty() else Vector3.ZERO
+			var box := AABB(ctr - sz * 0.5 - pad, sz + pad * 2.0)
+			var t := _ray_hits_local_aabb((n as Node3D).global_transform, box, ray_from, ray_dir)
+			if t >= 0.0 and t < best_t:
+				best_t = t
+				best = {"kind": "loose_part", "node": n, "part": n}
+	for tl in available_tools():
+		if not is_instance_valid(tl) or not (tl as Node3D).visible:
+			continue
+		var box := AABB(Vector3(-0.04, -0.02, -0.04) - pad, Vector3(0.08, 0.04, 0.08) + pad * 2.0)
+		for ch in tl.get_children():
+			if ch is CollisionShape3D and ch.shape is BoxShape3D:
+				var bsz: Vector3 = (ch.shape as BoxShape3D).size
+				box = AABB(ch.position - bsz * 0.5 - pad, bsz + pad * 2.0)
+				break
+		var t := _ray_hits_local_aabb((tl as Node3D).global_transform, box, ray_from, ray_dir)
+		if t >= 0.0 and t < best_t:
+			best_t = t
+			best = {"kind": "tool", "node": tl, "tool": tl}
+	if selected == null and _dish_root != null and is_instance_valid(_dish_root) and _dish_root.visible and kind == "pc":
+		var dbox := AABB(Vector3(-0.048, -0.006, -0.048), Vector3(0.096, 0.026, 0.096))
+		var t := _ray_hits_local_aabb(_dish_root.global_transform, dbox, ray_from, ray_dir)
+		if t >= 0.0 and t < best_t:
+			best_t = t
+			best = {"kind": "screw_dish", "node": _dish_root}
+	return best
+
+
+func _pick_at(mp: Vector2) -> Dictionary:
+	var hit := _ray_hit(mp)
+	var res := _resolve(hit)
+	var body_dist := 1e9
+	if hit.has("position"):
+		body_dist = (hit.position - hit.ray_from).length()
+	if res.is_empty() or res.get("kind", "") == "body":
+		var nearby := _pick_nearby_ray(hit.ray_from, hit.ray_dir, body_dist)
+		if not nearby.is_empty():
+			res = nearby
+	if res.is_empty() and selected != null and _tray != null and _tray.visible:
+		var tbox := AABB(Vector3(-TRAY_W * 0.5, -0.006, -TRAY_D * 0.5), Vector3(TRAY_W, 0.032, TRAY_D))
+		var t_tray := _ray_hits_local_aabb(_tray.global_transform, tbox, hit.ray_from, hit.ray_dir)
+		if t_tray >= 0.0 and t_tray <= body_dist + 0.03:
+			res = {"kind": "tray_surface", "node": _tray}
+	res["hit"] = hit
+	return res
 
 
 func _mp() -> Vector2:
@@ -1000,9 +1137,7 @@ func _update_hover() -> void:
 		_clear_hl()
 		_tip.visible = false
 		return
-	var hit := _ray_hit(_mp())
-	hovered = _resolve(hit)
-	hovered["hit"] = hit
+	hovered = _pick_at(_mp())
 	var txt := _tooltip_for(hovered)
 	_set_hl(hovered)
 	if txt.is_empty():
@@ -1030,6 +1165,36 @@ func _clear_hl() -> void:
 	_hl_meshes.clear()
 	if _hl:
 		_hl.visible = false
+	_apply_tool_hl()
+
+
+func _clear_tool_hl() -> void:
+	for mi in _tool_hl_meshes:
+		if is_instance_valid(mi):
+			mi.material_overlay = null
+	_tool_hl_meshes.clear()
+	_hl_tool_cur = null
+
+
+func _apply_tool_hl() -> void:
+	if tool == null or not is_instance_valid(tool) or not tool.visible:
+		return
+	var sm: Material = _hl_rim_mats.get("amber")
+	if sm == null:
+		return
+	for m in tool.find_children("*", "MeshInstance3D", true, false):
+		if m is MeshInstance3D and m.visible:
+			m.material_overlay = sm
+			if not _tool_hl_meshes.has(m):
+				_tool_hl_meshes.append(m)
+
+
+func _refresh_tool_hl() -> void:
+	if _hl_tool_cur == tool:
+		return
+	_clear_tool_hl()
+	_hl_tool_cur = tool
+	_apply_tool_hl()
 
 
 func _apply_rim(target: Node, mat_key: String) -> bool:
@@ -1080,7 +1245,12 @@ func _hl_key(res: Dictionary) -> String:
 			return "amber"
 	if k == "tool" and tool == res.get("tool"):
 		return "amber"
-	if k == "tray" and res.get("part") != null:
+	if k == "scrap_bin":
+		return "red"
+	if k == "screw_dish":
+		var dst := _screw_dish_status()
+		return "amber" if not dst.can_fasten.is_empty() else "cyan"
+	if (k == "tray" or k == "loose_part") and res.get("part") != null:
 		var pt = res.part
 		var orig: String = str(pt.get("origin")) if "origin" in pt else ""
 		if orig == "stock":
@@ -1095,7 +1265,7 @@ func _hl_key(res: Dictionary) -> String:
 func _set_hl(res: Dictionary) -> void:
 	_clear_hl()
 	var k: String = res.get("kind", "")
-	if k == "" or k == "body":
+	if k == "" or k == "body" or k == "tray_surface":
 		return
 	if (k == "installed" or k == "slot") and res.get("slot") != null:
 		if not _slot_open(res.slot) and tool == null and selected == null:
@@ -1109,9 +1279,12 @@ func _set_hl(res: Dictionary) -> void:
 			return
 		_place_brackets(res.get("node"), bcol)
 		return
-	if k == "tray" or k == "tool":
+	if k == "tray" or k == "loose_part" or k == "tool" or k == "screw_dish":
 		if _apply_rim(res.get("node"), key):
 			return
+		_place_brackets(res.get("node"), bcol)
+		return
+	if k == "scrap_bin":
 		_place_brackets(res.get("node"), bcol)
 		return
 	if k == "widget":
@@ -1252,6 +1425,116 @@ static func _tool_short_desc(tt: String) -> String:
 	return "Tezgâh tamir aleti"
 
 
+func _part_compat_note(part) -> Dictionary:
+	if part == null or device == null or kind != "pc":
+		return {}
+	var pdef: PartDef = part.def() if part.has_method("def") else DB.parts.def_for(part.part_type, part.tier)
+	if pdef == null:
+		return {}
+	var cr := Compatibility.check_catalog_part(pdef, _pc_case_state())
+	if cr.ok:
+		if str(cr.get("severity", "ok")) == "warn" and str(cr.get("reason", "")) != "":
+			return {"ok": true, "warn": true, "text": "⚠ " + str(cr.reason)}
+		return {"ok": true, "warn": false, "text": "✓ Bu kasayla uyumlu"}
+	return {"ok": false, "warn": false, "text": "✗ " + str(cr.get("reason", "Bu kasayla uyumsuz"))}
+
+
+func _tray_part_spec_and_compat(part) -> String:
+	var sp := _part_spec_text(part)
+	var cn := _part_compat_note(part)
+	if not cn.is_empty():
+		var line := str(cn.text)
+		return line if sp.is_empty() else (sp + "\n" + line)
+	return sp
+
+
+func _screw_dish_status() -> Dictionary:
+	if device == null or not is_instance_valid(device) or kind != "pc" or not ("screws" in device):
+		return {"loose": 0, "can_fasten": [], "blocked_open": 0}
+	var loose := 0
+	var can_fasten: Array[String] = []
+	var blocked_open := 0
+	for sid in ["gpu", "m2"]:
+		if device.part_in(sid) != null and not bool(device.screws.get(sid, false)):
+			loose += 1
+			if device.panel_open:
+				can_fasten.append(sid)
+	for sid in ["panel_1", "panel_2"]:
+		if not bool(device.screws.get(sid, true)):
+			loose += 1
+			if not device.panel_open:
+				can_fasten.append(sid)
+			else:
+				blocked_open += 1
+	return {"loose": loose, "can_fasten": can_fasten, "blocked_open": blocked_open}
+
+
+func _click_screw_dish() -> void:
+	var st := _screw_dish_status()
+	var can_fasten: Array = st.can_fasten
+	if can_fasten.is_empty():
+		if int(st.blocked_open) > 0:
+			Game.msg("Yan kapak vidalarını sıkmak için önce kapağı kapat.", Color(1.0, 0.78, 0.35))
+		else:
+			Game.msg("Tüm vidalar zaten sıkılı.", Color(0.7, 0.9, 1.0))
+		return
+	var cnt := 0
+	for sid in can_fasten:
+		if device.fasten_screw(sid):
+			cnt += 1
+	_update_screw_dish()
+	_sig = ""
+	if cnt > 0:
+		Game.msg("%d vida sıkıldı." % cnt, Color(0.5, 1.0, 0.5))
+
+
+func _target_tray_part():
+	if selected != null and is_instance_valid(selected):
+		return selected
+	var hk: String = str(hovered.get("kind", ""))
+	if (hk == "tray" or hk == "loose_part") and is_instance_valid(hovered.get("part")):
+		return hovered.part
+	return null
+
+
+func _quick_store_tray_part() -> void:
+	var p = _target_tray_part()
+	if p == null:
+		return
+	if not tray_parts.has(p):
+		tray_add(p)
+	var orig: String = str(p.get("origin")) if "origin" in p else ""
+	if orig == "customer":
+		pocket_tray_part(p)
+	else:
+		return_tray_part(p)
+
+
+func _quick_scrap_tray_part() -> void:
+	var p = _target_tray_part()
+	if p == null:
+		return
+	if not tray_parts.has(p):
+		tray_add(p)
+	scrap_tray_part(p)
+
+
+func _measure_tray_part(part) -> void:
+	if part == null:
+		return
+	Game.sfx.beep_scan()
+	if part.broken:
+		Game.msg("Multimetre (%s): KISA DEVRE / ARIZALI!" % part.display_name, Color(1.0, 0.35, 0.3))
+	elif "bad_caps" in part and part.bad_caps:
+		Game.msg("Multimetre (%s): Kondansatör voltajı dengesiz (şişmiş)!" % part.display_name, Color(1.0, 0.5, 0.3))
+	elif "bent_pins" in part and part.bent_pins:
+		Game.msg("Multimetre (%s): Pin temassızlığı tespit edildi!" % part.display_name, Color(1.0, 0.6, 0.3))
+	elif "vram_bad" in part and part.vram_bad:
+		Game.msg("Multimetre (%s): VRAM bellek hattında hata!" % part.display_name, Color(1.0, 0.5, 0.3))
+	else:
+		Game.msg("Multimetre (%s): Voltaj değerleri NORMAL (Sağlam)." % part.display_name, Color(0.5, 1.0, 0.5))
+
+
 func _tooltip_for(res: Dictionary) -> Array:
 	var k: String = res.get("kind", "")
 	if k == "":
@@ -1272,10 +1555,29 @@ func _tooltip_for(res: Dictionary) -> Array:
 						return [title, sp, "⚠ %s  ·  Tak %s" % [str(r.reason), click], T.ACCENT]
 					return [title, sp, "Tak: %s  %s" % [selected.display_name, click], T.GOOD]
 				return [title, sp, str(r.reason), T.BAD]
-			"tray":
-				return [res.part.display_name, _part_spec_text(res.part), "Seçimi bunla değiştir  " + click, HL_CYAN]
+			"tray", "loose_part":
+				return [res.part.display_name, _tray_part_spec_and_compat(res.part), "Seçimi bunla değiştir  " + click, HL_CYAN]
+			"scrap_bin":
+				var is_test: bool = "is_test_part" in selected and selected.is_test_part
+				var sub := "Hurdaya At  " + click if (is_test or selected.broken) else ("Hurdaya Sat (+%d TL)  %s" % [maxi(5, int(selected.value() * 0.4)), click])
+				return ["Hurda Kutusu", selected.display_name, sub, T.BAD]
+			"tray_surface":
+				return ["Parça Tepsisi", selected.display_name, "Seçimi tepsiye geri bırak  " + click, HL_CYAN]
 		return []
 	if tool != null:
+		if k == "tray" or k == "loose_part":
+			var pt = res.part
+			var sp := _tray_part_spec_and_compat(pt)
+			if tool.tool_type == "screwdriver" and "bent_pins" in pt and pt.bent_pins:
+				return [pt.display_name, sp, "Eğik CPU pinlerini düzelt  " + click, T.ACCENT]
+			if tool.tool_type == "multimeter":
+				return [pt.display_name, sp, "Multimetre ile ölç  " + click, HL_CYAN]
+			return [pt.display_name, sp, "Seç (aleti bırak)  " + click, HL_CYAN]
+		if k == "screw_dish":
+			var dst := _screw_dish_status()
+			if not dst.can_fasten.is_empty():
+				return ["Manyetik Vida Tabağı", "%d sökük vida bekliyor" % int(dst.loose), "Takılabilir vidaları sık (%d)  %s" % [dst.can_fasten.size(), click], T.ACCENT]
+			return ["Manyetik Vida Tabağı", "Eksik veya sökük vidaları toplar", "Kapak açıkken yan kapak sıkılmaz" if int(dst.blocked_open) > 0 else "Tüm vidalar sıkılı", T.MUTED]
 		var target = res.get("slot")
 		if k == "widget" and tool.tool_type == "screwdriver":
 			var wh := str(res.node.get_hint(self))
@@ -1298,14 +1600,22 @@ func _tooltip_for(res: Dictionary) -> Array:
 			if not _slot_open(res.slot):
 				return []
 			return ["Boş yuva: %s" % PM.type_name(res.slot.accepts), "", "Tepsiden veya Stoktan parça seç", T.MUTED]
-		"tray":
+		"tray", "loose_part":
 			var t_col := HL_CYAN
-			if "origin" in res.part:
-				if str(res.part.origin) == "stock":
-					t_col = T.GOOD
-				elif str(res.part.origin) == "customer":
-					t_col = T.ACCENT
-			return [res.part.display_name, _part_spec_text(res.part), "Seç  " + click, t_col]
+			var orig: String = str(res.part.get("origin")) if "origin" in res.part else ""
+			if orig == "stock":
+				t_col = T.GOOD
+			elif orig == "customer":
+				t_col = T.ACCENT
+			var act_str := "Tepsiye Al & Seç  " + click if k == "loose_part" else ("Seç %s · %s [R] · Hurda [X]" % [click, "Cebe At" if orig == "customer" else "Rafa"])
+			return [res.part.display_name, _tray_part_spec_and_compat(res.part), act_str, t_col]
+		"screw_dish":
+			var dst := _screw_dish_status()
+			if not dst.can_fasten.is_empty():
+				return ["Manyetik Vida Tabağı", "%d sökük vida bekliyor" % int(dst.loose), "Vidaları sık (%d)  %s" % [dst.can_fasten.size(), click], T.ACCENT]
+			if int(dst.blocked_open) > 0:
+				return ["Manyetik Vida Tabağı", "%d yan kapak vidası bekliyor" % int(dst.blocked_open), "Sıkmak için önce kapağı kapat", T.MUTED]
+			return ["Manyetik Vida Tabağı", "Kasadaki vidalar eksiksiz", "Tüm vidalar sıkılı", T.GOOD]
 		"widget":
 			var h := str(res.node.get_hint(self))
 			if h == "":
@@ -1324,11 +1634,35 @@ func click(res: Dictionary) -> void:
 		select_tool(res.tool)
 		Game.sfx.click()
 		return
+	if k == "scrap_bin" and selected != null:
+		scrap_tray_part(selected)
+		return
+	if k == "screw_dish":
+		_click_screw_dish()
+		return
+	if k == "tray_surface" and selected != null:
+		cancel_selection()
+		Game.sfx.click()
+		return
+	if k == "tray" or k == "loose_part":
+		var pt = res.part
+		if k == "loose_part":
+			tray_add(pt)
+		if tool != null:
+			if tool.tool_type == "screwdriver" and "bent_pins" in pt and pt.bent_pins:
+				pt.straighten_pins()
+				Game.sfx.screw()
+				Game.msg("Eğik CPU pinleri tepside düzeltildi!", Color(0.5, 1.0, 0.5))
+				_sig = ""
+				return
+			if tool.tool_type == "multimeter":
+				_measure_tray_part(pt)
+				return
+		select_part(pt)
+		return
 	if selected != null:
 		if k == "slot" or k == "installed":
 			install_selected(res.slot)
-		elif k == "tray":
-			select_part(res.part)
 		return
 	if tool != null:
 		if k == "widget" and tool.tool_type == "screwdriver":
@@ -1342,8 +1676,6 @@ func click(res: Dictionary) -> void:
 	match k:
 		"installed":
 			remove_part(res.slot)
-		"tray":
-			select_part(res.part)
 		"widget":
 			res.node.interact(self)
 			Game.sfx.click()
@@ -1417,12 +1749,15 @@ func remove_part(slot):
 func tray_add(part) -> bool:
 	if part == null or device == null or (part.has_method("is_tool") and part.is_tool()):
 		return false
-	if part.get_parent():
-		part.reparent(_tray, false)
-	else:
-		_tray.add_child(part)
+	if part.has_method("cancel_place"):
+		part.cancel_place()
+	if part.get_parent() != _tray:
+		if part.get_parent():
+			part.reparent(_tray, false)
+		else:
+			_tray.add_child(part)
 	part.slot = null
-	part.freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
+	part.freeze_mode = RigidBody3D.FREEZE_MODE_STATIC
 	part.freeze = true
 	part.linear_velocity = Vector3.ZERO
 	part.angular_velocity = Vector3.ZERO
@@ -1542,6 +1877,7 @@ func select_part(part) -> bool:
 		return false
 	cancel_selection()
 	tool = null
+	_refresh_tool_hl()
 	selected = part
 	part.collision_layer = 0
 	_tint_cur = null
@@ -1595,7 +1931,35 @@ func install_selected(slot) -> bool:
 func select_tool(t) -> void:
 	cancel_selection()
 	tool = null if tool == t else t
+	_refresh_tool_hl()
 	_sig = ""
+
+
+## Seçilen parça için cihazda takılabilecek en uygun boş yuvayı bulur (yoksa null).
+func best_slot_for(part):
+	if device == null or not is_instance_valid(device) or part == null:
+		return null
+	var warn_slot = null
+	for s in device.slots.values():
+		if s.part != null:
+			continue
+		var r := can_install(s, part)
+		if r.ok:
+			if str(r.get("severity", "ok")) != "warn":
+				return s
+			if warn_slot == null:
+				warn_slot = s
+	return warn_slot
+
+
+## Tepsideki parçayı tek tıkla en uygun boş yuvaya takar.
+func install_part_directly(part) -> bool:
+	var s = best_slot_for(part)
+	if s == null:
+		return false
+	if not select_part(part):
+		return false
+	return install_selected(s)
 
 
 ## Aleti hedefe uygular (slot null: kasanın geneli).
@@ -1647,14 +2011,7 @@ func _prune_tray() -> void:
 
 
 func _flat_basis(part) -> Basis:
-	var b := Basis.IDENTITY
-	if part.part_type in ["mobo", "cpu", "cooler", "ram", "gpu", "nvme", "fan", "cmos"]:
-		b = Basis.from_euler(Vector3(0, 0, PI / 2.0))
-	var info: Dictionary = PM.info(part.part_type)
-	var bb: AABB = Transform3D(b, Vector3.ZERO) * AABB(info.center - info.size / 2.0, info.size)
-	if bb.size.z > bb.size.x * 1.2:
-		b = Basis(Vector3.UP, PI / 2.0) * b
-	return b
+	return PART.flat_basis_for(part.part_type)
 
 
 func _footprint(part, b: Basis) -> AABB:
@@ -1675,11 +2032,11 @@ func _layout_tray() -> void:
 			stock_list.append(p)
 		else:
 			pulled_list.append(p)
-	_layout_tray_zone(stock_list, iw, -TRAY_D / 2.0 + 0.032, true)
-	_layout_tray_zone(pulled_list, iw, 0.028, false)
+	_layout_tray_zone(stock_list, iw, -TRAY_D / 2.0 + 0.036, -0.006, true)
+	_layout_tray_zone(pulled_list, iw, 0.030, TRAY_D / 2.0 - 0.012, false)
 
 
-func _layout_tray_zone(list: Array, iw: float, z_start: float, avoid_dish: bool) -> void:
+func _layout_tray_zone(list: Array, iw: float, z_start: float, z_max: float, avoid_dish: bool) -> void:
 	var cx := -iw / 2.0
 	var rz := z_start
 	var row_d := 0.0
@@ -1689,14 +2046,23 @@ func _layout_tray_zone(list: Array, iw: float, z_start: float, avoid_dish: bool)
 		var fx := bb.size.x
 		var fz := bb.size.z
 		# sağ arka köşedeki manyetik vida tabağını boş bırak
-		var row_right := (iw / 2.0 - 0.092) if (avoid_dish and rz < -TRAY_D / 2.0 + 0.115) else iw / 2.0
+		var row_right := (iw / 2.0 - 0.095) if (avoid_dish and rz < -TRAY_D / 2.0 + 0.12) else iw / 2.0
 		if cx + fx > row_right and cx > -iw / 2.0 + 0.001:
 			rz += row_d + 0.008
 			cx = -iw / 2.0
 			row_d = 0.0
-			row_right = (iw / 2.0 - 0.092) if (avoid_dish and rz < -TRAY_D / 2.0 + 0.115) else iw / 2.0
-		var target := Vector3(cx + fx / 2.0, TRAY_TOP + bb.size.y / 2.0 + 0.0005, rz + fz / 2.0)
+			row_right = (iw / 2.0 - 0.095) if (avoid_dish and rz < -TRAY_D / 2.0 + 0.12) else iw / 2.0
+		var clamped_rz := minf(rz, maxf(z_start, z_max - fz))
+		var min_px := -iw / 2.0 + fx / 2.0
+		var max_px := maxf(min_px, row_right - fx / 2.0)
+		var px := clampf(cx + fx / 2.0, min_px, max_px)
+		var target := Vector3(px, TRAY_TOP + bb.size.y / 2.0 + 0.0008, clamped_rz + fz / 2.0)
 		p.transform = Transform3D(b, target - bb.get_center())
+		p.force_update_transform()
+		if p.is_inside_tree():
+			PhysicsServer3D.body_set_state(p.get_rid(), PhysicsServer3D.BODY_STATE_TRANSFORM, p.global_transform)
+			if p.has_method("reset_physics_interpolation"):
+				p.reset_physics_interpolation()
 		cx += fx + 0.010
 		row_d = maxf(row_d, fz)
 
@@ -1736,7 +2102,7 @@ func _update_selected() -> void:
 		if hit.has("position"):
 			t = minf(t, (hit.position - o).length() - 0.03)
 		var pt: Vector3 = o + d * maxf(t, 0.05)
-		selected.global_transform = Transform3D(b, pt - b * bb.get_center())
+		selected.global_transform = Transform3D(b, pt - bb.get_center())
 	if _tint_cur != tint:
 		_tint_cur = tint
 		_set_tint(selected, tint)
@@ -1897,6 +2263,10 @@ func _rebuild_top_bar(rec: Dictionary) -> void:
 	if kind == "pc":
 		var b_flat := K.button(_top_hb, "Dikleştir [F]" if _laid_flat else "Yatır [F]", toggle_lay_flat, "", 13, Vector2(0, 32))
 		b_flat.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var b_cam := K.button(_top_hb, "Sıfırla [C]", func():
+		_frame_camera(false)
+		Game.sfx.click(), "", 13, Vector2(0, 32))
+	b_cam.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	var open_lbl := ("Kapağı Kapat" if device.panel_open else "Kapağı Aç") if kind == "pc" else \
 		(("Düzelt" if device.panel_open else "Ters Çevir") if kind == "laptop" else \
 		("Ekranı İndir" if device.panel_open else "Ekranı Kaldır"))
@@ -2080,35 +2450,83 @@ func _build_tab_tray(vb: VBoxContainer) -> void:
 		e.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		e.custom_minimum_size = Vector2(260, 0)
 		return
+	var stock_list: Array = []
+	var pulled_list: Array = []
+	var broken_list: Array = []
+	var stock_ok_list: Array = []
 	for p in tray_parts:
 		if not is_instance_valid(p):
 			continue
 		var is_test: bool = "is_test_part" in p and p.is_test_part
 		var orig: String = str(p.get("origin")) if "origin" in p else ""
-		var otag: String = str(p.origin_tag()) if p.has_method("origin_tag") else ""
-		var border_col := T.INFO if is_test else (T.GOOD if orig == "stock" else (T.ACCENT if orig == "customer" else Color(1, 1, 1, 0.06)))
-		var card := K.panel(vb, "InsetPanel")
-		card.add_theme_stylebox_override("panel", T.flat(Color(0, 0, 0, 0.25), 5, border_col, 1, Vector2(8, 6)))
-		var pv := VBoxContainer.new()
-		pv.add_theme_constant_override("separation", 4)
-		card.add_child(pv)
-		var sel: bool = p == selected
-		K.label(pv, p.display_name, 13, T.ACCENT if sel else T.TEXT, "BoldLabel")
-		var status_txt := "Test Parçası" if is_test else ("ARIZALI" if p.broken else "Sağlam")
-		var cond := ("%s · %s" % [otag, status_txt]) if otag != "" and not is_test else status_txt
-		var cond_col := T.INFO if is_test else (T.BAD if p.broken else (T.GOOD if orig == "stock" else T.ACCENT))
-		K.label(pv, cond, 11, cond_col)
-		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 4)
-		pv.add_child(row)
-		var bs := K.button(row, "İptal" if sel else "Seç", (cancel_selection if sel else select_part.bind(p)), "PrimaryButton" if sel else "", 12, Vector2(0, 26))
-		bs.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		if not p.broken and not is_test:
-			if orig == "customer":
-				K.button(row, "Cebe At", func(): pocket_tray_part(p), "", 12, Vector2(68, 26))
-			else:
-				K.button(row, "Rafa", func(): return_tray_part(p), "", 12, Vector2(58, 26))
-		K.button(row, "At", func(): scrap_tray_part(p), "", 12, Vector2(46, 26))
+		if orig == "stock" or orig == "test" or is_test:
+			stock_list.append(p)
+			if not p.broken and not is_test:
+				stock_ok_list.append(p)
+		else:
+			pulled_list.append(p)
+		if p.broken:
+			broken_list.append(p)
+	if not broken_list.is_empty() or not stock_ok_list.is_empty():
+		var bulk := HBoxContainer.new()
+		bulk.add_theme_constant_override("separation", 5)
+		vb.add_child(bulk)
+		if not broken_list.is_empty():
+			var bb := K.button(bulk, "Arızalı At (%d)" % broken_list.size(), func():
+				for bp in broken_list.duplicate():
+					if is_instance_valid(bp) and tray_parts.has(bp):
+						scrap_tray_part(bp), "SegButton", 11, Vector2(0, 26))
+			bb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		if not stock_ok_list.is_empty():
+			var rb := K.button(bulk, "Stoku Rafa Koy (%d)" % stock_ok_list.size(), func():
+				for sp in stock_ok_list.duplicate():
+					if is_instance_valid(sp) and tray_parts.has(sp):
+						return_tray_part(sp), "SegButton", 11, Vector2(0, 26))
+			rb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	if not stock_list.is_empty():
+		K.label(vb, "YENİ / STOK (%d)" % stock_list.size(), 11, T.GOOD, "SmallCaps")
+		for p in stock_list:
+			_build_tray_card(vb, p)
+	if not pulled_list.is_empty():
+		K.label(vb, "SÖKÜLEN · MÜŞTERİ (%d)" % pulled_list.size(), 11, T.ACCENT, "SmallCaps")
+		for p in pulled_list:
+			_build_tray_card(vb, p)
+
+
+func _build_tray_card(vb: VBoxContainer, p) -> void:
+	var is_test: bool = "is_test_part" in p and p.is_test_part
+	var orig: String = str(p.get("origin")) if "origin" in p else ""
+	var otag: String = str(p.origin_tag()) if p.has_method("origin_tag") else ""
+	var border_col := T.INFO if is_test else (T.GOOD if orig == "stock" else (T.ACCENT if orig == "customer" else Color(1, 1, 1, 0.06)))
+	var card := K.panel(vb, "InsetPanel")
+	card.add_theme_stylebox_override("panel", T.flat(Color(0, 0, 0, 0.25), 5, border_col, 1, Vector2(8, 6)))
+	var pv := VBoxContainer.new()
+	pv.add_theme_constant_override("separation", 4)
+	card.add_child(pv)
+	var sel: bool = p == selected
+	K.label(pv, p.display_name, 13, T.ACCENT if sel else T.TEXT, "BoldLabel")
+	var status_txt := "Test Parçası" if is_test else ("ARIZALI" if p.broken else "Sağlam")
+	var cond := ("%s · %s" % [otag, status_txt]) if otag != "" and not is_test else status_txt
+	var cn := _part_compat_note(p)
+	if not cn.is_empty():
+		cond += " · " + str(cn.text)
+	var cond_col := T.INFO if is_test else (T.BAD if p.broken else (T.BAD if (not cn.is_empty() and not cn.ok) else (T.GOOD if orig == "stock" else T.ACCENT)))
+	var cl := K.label(pv, cond, 11, cond_col)
+	cl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	cl.custom_minimum_size = Vector2(256, 0)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 4)
+	pv.add_child(row)
+	var bs := K.button(row, "İptal" if sel else "Seç", (cancel_selection if sel else select_part.bind(p)), "PrimaryButton" if sel else "", 12, Vector2(0, 26))
+	bs.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	if best_slot_for(p) != null:
+		K.button(row, "Tak", func(): install_part_directly(p), "PrimaryButton", 12, Vector2(46, 26))
+	if not p.broken and not is_test:
+		if orig == "customer":
+			K.button(row, "Cebe At", func(): pocket_tray_part(p), "", 12, Vector2(64, 26))
+		else:
+			K.button(row, "Rafa", func(): return_tray_part(p), "", 12, Vector2(52, 26))
+	K.button(row, "At", func(): scrap_tray_part(p), "", 12, Vector2(38, 26))
 
 
 func _rebuild_dock(tools: Array) -> void:
@@ -2116,9 +2534,11 @@ func _rebuild_dock(tools: Array) -> void:
 	if tools.is_empty():
 		var l := K.label(_dock_tools, "Masada kullanılabilir alet yok", 12, T.MUTED)
 		return
-	for t in tools:
+	for i in tools.size():
+		var t = tools[i]
 		var act: bool = t == tool
-		var tb := K.button(_dock_tools, t.display_name + (" ✓" if act else ""), func(): select_tool(t),
+		var prefix := "[%d] " % (i + 1) if i < 9 else ""
+		var tb := K.button(_dock_tools, prefix + t.display_name + (" ✓" if act else ""), func(): select_tool(t),
 			"PrimaryButton" if act else "SegButton", 12, Vector2(0, 28))
 
 

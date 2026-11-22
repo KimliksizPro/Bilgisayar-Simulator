@@ -49,6 +49,7 @@ var queue: Array = []                  # müşteri kuyruğu: {customer, job, mod
 var devices := {}                      # fiş no -> cihaz düğümü
 var tags := {}                         # fiş no -> {root, stripe}
 var busy := {}                         # fiş no -> true (personel üzerinde çalışıyor)
+var bench_spot = null                  # tezgâh bırakma alanı (tepsiyi örtmez)
 
 # baştaki müşteri görünümü (personel ve testler okur)
 var state := "none"                    # none / arriving / waiting / closed
@@ -80,10 +81,13 @@ func start() -> void:
 	Game.day_started.connect(begin_day)
 	Game.day_ended.connect(_on_day_ended)
 	Game.jobs_loaded.connect(func(): if Game.phase == "day": _rebuild_all())
-	# tezgâh yeri: cihazı koymak için ince bir etkileşim alanı
+	# tezgâh yeri: cihazı koymak için ince bir etkileşim alanı (sağdaki ESD parça tepsisini örtmeyecek darlıkta)
 	var o := pc_spot.origin
-	MU.interactable(world, Vector3(0.8, 0.03, 0.6), Vector3(o.x, o.y - 0.004, o.z),
+	bench_spot = MU.interactable(world, Vector3(0.56, 0.024, 0.56), Vector3(o.x, o.y - 0.004, o.z),
 		func(p): return bench_hint(p), func(p): bench_use(p))
+	bench_spot.name = "BenchSpot"
+	Game.bench_changed.connect(func(_d): sync_bench_spot())
+	sync_bench_spot()
 
 
 ## Yeni gün: kuyruğu temizle, raftaki işlerin cihazlarını kayıttan yeniden kur, ilk müşteriyi çağır.
@@ -642,6 +646,7 @@ func pick_up_device(rec: Dictionary, p = null) -> String:
 		rack.clear_slot(t)
 	rec.location = "carry"
 	carry.start(rec, dev, from)
+	sync_bench_spot()
 	Game.jobs_changed.emit()
 	hud.dismiss_tip("ticket")
 	if str(rec.status) != "ready":
@@ -690,6 +695,14 @@ func bench_use(_p) -> void:
 		place_on_bench()
 
 
+## Tezgâh bırakma alanının çarpışmasını yalnızca gerektiğinde açık tutar (tezgâh modunda tepsiyi engellemez).
+func sync_bench_spot() -> void:
+	if bench_spot == null or not is_instance_valid(bench_spot):
+		return
+	var active := (not Game.bench_active) and (Game.bench_device == null or carry.active())
+	bench_spot.collision_layer = 3 if active else 0
+
+
 ## Taşınan cihazı rafın i. gözüne koyar ve hazır olup olmadığına bakar.
 func place_on_rack(i: int) -> bool:
 	if not carry.active() or i < 0 or i >= Game.max_active_jobs() or rack.occ[i] != 0:
@@ -716,6 +729,7 @@ func place_on_bench() -> bool:
 	Game.set_bench_device(dev)
 	rec.location = "bench"
 	rec.status = "on_bench"
+	sync_bench_spot()
 	Game.sfx.pickup()
 	if not rec.get("benched", false):
 		rec["benched"] = true
@@ -746,6 +760,7 @@ func return_carried() -> void:
 		place_on_rack(i)
 	elif Game.bench_device == null:
 		place_on_bench()
+	sync_bench_spot()
 
 
 ## Cihaz rafa konduğunda: hata yoksa "hazır". verbose: oyuncuya sonucu bildir.
@@ -1065,6 +1080,7 @@ func _refresh_visuals() -> void:
 			sm.albedo_color = c
 			sm.emission_enabled = true
 			sm.emission = c
+	sync_bench_spot()
 
 
 # ---------------------------------------------------------------- araç / test yardımcıları

@@ -59,26 +59,68 @@ func _ready() -> void:
 	part.freeze_mode = RigidBody3D.FREEZE_MODE_STATIC
 	await get_tree().process_frame
 	assert(p.vm_vp.render_target_update_mode == SubViewport.UPDATE_ALWAYS)
-	# bırak: katmanlar geri gelmeli, gövde düşmeli
+	# boşluğa bakarken stok parçasını bırakınca stoğa düzenli iade edilmeli (yere fırlatılmamalı)
+	p.global_position = Vector3(0.0, 0.0, 0.5)
+	p.rotation = Vector3.ZERO
+	p.cam.rotation = Vector3.ZERO
+	var gpu_sku: String = part.sku
+	var gpu_stock_0 := Game.stock_of_sku(gpu_sku)
+	p.drop()
+	assert(p.held == null and Game.stock_of_sku(gpu_sku) == gpu_stock_0 + 1, "boşlukta bırakılan stok parçası stoğa dönmedi")
+	await get_tree().process_frame
+	assert(p.vm_vp.render_target_update_mode == SubViewport.UPDATE_DISABLED)
+
+	# masaya bakarken parça bırakınca yatay yüzeye düz ve statik yerleşmeli
+	main._buy(p, "gpu", 1)
+	part = p.held
+	assert(part != null)
+	p.global_position = Vector3(0.15, 0.0, -1.5)
+	p.rotation = Vector3.ZERO
+	p.cam.rotation.x = deg_to_rad(-38.0)
+	assert(p.put_down_info().get("mode", "") == "surface", "masa yüzeyi tanınmadı: %s" % [p.put_down_info()])
 	p.drop()
 	for v in part.find_children("*", "VisualInstance3D", true, false):
 		assert(v.layers == 1, "katman geri gelmedi")
-	assert(not part.freeze and part.collision_layer == 2)
-	await get_tree().process_frame
-	assert(p.vm_vp.render_target_update_mode == SubViewport.UPDATE_DISABLED)
-	# tekrar al, rafa geri koy akışı
-	p.global_position = part.global_position + Vector3(0, 0, 0.6)
+	await get_tree().create_timer(0.28).timeout
+	assert(part.freeze and part.freeze_mode == RigidBody3D.FREEZE_MODE_STATIC and part.collision_layer == 2, "masaya konulan parça statik donmadı")
+	assert(part.global_position.y >= 0.74, "parça masa üstüne konmadı: y=%.3f" % part.global_position.y)
+	# tekrar al ve temizle
 	p.pick_up(part)
 	assert(p.held == part)
-	var tool = main.get_children().filter(func(c): return c.has_method("puff"))[0]
 	var q = p.release_held()
 	assert(q == part)
 	part.queue_free()
-	p.pick_up(tool)
-	assert(tool.freeze_mode == RigidBody3D.FREEZE_MODE_STATIC and tool.freeze)
-	cabinet_hit.interact(p)
-	assert(p.held == tool, "alet dolaba iade edilmemeli")
+
+	# tezgâhta cihaz varken müşteri parçası boşlukta bırakılınca ESD tepsisine gitmeli
+	var rec: Dictionary = Game.job_mgr.drop_off(Game.job_mgr._make_job_of("repair_ram"))
+	var pc = Game.job_mgr.dev_to_bench(rec)
+	assert(pc != null)
+	var cust_p = main.PART.new().setup("ram", 1, true)
+	cust_p.origin = "customer"
+	main.add_child(cust_p)
+	p.pick_up(cust_p)
+	p.global_position = Vector3(0.0, 0.0, 0.5)
+	p.rotation = Vector3.ZERO
+	p.cam.rotation = Vector3.ZERO
 	p.drop()
-	assert(not tool.freeze)
+	assert(p.held == null and main.bench.tray_parts.has(cust_p), "müşteri parçası ESD tepsisine konmadı")
+	Game.set_bench_device(null)
+	Game.job_mgr._remove_record(rec, false)
+
+	# alet (tornavida) sağ tık / G ile bırakılınca yere fırlatılmayıp masadaki yerine dönmeli
+	var sd = main.get_children().filter(func(c): return c.has_method("is_tool") and c.is_tool() and c.tool_type == "screwdriver")[0]
+	p.pick_up(sd)
+	assert(sd.freeze_mode == RigidBody3D.FREEZE_MODE_STATIC and sd.freeze)
+	cabinet_hit.interact(p)
+	assert(p.held == sd, "alet dolaba iade edilmemeli")
+	p.global_position = Vector3(0.5, 0.0, -1.7)
+	p.drop()
+	assert(p.held == null)
+	await get_tree().create_timer(0.30).timeout
+	assert(sd.freeze and sd.freeze_mode == RigidBody3D.FREEZE_MODE_STATIC, "alet yere atılmayıp statik durmalı")
+	assert(sd.collision_layer == 2)
+	for v in sd.find_children("*", "VisualInstance3D", true, false):
+		assert(v.layers == 1, "alet katmanı geri gelmedi")
+	assert(sd.global_position.distance_to(sd.home_transform.origin) < 0.02, "alet masadaki yerine dönmedi")
 	print("HOLDTEST OK")
 	get_tree().quit()

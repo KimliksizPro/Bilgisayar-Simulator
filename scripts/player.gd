@@ -4,6 +4,7 @@ extends CharacterBody3D
 const REACH := 2.2
 const VM_LAYER := 1 << 19  # 20. görsel katman: elde tutulan eşya (viewmodel)
 const TOUCH_CONTROLS := preload("res://scripts/touch_controls.gd")
+const PART_SCRIPT := preload("res://scripts/part.gd")
 
 const SAFE_POS := Vector3(0.9, 0.1, -0.9)  # dükkân içi güvenli nokta (main.gd başlangıç konumu)
 
@@ -252,6 +253,10 @@ func _update_target() -> void:
 func pick_up(p) -> void:
 	if held:
 		return
+	if p.has_method("cancel_return"):
+		p.cancel_return()
+	if p.has_method("cancel_place"):
+		p.cancel_place()
 	if p.slot:
 		p.slot.detach()
 	p.linear_velocity = Vector3.ZERO
@@ -309,16 +314,82 @@ func release_held():
 	return p
 
 
+func _surface_place_hit() -> Dictionary:
+	var from := cam.global_position
+	var to := from - cam.global_transform.basis.z * REACH
+	var q := PhysicsRayQueryParameters3D.create(from, to, 1, [get_rid()])
+	var r := get_world_3d().direct_space_state.intersect_ray(q)
+	if r and r.normal.y > 0.85 and r.position.y >= 0.45:
+		return r
+	return {}
+
+
+## Elde tutulan eşyanın Sağ Tık / [G] basılınca nereye konulacağını ve HUD etiketini belirler.
+func put_down_info() -> Dictionary:
+	if held == null or not is_instance_valid(held):
+		return {}
+	if held.has_method("is_tool") and held.is_tool():
+		return {"mode": "tool_home", "label": "Masaya Geri Koy"}
+	var main := get_parent()
+	var b = main.get("bench") if main else null
+	var has_bench_dev: bool = b != null and Game.bench_device != null and is_instance_valid(Game.bench_device)
+	var hit := _surface_place_hit()
+	if not hit.is_empty():
+		if has_bench_dev and b._tray != null and hit.position.distance_to(b._tray.global_position) < 0.32:
+			return {"mode": "tray", "label": "Tepsiye Koy"}
+		return {"mode": "surface", "label": "Masaya Bırak", "hit": hit}
+	if "is_test_part" in held and held.is_test_part:
+		return {"mode": "test_clear", "label": "Test Parçasını Kaldır"}
+	if not held.broken and ("origin" in held and str(held.origin) == "stock"):
+		return {"mode": "stock", "label": "Dolaba Geri Koy"}
+	if has_bench_dev:
+		return {"mode": "tray", "label": "Tepsiye Geri Koy"}
+	return {"mode": "desk_mat", "label": "Tamir Masasına Koy"}
+
+
 func drop() -> void:
 	if held == null:
 		return
-	var p = release_held()
-	var gt: Transform3D = p.global_transform
-	p.reparent(get_tree().current_scene, false)
-	p.global_transform = gt
-	p.collision_layer = 2
-	p.collision_mask = 1
-	p.freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
-	p.freeze = false
-	p.linear_velocity = -cam.global_transform.basis.z * 1.5 + velocity
-	Game.sfx.pickup()
+	var info := put_down_info()
+	var mode: String = str(info.get("mode", ""))
+	var main := get_parent()
+	match mode:
+		"tool_home":
+			var t = release_held()
+			t.return_home(main if main else get_tree().current_scene, true)
+			Game.sfx.pickup()
+			Game.msg("%s masadaki yerine bırakıldı." % t.display_name, Color(0.7, 0.9, 1.0))
+		"tray":
+			var p = release_held()
+			main.bench.tray_add(p)
+			Game.sfx.pickup()
+			Game.msg("%s parça tepsisine kondu." % p.display_name, Color(0.7, 0.9, 1.0))
+		"surface":
+			var hit: Dictionary = info.hit
+			var p = release_held()
+			var yaw := Basis(Vector3.UP, rotation.y)
+			var fb := yaw * PART_SCRIPT.flat_basis_for(p.part_type)
+			var pinfo: Dictionary = PART_SCRIPT.PM.info(p.part_type)
+			var bb: AABB = Transform3D(fb, Vector3.ZERO) * AABB(pinfo.center - pinfo.size * 0.5, pinfo.size) if not pinfo.is_empty() else AABB(Vector3(-0.03, -0.01, -0.03), Vector3(0.06, 0.02, 0.06))
+			var pos: Vector3 = hit.position + Vector3(0.0, bb.size.y * 0.5 + 0.002, 0.0) - bb.get_center()
+			p.place_at(main if main else get_tree().current_scene, Transform3D(fb, pos), true)
+			Game.sfx.pickup()
+			Game.msg("%s masaya bırakıldı." % p.display_name, Color(0.7, 0.9, 1.0))
+		"stock":
+			if main and main.has_method("_return_held_to_stock"):
+				main._return_held_to_stock(self)
+		"test_clear":
+			var p = release_held()
+			p.queue_free()
+			Game.sfx.click()
+			Game.msg("Test parçası kaldırıldı.", Color(0.7, 0.9, 1.0))
+		_:
+			var p = release_held()
+			if main and main.has_method("place_part_on_desk"):
+				main.place_part_on_desk(p)
+			else:
+				var fallback_pos := global_position - cam.global_transform.basis.z * 0.5
+				fallback_pos.y = maxf(fallback_pos.y, 0.76)
+				p.place_at(get_tree().current_scene, Transform3D(PART_SCRIPT.flat_basis_for(p.part_type), fallback_pos), false)
+			Game.sfx.pickup()
+			Game.msg("%s tamir masasına bırakıldı." % p.display_name, Color(0.7, 0.9, 1.0))

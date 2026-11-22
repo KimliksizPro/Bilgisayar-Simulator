@@ -36,6 +36,7 @@ var sun: DirectionalLight3D
 var street_light: OmniLight3D
 var sign_light: OmniLight3D
 var _day_env := {}
+var scrap_bin = null
 
 
 func _ready() -> void:
@@ -551,9 +552,13 @@ func _build_desk() -> void:
 			MU.rbox(self, Vector3(0.05, DESK_Y - 0.05, 0.05), Vector3(x, (DESK_Y - 0.05) / 2, z), leg, 0.01)
 	MU.rbox(self, Vector3(2.5, 0.08, 0.03), Vector3(0.25, DESK_Y - 0.09, -2.85), leg, 0.008)
 	MU.static_box(self, Vector3(2.6, DESK_Y, 0.8), Vector3(0.25, DESK_Y / 2, -2.5), null)
-	# anti-statik ESD tamir matı ve arka sağda alet düzenleyici tepsi
+	# anti-statik ESD tamir matı, arka sağda teşhis aleti rafı ve sağda başlangıç alet pedi
 	MU.rbox(self, Vector3(1.36, 0.004, 0.56), Vector3(0.66, DESK_Y + 0.002, -2.47), MU.mat(Color(0.10, 0.22, 0.36), 0, 0.95), 0.002)
 	MU.rbox(self, Vector3(0.76, 0.008, 0.12), Vector3(1.00, DESK_Y + 0.004, -2.74), MU.mat(Color(0.08, 0.09, 0.11), 0.2, 0.8), 0.004)
+	MU.rbox(self, Vector3(0.24, 0.006, 0.38), Vector3(1.15, DESK_Y + 0.004, -2.38), MU.mat(Color(0.08, 0.09, 0.12), 0.2, 0.82), 0.004)
+	MU.box(self, Vector3(0.22, 0.001, 0.002), Vector3(1.15, DESK_Y + 0.0075, -2.198), MU.mat(Color(0.26, 0.56, 0.82), 0.1, 0.7))
+	var tl := MU.label(self, "ALETLER", Vector3(1.15, DESK_Y + 0.0078, -2.186), 26, Color(0.65, 0.82, 0.95), Vector3(-90, 0, 0), 0.00024)
+	tl.double_sided = false
 	monitor = MONITOR.new()
 	monitor.position = Vector3(-0.5, DESK_Y, -2.72)
 	add_child(monitor)
@@ -587,16 +592,17 @@ func _build_desk() -> void:
 		MU.lathe(self, PackedVector2Array([Vector2(0.2045 + k * 0.0045 * 2.2, 0.08 + k * 0.1), Vector2(0.2065 + k * 0.0045 * 2.2, 0.09 + k * 0.1)]), Vector3(1.85, 0, -2.55), MU.mat(Color(0.12, 0.2, 0.15), 0.5, 0.4), 32)
 	var bl := MU.label(self, "HURDA", Vector3(1.85, 0.3, -2.55 + 0.2145), 60, Color(0.95, 0.95, 0.9), Vector3.ZERO, 0.0012)
 	bl.double_sided = false
-	MU.interactable(self, Vector3(0.46, 0.55, 0.46), Vector3(1.85, 0.27, -2.55), _bin_hint, _bin_use)
+	scrap_bin = MU.interactable(self, Vector3(0.46, 0.55, 0.46), Vector3(1.85, 0.27, -2.55), _bin_hint, _bin_use)
+	scrap_bin.name = "ScrapBin"
 
 
 ## Masadaki aletler: 4 başlangıç aleti + 8 geliştirme ile açılan teşhis/servis aleti.
 func _build_tools() -> void:
 	var starter := [
-		["screwdriver", Vector3(1.04, DESK_Y + 0.014, -2.28), 82.0],
-		["paste", Vector3(1.04, DESK_Y + 0.016, -2.44), 80.0],
-		["air", Vector3(1.13, DESK_Y + 0.096, -2.46), -15.0],
-		["ipa", Vector3(1.13, DESK_Y + 0.075, -2.29), -10.0],
+		["screwdriver", Vector3(1.09, DESK_Y + 0.021, -2.28), 84.0],
+		["paste", Vector3(1.09, DESK_Y + 0.021, -2.48), 80.0],
+		["air", Vector3(1.20, DESK_Y + 0.102, -2.48), -15.0],
+		["ipa", Vector3(1.20, DESK_Y + 0.082, -2.29), -10.0],
 	]
 	for t in starter:
 		var tool = TOOL.new().setup(t[0])
@@ -604,7 +610,9 @@ func _build_tools() -> void:
 		add_child(tool)
 		tool.position = t[1]
 		tool.rotation_degrees.y = t[2]
+		tool.freeze_mode = RigidBody3D.FREEZE_MODE_STATIC
 		tool.freeze = true
+		tool.set_home(tool.global_transform)
 	var unlocked := [
 		["ram_usb", Vector3(0.66, DESK_Y + 0.008, -2.74), 0.0],
 		["smart_usb", Vector3(0.72, DESK_Y + 0.008, -2.74), 0.0],
@@ -622,10 +630,23 @@ func _build_tools() -> void:
 		add_child(tool)
 		tool.position = t[1]
 		tool.rotation_degrees.y = t[2]
+		tool.freeze_mode = RigidBody3D.FREEZE_MODE_STATIC
 		tool.freeze = true
+		tool.set_home(tool.global_transform)
 		var arr: Array = _up_nodes.get(tid, [])
 		arr.append(tool)
 		_up_nodes[tid] = arr
+
+
+## Eldeki serbest parçayı (tezgâh boşken) tamir masasının sağındaki ESD matına düz biçimde koyar.
+func place_part_on_desk(part) -> void:
+	if part == null or not is_instance_valid(part):
+		return
+	var fb: Basis = PART.flat_basis_for(part.part_type)
+	var pinfo: Dictionary = PM.info(part.part_type)
+	var bb: AABB = Transform3D(fb, Vector3.ZERO) * AABB(pinfo.center - pinfo.size * 0.5, pinfo.size) if not pinfo.is_empty() else AABB(Vector3(-0.03, -0.01, -0.03), Vector3(0.06, 0.02, 0.06))
+	var spot := Vector3(0.81 + randf_range(-0.08, 0.08), DESK_Y + 0.006 + bb.size.y * 0.5, -2.38 + randf_range(-0.08, 0.08))
+	part.place_at(self, Transform3D(fb, spot - bb.get_center()), true)
 
 
 func _bin_hint(p) -> String:

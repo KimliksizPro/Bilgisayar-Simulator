@@ -21,9 +21,12 @@ const NAMES := {
 var tool_type := ""
 var display_name := ""
 var slot = null  # parçalarla uyumluluk için (alet yuvaya takılmaz)
+var home_transform := Transform3D.IDENTITY
+var has_home := false
 var _center := Vector3.ZERO
 var _euler := Vector3.ZERO
 var _cool := 0.0
+var _return_tw: Tween = null
 
 
 func setup(type: String):
@@ -71,10 +74,56 @@ func setup(type: String):
 	MU.add_box_shape(self, size, _center)
 	mass = 0.3
 	continuous_cd = true
-	freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
+	freeze_mode = RigidBody3D.FREEZE_MODE_STATIC
 	collision_layer = 2
 	collision_mask = 1
 	return self
+
+
+## Aletin masadaki düzenli başlangıç konumunu kaydeder.
+func set_home(xf: Transform3D) -> void:
+	home_transform = xf
+	has_home = true
+
+
+func cancel_return() -> void:
+	if _return_tw != null and _return_tw.is_valid():
+		_return_tw.kill()
+	_return_tw = null
+
+
+## Aleti yere atmak yerine masadaki düzenli yerine yumuşakça geri döndürür.
+func return_home(parent: Node, smooth := true) -> void:
+	cancel_return()
+	var dest := home_transform if has_home else global_transform
+	linear_velocity = Vector3.ZERO
+	angular_velocity = Vector3.ZERO
+	freeze_mode = RigidBody3D.FREEZE_MODE_STATIC
+	freeze = true
+	collision_layer = 2
+	collision_mask = 1
+	visible = true
+	if get_parent() != parent:
+		if get_parent() != null:
+			reparent(parent, true)
+		else:
+			parent.add_child(self)
+	if smooth and is_inside_tree() and global_position.distance_to(dest.origin) <= 2.4:
+		_return_tw = create_tween()
+		_return_tw.tween_property(self, "global_transform", dest, 0.22).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		_return_tw.tween_callback(_sync_physics_body)
+	else:
+		global_transform = dest
+		_sync_physics_body()
+
+
+func _sync_physics_body() -> void:
+	if not is_inside_tree():
+		return
+	force_update_transform()
+	PhysicsServer3D.body_set_state(get_rid(), PhysicsServer3D.BODY_STATE_TRANSFORM, global_transform)
+	if has_method("reset_physics_interpolation"):
+		reset_physics_interpolation()
 
 
 func is_tool() -> bool:

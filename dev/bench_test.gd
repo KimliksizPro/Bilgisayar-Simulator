@@ -128,6 +128,29 @@ func _pc_repair() -> void:
 	assert("origin" in bad and bad.origin == "customer" and bad.origin_ticket == t, "müşteri parçası etiketlenmedi")
 	assert(good.position.z < 0.0 and bad.position.z > 0.0, "tepside stok ve sökülen bölgeleri ayrılmadı (good.z=%.3f, bad.z=%.3f)" % [good.position.z, bad.position.z])
 	assert(bench.tray_parts.size() == 2)
+	# Tepsideki RAM yassı yatmalı ve fare ışınıyla sağdaki stok/müşteri parçaları alınabilmeli
+	await get_tree().physics_frame
+	var ram_bb: AABB = bench._footprint(good, good.transform.basis)
+	assert(ram_bb.size.y < ram_bb.size.z and ram_bb.size.y < 0.015, "tepsideki RAM yassı yatmadı: %s" % [ram_bb.size])
+	var good_center: Vector3 = good.global_transform * main.PART.PM.info("ram").center
+	var bad_center: Vector3 = bad.global_transform * main.PART.PM.info("ram").center
+	var pick_good: Dictionary = bench._pick_at(bench.cam.unproject_position(good_center))
+	var pick_bad: Dictionary = bench._pick_at(bench.cam.unproject_position(bad_center))
+	assert(pick_good.get("kind", "") == "tray" and pick_good.get("part") == good, "stok parçası fareyle alınamadı: %s" % [pick_good])
+	assert(pick_bad.get("kind", "") == "tray" and pick_bad.get("part") == bad, "müşteri parçası fareyle alınamadı: %s" % [pick_bad])
+	# Tornavida seçiliyken tepsideki parçaya tıklamak aleti bırakıp parçayı seçmeli
+	var sd_tools: Array = desk_tools.filter(func(tl): return tl.tool_type == "screwdriver")
+	assert(not sd_tools.is_empty())
+	bench.select_tool(sd_tools[0])
+	assert(bench.tool == sd_tools[0])
+	bench.click(pick_good)
+	assert(bench.tool == null and bench.selected == good, "alet aktifken tepsi parçasına tıklayınca seçilmedi")
+	bench.cancel_selection()
+	assert(bench.best_slot_for(good) == slot, "en uygun boş yuva bulunamadı")
+	# Manyetik vida tabağına tıklayınca takılabilir vida (GPU) sıkılmalı
+	if pc.part_in("gpu") != null and not pc.slot_screwed("gpu"):
+		bench.click({"kind": "screw_dish", "node": bench._dish_root})
+		assert(pc.slot_screwed("gpu"), "vida tabağına tıklayınca GPU vidası sıkılmadı")
 	assert(bench.can_install(pc.slots.cpu, good).ok == false)
 	assert(bench.can_install(pc.slots.gpu, good).ok == false)
 	assert(bench.can_install(slot, good).ok == true)
@@ -141,6 +164,11 @@ func _pc_repair() -> void:
 	assert(bench.install_selected(pc.slots.cpu) == false, "yanlış yuvaya takıldı")
 	assert(bench.install_selected(slot), "takılamadı")
 	assert(slot.part == good and not bench.tray_parts.has(good) and good.slot == slot)
+	# Seçili bozuk müşteri parçasını hurda kutusuna tıklayarak atma
+	assert(bench.tray_parts.has(bad))
+	assert(bench.select_part(bad))
+	bench.click({"kind": "scrap_bin", "node": main.scrap_bin})
+	assert(not bench.tray_parts.has(bad) and bench.selected == null, "hurda kutusuna tıklayınca parça atılmadı")
 	assert(pc.diagnose() == "ok")
 	bench.press_power()
 	assert(pc.powered)
